@@ -18,6 +18,12 @@
     <header class="bar">
       <span class="crumb"><span class="crumb-kind" id="kind">Notes</span><span class="crumb-name" id="crumb">Memory</span></span>
       <span class="spacer"></span>
+      <form class="ask" id="ask" autocomplete="off">
+        <label class="sr" for="ask-text">Ask Claude</label>
+        <input id="ask-text" placeholder="Ask Claude about this…" maxlength="2000">
+        <button type="submit">Send</button>
+      </form>
+      <span class="sent" id="sent" role="status"></span>
       <a class="open" id="open" href="/notes/" target="_blank" rel="noopener">Open alone</a>
     </header>
     <div class="frames" id="frames"></div>

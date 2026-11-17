@@ -99,6 +99,23 @@ function up() {
   createShell(c).listen(c.port, '127.0.0.1', () => say(`Crewdeck on http://localhost:${c.port}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));
 }
 
+async function api(path: string, body?: unknown) {
+  const c = loadConfig();
+  const r = await fetch(`http://127.0.0.1:${c.port}${path}`, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const out = await r.json();
+  if (!r.ok) throw new Error(out?.error ?? `HTTP ${r.status}`);
+  return out;
+}
+
+async function requestsCmd() { for (const r of await api('/api/requests')) say(`${r.id}\t${r.status}\t${r.lane}\t${r.text}${r.result ? `  → ${r.result}` : ''}`); }
+
+async function requestCmd(args: string[]) {
+  const [verb, id] = args;
+  if (!['done', 'fail'].includes(verb ?? '') || !id) throw new Error('usage: crewdeck request done|fail <id> --result "<one line for the page>"');
+  const r = await api(`/api/requests/${Number(id)}/${verb}`, { result: flag(args, 'result') ?? '' });
+  say(`request ${r.id} ${r.status}`);
+}
+
 function doctor() {
   const c = loadConfig();
   const ok = (b: boolean, s: string) => say(`${b ? '✓' : '✗'} ${s}`);
@@ -109,6 +126,6 @@ function doctor() {
 
 const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
 const [cmd, ...rest] = process.argv.slice(2);
-const run: Record<string, (a: string[]) => unknown> = { init, up, 'add-project': addProject, doctor };
-if (!cmd || !run[cmd]) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor'); process.exit(cmd ? 1 : 0); }
+const run: Record<string, (a: string[]) => unknown> = { init, up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd };
+if (!cmd || !run[cmd]) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail <id> --result <text>'); process.exit(cmd ? 1 : 0); }
 Promise.resolve(run[cmd](rest)).catch((e) => { console.error(e?.message ?? e); process.exit(1); });

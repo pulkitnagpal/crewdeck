@@ -1,0 +1,22 @@
+{
+  "name": "crewdeck-bridge",
+  "displayName": "Crewdeck bridge",
+  "version": "0.1.0",
+  "description": "Brings clicks from the Crewdeck page into the Claude session that owns that work (one lane per project).",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "port": {
+      "type": "number",
+      "title": "Crewdeck port",
+      "description": "The port Crewdeck runs on (crewdeck up)",
+      "default": 4848,
+      "min": 1024,
+      "max": 65535
+    }
+  },
+  "author": {
+    "name": "Pulkit Nagpal",
+    "url": "https://github.com/pulkitnagpal"
+  }
+}

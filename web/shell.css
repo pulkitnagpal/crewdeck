@@ -29,3 +29,10 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 .frames iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--ground); visibility: hidden; }
 .frames iframe.on { visibility: visible; }
 @media (max-width: 560px) { .rail { width: 60px; } .nav .lbl { display: none; } }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ask { display: flex; align-items: center; gap: 6px; background: var(--chip); border-radius: 10px; padding: 3px 3px 3px 10px; min-width: 0; flex: 0 1 420px; }
+.ask input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: 13px Inter, system-ui, sans-serif; outline: none; padding: 5px 0; }
+.ask button { border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: 600 12px Inter, system-ui, sans-serif; padding: 6px 10px; cursor: pointer; }
+.sent { font-size: 12px; color: var(--muted); max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sent.ok { color: #1F7A4F; } .sent.bad { color: #B42318; }

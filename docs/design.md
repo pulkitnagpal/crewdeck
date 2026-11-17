@@ -84,5 +84,6 @@ Exact ports, theme values, process restart backoff, and log format.
 
 ## Changelog
 
+- 2026-11-18: bridge shipped (basic): request queue on the shell (`/api/requests`, `/api/claim`, `/api/requeue`, `requests.json`), lane from the session's folder, `crewdeck-bridge` mod in `plugin/` with idle-only delivery and put-back; Ask Claude box in the shell.
 - 2026-11-17: apps in the rail (any local web app, optional `command`), `appearance` applied to all tools, project `label`; theme selected automatically via `Library/Crewdeck/Setup`.
 - 2026-11-17: first version. Name Crewdeck chosen; reuse SilverBullet + Backlog.md; repo private until the demo.

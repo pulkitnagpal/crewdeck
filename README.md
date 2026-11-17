@@ -1,5 +1,8 @@
 # Crewdeck
 
+> 🚧 **Under construction.** The workspace and the bridge work; agent automation (start an agent on a ticket, memory
+> skills) is still being built. Expect rough edges and breaking changes.
+
 **Your one-person company, inside Claude desktop.** Notes, memory, tickets and your Claude agents in one
 workspace that opens next to the chat. You click and decide; agents read and write the same files.
 
@@ -25,6 +28,24 @@ Claude desktop
      ├── Board  → Backlog.md for each project (tickets live in the project's repo)
      └── Apps   → any other local web app you add (a jobs tracker, a dashboard…)
 ```
+
+### Two-way: the page talks to your Claude sessions
+
+Crewdeck is a normal local web app. The **bridge** is a small Claude Code plugin (a *mod*) that runs inside each
+Claude session:
+
+```
+Crewdeck page ── "Ask Claude about this…" ──► request queue (lane per project)
+                                                   │  the bridge mod in the session whose folder
+                                                   ▼  matches that project claims it while idle
+                                      Claude session (project:myapp) does the work
+                                                   │
+Crewdeck page ◄── result shows up ─── `crewdeck request done <id> --result "…"`
+```
+
+A session inside a project's folder (or one of its worktrees) owns `project:<name>`; any other session owns
+`cockpit`. Requests are only delivered while a session is idle, unfinished ones go back to the queue at the end of
+a turn, and a request that keeps failing is marked failed after three tries.
 
 Your memory follows the [LLM-wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
 you save sources to `raw/`, Claude maintains `wiki/` (summaries, links, `index.md`, `log.md`), and `me/` holds
@@ -66,6 +87,18 @@ Open **http://localhost:4848** in Claude desktop's browser pane (or any browser)
 apps share one light theme (set `appearance: dark` in the config for dark).
 
 Check your setup any time with `node src/cli.ts doctor`. Logs are in `~/.crewdeck/logs/`.
+
+### Install the bridge (for the two-way part)
+
+In a terminal Claude Code session:
+
+```
+/plugin install crewdeck-bridge --marketplace pulkitnagpal/crewdeck
+```
+
+In the desktop app: + next to the prompt box → Plugins → Add marketplace `pulkitnagpal/crewdeck` → add
+**crewdeck-bridge**. Start a new session in a project folder: its status line shows `Crewdeck · project:<name>`.
+Type in **Ask Claude about this…** on that project's board and the request arrives in that session.
 
 ### Config
 
@@ -122,8 +155,9 @@ Add this to `.claude/launch.json` in any folder you open in Claude Code, then as
 ## Roadmap
 
 - [x] Stage 1 — workspace shell, SilverBullet notes, Backlog.md boards, one theme, starter vault
-- [ ] Stage 2 — Claude Code plugin: page clicks reach the right session (one lane per project), "start an agent
-      on this ticket", memory skills (ingest / query / lint)
+- [x] Bridge — Claude Code mod: page requests reach the session that owns the lane, results come back to the page
+- [ ] Stage 2 — "start an agent on this ticket" (moving a card starts a worktree session), memory skills
+      (ingest / query / lint), agent status on cards
 - [x] Apps — show any local web app in the same rail, with the same theme
 - [ ] Stage 3 — optional Jobs module: find roles, draft answers from your own words, fill forms in Claude's
       browser pane; you press Submit
