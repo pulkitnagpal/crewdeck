@@ -13,11 +13,7 @@ Crewdeck builds almost nothing itself. It wires together mature open-source tool
 
 Everything runs on your machine, bound to `127.0.0.1`. No accounts, no cloud, no telemetry.
 
-<!-- Screenshots: put PNGs in docs/img/ and they show here. -->
-<p align="center">
-  <img src="docs/img/board.png" alt="A project board in Crewdeck, next to the Claude chat" width="49%">
-  <img src="docs/img/notes.png" alt="Notes and memory in Crewdeck" width="49%">
-</p>
+<!-- Screenshots go here: add docs/img/*.png and reference them. -->
 
 ## How it works
 
