@@ -15,3 +15,16 @@ test('config: expands ~, assigns board ports, rejects unsafe project names', () 
   writeFileSync(p, 'projects:\n  - name: "../etc"\n    path: /tmp/x\n');
   assert.throws(() => loadConfig(p), /lowercase/);
 });
+
+test('config: one project is labelled "Board"; apps must be local http URLs', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cd-'));
+  const p = join(dir, 'config.yaml');
+  writeFileSync(p, 'projects:\n  - name: alpha\n    path: /tmp/a\napps:\n  - name: jobs\n    url: http://localhost:4747/\n');
+  const c = loadConfig(p);
+  assert.equal(c.projects[0].label, 'Board');
+  assert.equal(c.appearance, 'light');
+  writeFileSync(p, 'projects:\n  - name: alpha\n    path: /tmp/a\n  - name: beta\n    path: /tmp/b\n');
+  assert.deepEqual(loadConfig(p).projects.map((x) => x.label), ['alpha', 'beta']);
+  writeFileSync(p, 'apps:\n  - name: evil\n    url: https://example.com/\n');
+  assert.throws(() => loadConfig(p), /localhost/);
+});

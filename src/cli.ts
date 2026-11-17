@@ -84,13 +84,16 @@ function addProject(args: string[]) {
 function up() {
   const c = loadConfig();
   const theme = readFileSync(join(REPO, 'themes', 'backlog.css'), 'utf8');
+  // Backlog.md reads its light/dark choice from localStorage before it renders: set it first.
+  const mode = `<script>try{localStorage.setItem('backlog-theme','${c.appearance}')}catch(e){}</script>`;
   const services = [
     { name: 'silverbullet', cmd: silverbulletBin(), args: ['--single', '-L', '127.0.0.1', '-p', String(c.silverbullet.port), c.vault], env: { SB_URL_PREFIX: '/notes' } },
     ...c.projects.map((p) => ({ name: `board-${p.name}`, cmd: backlogBin(), args: ['browser', '-p', String(p.boardPort! + 100), '--no-open'], cwd: p.path })),
+    ...c.apps.filter((a) => a.command).map((a) => ({ name: `app-${a.name}`, cmd: a.command!, args: a.args ?? [], cwd: a.cwd })),
   ];
   supervise(services);
   for (const p of c.projects) {
-    createProxy({ target: { host: '127.0.0.1', port: p.boardPort! + 100 }, injectHead: `<style id="crewdeck-theme">${theme}</style>` })
+    createProxy({ target: { host: '127.0.0.1', port: p.boardPort! + 100 }, injectHead: `${mode}<style id="crewdeck-theme">${theme}</style>` })
       .listen(p.boardPort!, '127.0.0.1');
   }
   createShell(c).listen(c.port, '127.0.0.1', () => say(`Crewdeck on http://localhost:${c.port}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));

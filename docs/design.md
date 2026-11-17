@@ -84,4 +84,5 @@ Exact ports, theme values, process restart backoff, and log format.
 
 ## Changelog
 
+- 2026-11-17: apps in the rail (any local web app, optional `command`), `appearance` applied to all tools, project `label`; theme selected automatically via `Library/Crewdeck/Setup`.
 - 2026-11-17: first version. Name Crewdeck chosen; reuse SilverBullet + Backlog.md; repo private until the demo.

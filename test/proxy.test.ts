@@ -15,7 +15,8 @@ test('proxy injects the theme into HTML only, and refuses non-local hosts', asyn
   const p = await listen(proxy);
   try {
     const html = await (await fetch(`http://127.0.0.1:${p}/`)).text();
-    assert.match(html, /<style>#t\{\}<\/style><\/head>/);
+    // Injected first in <head>, so it runs before the tool's own scripts (Backlog.md reads its theme early).
+    assert.match(html, /<head><style>#t\{\}<\/style><title>/);
     assert.equal(await (await fetch(`http://127.0.0.1:${p}/api`)).text(), '{"ok":true}');
     // fetch() drops a custom Host header, so send a raw request as a DNS-rebinding page would.
     const status = await new Promise<number>((r) => request({ host: '127.0.0.1', port: p, path: '/', headers: { host: 'evil.example' } }, (res) => { res.resume(); r(res.statusCode!); }).end());

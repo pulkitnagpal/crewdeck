@@ -13,7 +13,9 @@ export function shellState(c: Config) {
   return {
     notes: '/notes/',
     // Ports only: the page builds each URL on its own host, so the board is same-site (not a blocked third party).
-    projects: c.projects.map((p) => ({ name: p.name, boardPort: p.boardPort })),
+    projects: c.projects.map((p) => ({ name: p.name, label: p.label, boardPort: p.boardPort })),
+    apps: c.apps.map((a) => ({ name: a.name, label: a.label ?? a.name, url: a.url })),
+    appearance: c.appearance,
   };
 }
 

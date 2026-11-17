@@ -13,6 +13,12 @@ Crewdeck builds almost nothing itself. It wires together mature open-source tool
 
 Everything runs on your machine, bound to `127.0.0.1`. No accounts, no cloud, no telemetry.
 
+<!-- Screenshots: put PNGs in docs/img/ and they show here. -->
+<p align="center">
+  <img src="docs/img/board.png" alt="A project board in Crewdeck, next to the Claude chat" width="49%">
+  <img src="docs/img/notes.png" alt="Notes and memory in Crewdeck" width="49%">
+</p>
+
 ## How it works
 
 ```
@@ -20,7 +26,8 @@ Claude desktop
 ├── chat with Claude (sessions = your agents)
 └── browser pane → Crewdeck  http://localhost:4848
      ├── Notes  → SilverBullet over your vault folder (Markdown, also opens in Obsidian)
-     └── Board  → Backlog.md for each project (tickets live in the project's repo)
+     ├── Board  → Backlog.md for each project (tickets live in the project's repo)
+     └── Apps   → any other local web app you add (a jobs tracker, a dashboard…)
 ```
 
 Your memory follows the [LLM-wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
@@ -59,10 +66,33 @@ Start it:
 node src/cli.ts up
 ```
 
-Open **http://localhost:4848** in Claude desktop's browser pane (or any browser). In Notes, run
-**Theme: Select → Crewdeck** once to apply the theme.
+Open **http://localhost:4848** in Claude desktop's browser pane (or any browser). Notes, boards and your
+apps share one light theme (set `appearance: dark` in the config for dark).
 
 Check your setup any time with `node src/cli.ts doctor`. Logs are in `~/.crewdeck/logs/`.
+
+### Config
+
+`~/.crewdeck/config.yaml` (created by `init`):
+
+```yaml
+port: 4848                 # the Crewdeck page
+vault: ~/Crewdeck/vault    # your notes
+appearance: light          # light | dark, applied to everything
+projects:                  # added by `crewdeck add-project`
+  - name: myapp
+    path: ~/code/myapp
+    label: Board           # what the nav shows (default: "Board" with one project, else the name)
+apps:                      # optional: other local web apps to show, started for you if `command` is set
+  - name: jobs
+    label: Jobs
+    url: http://localhost:4747/
+    command: node
+    args: [src/cli.ts, web]
+    cwd: ~/code/my-job-tracker
+```
+
+Apps that read an `?appearance=light|dark` query parameter can follow Crewdeck's theme.
 
 ### Run it from the Claude desktop app
 
@@ -85,11 +115,20 @@ Add this to `.claude/launch.json` in any folder you open in Claude Code, then as
 - **Memory:** "ingest raw/2026-11-17 brief.md", "what do we know about pricing?", "remember I prefer remote roles".
   Claude follows the vault's `CLAUDE.md`.
 
+## Security
+
+- Everything binds to `127.0.0.1`. Crewdeck's own servers (the page and the board proxies) also refuse requests
+  whose `Host` isn't `localhost`/`127.0.0.1`, which blocks DNS-rebinding pages; SilverBullet and Backlog.md listen
+  on internal ports behind them.
+- SilverBullet runs with no accounts because only your machine can reach it. Don't expose the ports.
+- Agents edit your notes and tickets; review what they change like any other code (your vault and repos are git-friendly).
+
 ## Roadmap
 
-- [x] Stage 1 — workspace shell, SilverBullet notes, Backlog.md boards, theme, starter vault
+- [x] Stage 1 — workspace shell, SilverBullet notes, Backlog.md boards, one theme, starter vault
 - [ ] Stage 2 — Claude Code plugin: page clicks reach the right session (one lane per project), "start an agent
       on this ticket", memory skills (ingest / query / lint)
+- [x] Apps — show any local web app in the same rail, with the same theme
 - [ ] Stage 3 — optional Jobs module: find roles, draft answers from your own words, fill forms in Claude's
       browser pane; you press Submit
 

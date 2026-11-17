@@ -1,12 +1,21 @@
-/* Crewdeck look for Backlog.md's board, injected by Crewdeck's proxy. Backlog.md stays unmodified. */
+/* Crewdeck look for Backlog.md's board, injected by Crewdeck's proxy. Backlog.md itself stays unmodified. */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-:root { --cd-ground: #FBFAF7; --cd-card: #FFFFFF; --cd-line: #EAE6DD; --cd-ink: #1C1B19; --cd-muted: #5E5A52; --cd-accent: #3550D6; }
-html, body, button, input, select, textarea { font-family: Inter, -apple-system, system-ui, sans-serif !important; }
-body { background: var(--cd-ground) !important; color: var(--cd-ink); }
-html:not(.dark) .bg-white { background-color: var(--cd-card) !important; }
-html:not(.dark) .bg-gray-50, html:not(.dark) .bg-gray-100 { background-color: var(--cd-ground) !important; }
-html:not(.dark) .border-gray-200, html:not(.dark) .border-gray-300 { border-color: var(--cd-line) !important; }
-.bg-blue-600, .bg-blue-500 { background-color: var(--cd-accent) !important; }
-.text-blue-600, .text-blue-500 { color: var(--cd-accent) !important; }
-.rounded-lg, .rounded-md { border-radius: 12px !important; }
-.shadow, .shadow-sm, .shadow-md { box-shadow: 0 1px 2px rgba(28, 27, 25, .06) !important; }
+html { --cd-ground: #FBFAF7; --cd-panel: #F3F1EC; --cd-card: #FFFFFF; --cd-line: #E7E3DA; --cd-ink: #1C1B19; --cd-muted: #5E5A52; --cd-accent: #3550D6; --cd-accent-bg: #E8ECFB; }
+html.dark { --cd-ground: #171716; --cd-panel: #1F1E1C; --cd-card: #23221F; --cd-line: #2E2C29; --cd-ink: #ECE9E3; --cd-muted: #9A958C; --cd-accent: #8EA2FF; --cd-accent-bg: #252B48; }
+html, body, button, input, select, textarea { font-family: Inter, -apple-system, system-ui, sans-serif !important; -webkit-font-smoothing: antialiased; }
+body, #root, main { background: var(--cd-ground) !important; color: var(--cd-ink); }
+/* surfaces */
+.bg-white, .dark .dark\:bg-gray-800, .dark .dark\:bg-gray-900 { background-color: var(--cd-card) !important; }
+.bg-gray-50, .bg-gray-100, .dark .dark\:bg-gray-700, .dark .dark\:bg-gray-950 { background-color: var(--cd-panel) !important; }
+aside, nav { background-color: var(--cd-panel) !important; }
+/* lines and text */
+[class*="border-gray-"], .dark [class*="dark:border-gray-"] { border-color: var(--cd-line) !important; }
+.text-gray-500, .text-gray-600, .dark .dark\:text-gray-400 { color: var(--cd-muted) !important; }
+.text-gray-900, .dark .dark\:text-gray-100, .dark .dark\:text-white { color: var(--cd-ink) !important; }
+/* accent */
+.bg-blue-600, .bg-blue-500, .hover\:bg-blue-700:hover { background-color: var(--cd-accent) !important; color: #fff !important; }
+.text-blue-600, .text-blue-500, .text-blue-700, .dark .dark\:text-blue-400 { color: var(--cd-accent) !important; }
+.bg-blue-50, .bg-blue-100, .dark .dark\:bg-blue-900\/30, .dark .dark\:bg-blue-900\/20 { background-color: var(--cd-accent-bg) !important; }
+/* shape */
+.rounded-lg, .rounded-md, .rounded-xl { border-radius: 12px !important; }
+.shadow, .shadow-sm, .shadow-md, .shadow-lg { box-shadow: 0 1px 2px rgba(28, 27, 25, .06), 0 0 0 1px var(--cd-line) !important; }

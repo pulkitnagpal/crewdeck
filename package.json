@@ -5,8 +5,12 @@
   "license": "MIT",
   "type": "module",
   "private": true,
-  "engines": { "node": ">=22.18" },
-  "bin": { "crewdeck": "./bin/crewdeck.mjs" },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "crewdeck": "./bin/crewdeck.mjs"
+  },
   "scripts": {
     "crewdeck": "node src/cli.ts",
     "test": "node --test --test-reporter=spec \"test/**/*.test.ts\""
@@ -14,5 +18,20 @@
   "dependencies": {
     "backlog.md": "1.55.3",
     "yaml": "^2.8.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pulkitnagpal/crewdeck.git"
+  },
+  "homepage": "https://github.com/pulkitnagpal/crewdeck#readme",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "silverbullet",
+    "backlog.md",
+    "second-brain",
+    "kanban",
+    "agents",
+    "local-first"
+  ]
 }

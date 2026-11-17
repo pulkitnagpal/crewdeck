@@ -31,7 +31,7 @@ export function forward(req: IncomingMessage, res: ServerResponse, o: ProxyOpts,
       src.on('data', (c: Buffer) => chunks.push(c));
       src.on('end', () => {
         let html = Buffer.concat(chunks).toString('utf8');
-        html = html.includes('</head>') ? html.replace('</head>', `${o.injectHead}</head>`) : o.injectHead + html;
+        html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + o.injectHead) : o.injectHead + html;
         delete out['content-length']; delete out['content-encoding']; delete out['etag'];
         res.writeHead(r.statusCode ?? 200, out);
         res.end(html);
