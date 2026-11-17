@@ -1,0 +1,4 @@
+node_modules/
+.crewdeck/
+.DS_Store
+*.log
