@@ -35,12 +35,19 @@ export const shortDay = (iso: string, tz: string, locale?: string) => new Date(i
 /** "17 Nov" for a local date (YYYY-MM-DD) as written in a note. */
 export const noteDay = (day: string, locale?: string) => (/^\d{4}-\d{2}-\d{2}$/.test(day) ? new Date(`${day}T12:00:00Z`).toLocaleDateString(locale || 'en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : day);
 
-/** The tailored resume's file name from me/career.md (placeholders from me/profile.md). */
+/**
+ * The tailored resume's file name from me/career.md (placeholders from me/profile.md), safe on every file system and in
+ * an upload dialog: no path separators, control or reserved characters, no leading dots, at most 120 characters,
+ * always ending in .pdf.
+ */
 export function resumeFileName(career: Career, profile: Profile): string {
   const id = profile.identity;
   const v: Record<string, string> = { first_name: id.first_name, last_name: id.last_name, preferred_name: id.preferred_name || id.first_name };
-  const name = career.resume.file_name.replace(/\{(first_name|last_name|preferred_name)\}/g, (_, k) => v[k] ?? '').replace(/[/\\:\0]/g, '-').replace(/\s+/g, ' ').trim();
-  return /^\.?pdf$/i.test(name) || !name ? 'Resume.pdf' : name;
+  const name = career.resume.file_name.replace(/\{(first_name|last_name|preferred_name)\}/g, (_, k) => v[k] ?? '')
+    .normalize('NFC').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').replace(/[/\\:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ').trim().replace(/(\.pdf)+$/i, '').replace(/^[.\s-]+/, '').replace(/[.\s]+$/, '');
+  if (!name) return 'Resume.pdf';
+  return `${name.slice(0, 116).trim()}.pdf`;
 }
 export const resumePath = (ctx: Ctx, roleId: string, notes: Pick<JobNotes, 'career' | 'profile'>) => join(ctx.home, 'out', roleId, resumeFileName(notes.career.data, notes.profile.data));
 

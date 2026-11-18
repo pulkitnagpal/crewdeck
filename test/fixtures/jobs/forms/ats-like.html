@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>Example Health careers</title>
+<form class="application">
+<div class="field-entry"><label class="question-title">Familiarity with Epic</label>
+  <div class="options">
+    <span><input type="radio" id="g1" name="f1"><label for="g1">Never used it</label></span>
+    <span><input type="radio" id="g2" name="f1"><label for="g2">Charted in it daily</label></span>
+  </div></div>
+<div class="field-entry"><div class="title"><span>Comfortable with night shifts?</span></div>
+  <div class="options">
+    <span><input type="radio" id="p1" name="f2"><label for="p1">Yes</label></span>
+    <span><input type="radio" id="p2" name="f2"><label for="p2">No</label></span>
+  </div></div>
+<div class="q"><label>Have you worked in telehealth triage?<span>*</span></label>
+  <div class="yesno"><button type="button">Yes</button><button type="button">No</button></div></div>
+<div><label for="loc">Location</label><input id="loc" role="combobox" aria-autocomplete="list" placeholder="Start typing..."></div>
+<div style="display:none"><label for="hp">Email</label><input id="hp" type="text"></div>
+<label for="ro">Website</label><input id="ro" type="text" readonly>
+<label for="dis">Licence number</label><input id="dis" type="text" disabled>
+<div><span>First name</span><input type="text" aria-label="First name"></div>
+<div><input type="email" placeholder="Email address"></div>
+<label>Years of experience ✱<input name="years" type="number"></label>
+<input type="hidden" name="token" value="x">
+<button type="submit">Submit</button>
+</form>

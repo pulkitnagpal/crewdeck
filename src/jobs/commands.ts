@@ -130,12 +130,49 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     say(`apply URL set: ${setApplyUrl(ctx, role, text(flag(args, 'apply-url-file'), usage).trim())}`);
   }),
 
-  form: (args) => withCtx((ctx) => {
-    const usage = 'usage: crewdeck jobs form <role> --fields-file <f> ([{ label, kind, required?, options? }])';
+  form: (args) => withCtx(async (ctx) => {
+    const usage = 'usage: crewdeck jobs form <role> [--url-file <f with the form\'s address>] | --fields-file <f> ([{ label, kind, required?, options? }])';
     const role = roleArg(positional(args)[0], usage);
-    if (!flag(args, 'fields-file')) throw new Error(`${usage}\n(reading a form from its page arrives in a later version)`);
-    const n = storeFormFields(ctx.db, role, notesOf(ctx).profile.data, cleanQuestions(jsonFile(flag(args, 'fields-file'), '--fields-file')));
-    say(`${n} question${n === 1 ? '' : 's'} stored for ${role}`);
+    if (flag(args, 'fields-file')) {
+      const n = storeFormFields(ctx.db, role, notesOf(ctx).profile.data, cleanQuestions(jsonFile(flag(args, 'fields-file'), '--fields-file')));
+      return say(`${n} question${n === 1 ? '' : 's'} stored for ${role}`);
+    }
+    // Headless: the role's form through the guarded browser.
+    const { readForm } = await import('./read-form.ts');
+    const r = await readForm(ctx, role, { url: optText(args, 'url-file')?.trim() || undefined, browser: loadConfig().jobs.browser });
+    json({ ...r, questions: r.questions.map((q) => ({ label: q.label, kind: q.kind, required: q.required, options: q.options?.length ? q.options : undefined })) });
+    if (r.needs) process.exitCode = 2;
+  }),
+
+  link: (args) => withCtx(async (ctx) => {
+    const usage = 'usage: crewdeck jobs link --url-file <f with the posting\'s address> [--force]';
+    if (!flag(args, 'url-file')) throw new Error(usage);
+    const { link } = await import('./link.ts');
+    const r = await link(ctx, { url: text(flag(args, 'url-file'), '--url-file').trim(), force: args.includes('--force') });
+    json(r);
+    if (r.warnings.length && !r.picked && !r.closed) process.exitCode = 2;
+  }),
+
+  linkedin: (args) => withCtx(async (ctx) => {
+    const usage = 'usage: crewdeck jobs linkedin search [--days N] [--max-requests N]';
+    if (positional(args)[0] !== 'search') throw new Error(usage);
+    const days = intArg(flag(args, 'days'), 'days', 7);
+    if (days < 1 || days > 30) throw new Error('--days must be from 1 to 30');
+    const { searchLinkedin } = await import('./linkedin.ts');
+    const r = await searchLinkedin(ctx, { days, maxRequests: intArg(flag(args, 'max-requests'), 'max-requests', 30) });
+    say(`LinkedIn: ${r.cards} postings found, ${r.stored} stored, ${r.skipped} skipped by your rules or closed, ${r.known} already known (${r.requests} requests)`);
+    if (r.stopped) say(r.stopped);
+    for (const e of r.errors) say(`error: ${e}`);
+    if (r.stored) say('next: crewdeck jobs prefilter, then candidates');
+  }),
+
+  resume: (args) => withCtx(async (ctx) => {
+    const usage = 'usage: crewdeck jobs resume <role> --variant-file <f.json> ({ "sections": { "<section id>": ["<fact id>", …] }, "skills"?: [...] })';
+    const role = roleArg(positional(args)[0], usage);
+    if (!flag(args, 'variant-file')) throw new Error(usage);
+    const { renderResume } = await import('./resume.ts');
+    const r = await renderResume(ctx, role, jsonFile(flag(args, 'variant-file'), '--variant-file'), { browser: loadConfig().jobs.browser });
+    json({ pdf: r.pdf, pages: r.pages, facts: r.facts });
   }),
 
   draft: (args) => withCtx((ctx) => {
@@ -245,8 +282,13 @@ tracker and pipeline (text from postings and the user's words only through files
   add-role --role-file f | role <id> --apply-url-file f | status <role> <status> [--reason-file f]
   event add <role> --kind k --detail-file f | question add <role> --text-file f
   applied <role> | not-interested <role> --reason-file f [--title-words-file f]
+the web (through the SSRF guard; addresses only from files):
+  link --url-file f [--force]             read a pasted posting, add it, pick it for today
+  linkedin search [--days N]              LinkedIn guest search (only when you switched it on)
+  form <role> [--url-file f]              read the application form headlessly and store its questions
+  resume <role> --variant-file f          render the tailored resume PDF from fact ids
 knowledge and answers:
-  form <role> --fields-file f             store the questions read from a form
+  form <role> --fields-file f             store questions read from a form by hand
   draft <role> --brief out.json | --answers f
   answer <role> --question Qn --text-file f (--quote-file f | --claims-file f [--instruction-file f])
   learn <role> --label-file f [--answer-file f] [--quote-file f] [--options-file f] [--claims-file f] [--required]

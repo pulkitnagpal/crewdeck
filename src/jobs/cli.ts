@@ -178,7 +178,8 @@ const USAGE = `usage: crewdeck jobs <command>
 
 /** P2a's commands, loaded only when one of them runs (they open the tracker). */
 const P2 = ['prefilter', 'refilter', 'candidates', 'judge', 'pick', 'status', 'event', 'question', 'applied', 'not-interested', 'add-role', 'role',
-  'form', 'draft', 'answer', 'learn', 'undo', 'knowledge', 'fill-plan', 'contact', 'message', 'followups', 'followup', 'view'];
+  'form', 'draft', 'answer', 'learn', 'undo', 'knowledge', 'fill-plan', 'contact', 'message', 'followups', 'followup', 'view',
+  'link', 'linkedin', 'resume'];
 
 export async function main(args: string[]) {
   const [cmd, ...rest] = args;

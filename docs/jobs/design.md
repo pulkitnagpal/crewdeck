@@ -698,6 +698,13 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P2b built (2026-11-19):** netguard (DNS checked inside the connect, every address, mapped/compatible IPv6, 5
+  re-checked redirects, one 15 s deadline, 2 MB decoded cap, no env proxies), an in-process guard proxy for headless
+  Chromium (loopback through the proxy, no QUIC/UDP around it), browser discovery + `doctor`, `jobs link` (JSON-LD/meta,
+  closed postings, pickPasted warnings), LinkedIn guest pages (gated, paced, capped, stop at 429/999/3xx), headless form
+  reading, data-driven resume PDF (JS and network off, max_pages). Details and deviations:
+  [impl/02b-web.md](impl/02b-web.md) (test-only `testHosts` never reachable from the CLI, LinkedIn/copy-only forms
+  return `needs`, English section headings).
 - **P2a built (2026-11-19):** tracker DB v1 + migrations (WAL, busy timeouts, 0600), knowledge base (answers in the DB,
   memory in the note, citation check with a generic terms list), drafting brief with profile answers approved as
   `profile:` sources, fill plan (copy-only hosts, Easy Apply cap per local day, never submit), prefilter/refilter, judge,

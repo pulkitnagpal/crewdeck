@@ -10,6 +10,7 @@ import { supervise, silverbulletBin, backlogBin } from './supervisor.ts';
 import { createProxy } from './proxy.ts';
 import { createShell } from './server.ts';
 import { boardHead, notesAppearancePage, notesHead } from './appearance.ts';
+import { findBrowser, installHint } from './jobs/browser.ts';
 
 const say = (s: string) => console.log(s);
 
@@ -142,6 +143,9 @@ function doctor() {
   ok(!!readToken() && (statSync(TOKEN_PATH).mode & 0o077) === 0, `bridge token ${TOKEN_PATH} (0600)`);
   ok(existsSync(join(c.vault, 'CLAUDE.md')), `vault ${c.vault}`);
   for (const p of c.projects) ok(existsSync(join(p.path, 'backlog', 'config.yml')), `board ${p.name} (${p.path})`);
+  // Jobs reads forms and prints resumes in the user's own Chromium-based browser, headless.
+  const b = findBrowser(c.jobs.browser);
+  ok(!!b, b ? `browser for Jobs (forms, resume PDFs): ${b.name} (${b.path})` : `no Chromium-based browser for Jobs (forms, resume PDFs). ${installHint()}`);
 }
 
 const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };

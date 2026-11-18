@@ -5,19 +5,22 @@ import { type RoleInput, type Status, STATUSES, addEvent, getRole, setStatus, up
 import { checkRoleUrl } from '../fields.ts';
 
 const SOURCES = ['manual', 'pasted', 'alert', 'linkedin', 'board'];
+/** easy = LinkedIn Easy Apply; external = the company's own form; unknown = not known yet. */
+const APPLY_KINDS = ['easy', 'external', 'unknown'];
 const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 /** Add (or refresh) a role from a checked address; text fields are data, trimmed and capped. */
-export function addRole(ctx: Ctx, r: { url: string; title: string; company: string; location?: string; description?: string; pay_text?: string; posted_at?: string; source?: string; apply_url?: string }) {
+export function addRole(ctx: Ctx, r: { url: string; title: string; company: string; location?: string; description?: string; pay_text?: string; posted_at?: string; source?: string; apply_url?: string; apply_kind?: string }) {
   const url = checkRoleUrl(r.url, ctx.features);
   const title = text(r.title, 300), company = text(r.company, 200);
   if (!title || !company) throw new Error('title and company are required');
   const source = r.source ?? 'manual';
   if (!SOURCES.includes(source)) throw new Error(`source must be one of ${SOURCES.join(', ')}`);
+  if (r.apply_kind !== undefined && !APPLY_KINDS.includes(r.apply_kind)) throw new Error(`apply_kind must be one of ${APPLY_KINDS.join(', ')}`);
   const input: RoleInput = {
     url, title, company, source, location: text(r.location, 300), description: text(r.description, 200_000),
     pay_text: text(r.pay_text, 300) || null, posted_at: text(r.posted_at, 40) || null,
-    apply_url: r.apply_url ? checkRoleUrl(r.apply_url, ctx.features, 'apply URL') : null,
+    apply_url: r.apply_url ? checkRoleUrl(r.apply_url, ctx.features, 'apply URL') : null, apply_kind: r.apply_kind ?? null,
   };
   return tx(ctx.db, () => {
     const res = upsertRole(ctx.db, input);
