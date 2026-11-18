@@ -98,3 +98,28 @@ test('oversized bodies and unknown endpoints are refused', async () => {
   assert.equal((await call('PUT', '/api/state')).status, 405);
   assert.equal((await call('POST', '/api/requests', page(), '{bad')).status, 400);
 });
+
+test('Jobs off: the shell never loads node:sqlite or the Jobs code', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const script = `
+    const { createShell } = await import('./src/server.ts');
+    const { Requests } = await import('./src/requests.ts');
+    const s = createShell({ port: 0, vault: '/tmp/v', silverbullet: { port: 4849 }, projects: [], apps: [], appearance: 'auto', jobs: { enabled: false } },
+      new Requests(process.argv[1]), { token: 'a'.repeat(64) });
+    await new Promise((r) => s.listen(0, '127.0.0.1', r));
+    const port = s.address().port;
+    for (const p of ['/', '/api/state', '/jobs/', '/api/jobs/state']) await fetch('http://127.0.0.1:' + port + p);
+    s.close();
+    console.log(JSON.stringify(process.moduleLoadList.filter((m) => /sqlite/.test(m))));`;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script, join(mkdtempSync(join(tmpdir(), 'cds-')), 'r.json')], { cwd: join(import.meta.dirname, '..'), encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout.trim().split('\n').at(-1)!), []);
+});
+
+test('a claim tells the session its lane\'s hint; typed requests travel without their payload', async () => {
+  const nonce = 'abcdefghijklmnop5678';
+  const r = JSON.parse((await call('POST', '/api/claim', agent(), JSON.stringify({ cwd: '/elsewhere', by: 's9', nonce }))).body);
+  assert.equal(r.lane, 'cockpit');
+  assert.equal(r.hint, null);
+  assert.equal((await call('POST', '/api/requests/999/show', agent(), '{}')).status, 404);
+});

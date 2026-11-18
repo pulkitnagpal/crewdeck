@@ -9,6 +9,7 @@ import { NOTES, NOTE_NAMES, loadJobNotes } from './notes.ts';
 import { compileRules, describeRules, judgeBrief } from './rules.ts';
 import { meTarget, parsePath, setField } from './edit.ts';
 import { retire } from './memory.ts';
+import { RISK } from './features.ts';
 
 const say = (s: string) => console.log(s);
 export const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
@@ -132,15 +133,6 @@ async function rememberCmd(args: string[]) {
   } finally { ctx.db.close(); }
 }
 
-const RISK: Record<keyof JobsFeatures, string> = {
-  linkedin_search: 'Reads LinkedIn\'s public job search as a guest. LinkedIn\'s terms forbid automated access: your IP can be rate-limited or blocked. Paced at 2.5 s; stops at the first refusal.',
-  linkedin_links: 'Lets you paste LinkedIn job links; Crewdeck reads that one posting page. Same terms-of-service risk, one page per link.',
-  easy_apply: 'Lets Claude fill LinkedIn Easy Apply forms in your signed-in browser (you click Submit). Automated use of your account is against LinkedIn\'s terms and can get it restricted.',
-  daily_quick_apply: `How many Easy Apply forms Claude may fill per day (0 to ${FEATURE_CAPS.daily_quick_apply}).`,
-  email_drafts: 'Lets Claude create Gmail drafts to recruiters. Drafts only: nothing is ever sent by Crewdeck.',
-  max_emails_per_day: `Most email drafts per day (0 to ${FEATURE_CAPS.max_emails_per_day}).`,
-  linkedin_message_text: 'Lets Claude write LinkedIn message text for you to send yourself.',
-};
 
 async function features(args: string[]) {
   const [name, value] = positional(args);
@@ -179,7 +171,7 @@ const USAGE = `usage: crewdeck jobs <command>
 /** P2a's commands, loaded only when one of them runs (they open the tracker). */
 const P2 = ['prefilter', 'refilter', 'candidates', 'judge', 'pick', 'status', 'event', 'question', 'applied', 'not-interested', 'add-role', 'role',
   'form', 'draft', 'answer', 'learn', 'undo', 'knowledge', 'fill-plan', 'contact', 'message', 'followups', 'followup', 'view',
-  'link', 'linkedin', 'resume'];
+  'link', 'linkedin', 'resume', 'request'];
 
 export async function main(args: string[]) {
   const [cmd, ...rest] = args;

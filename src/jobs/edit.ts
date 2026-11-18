@@ -74,40 +74,57 @@ export function addChangeLine(body: string, line: string): string {
 }
 
 export type SetResult = { file: string; path: string; before: unknown; after: unknown; changed: boolean };
+export type Change = { segs: (string | number)[]; raw: string };
 
 /**
  * Set one field of a note. Refuses unknown paths, values of the wrong type, and anything that adds a validation
  * error; the note is untouched then. `because` (pref set) is the user's own words for the Changes line.
  */
 export function setField(file: string, note: 'profile' | 'career' | 'search', segs: (string | number)[], raw: string, opts: { because?: string; today?: string } = {}): SetResult {
-  const label = segs.map((s) => (typeof s === 'number' ? `[${s}]` : s)).join('.').replace(/\.\[/g, '[');
-  const schema = schemaAt(note, segs);
-  if (!schema) {
-    const parent = segs.slice(0, -1);
-    const near = didYouMean(String(segs[segs.length - 1]), keysAt(note, parent));
-    throw new Error(`${label} is not a field Crewdeck knows in ${noteFile(note)}${near ? `: did you mean "${[...parent, near].join('.')}"?` : ''}`);
-  }
-  const value = coerce(schema, raw, label);
+  return setFields(file, note, [{ segs, raw }], opts)[0];
+}
+
+const labelOf = (segs: (string | number)[]) => segs.map((s) => (typeof s === 'number' ? `[${s}]` : s)).join('.').replace(/\.\[/g, '[');
+
+/**
+ * Set several fields of one note at once (the Jobs page's Preferences form): every value is typed and the whole note
+ * validated before one atomic write, so either all of them are saved or none. Errors name each field. With `because`,
+ * each changed field gets its own Changes line.
+ */
+export function setFields(file: string, note: 'profile' | 'career' | 'search', changes: Change[], opts: { because?: string; today?: string } = {}): SetResult[] {
+  if (!changes.length) return [];
+  const typed = changes.map(({ segs, raw }) => {
+    const label = labelOf(segs);
+    const schema = schemaAt(note, segs);
+    if (!schema) {
+      const parent = segs.slice(0, -1);
+      const near = didYouMean(String(segs[segs.length - 1]), keysAt(note, parent));
+      throw new Error(`${label} is not a field Crewdeck knows in ${noteFile(note)}${near ? `: did you mean "${[...parent, near].join('.')}"?` : ''}`);
+    }
+    return { segs, label, value: coerce(schema, raw, label) };
+  });
   const n = readNote(file);
   if (!n.exists) throw new Error(`${noteFile(note)} is missing: copy it from vault-template in the Crewdeck repo first`);
   if (n.errors.length) throw new Error(`${noteFile(note)} can't be read (${n.errors[0]}): fix it in Notes first`);
   const beforeAll = n.doc.toJS() ?? {};
-  const before = n.doc.getIn(segs) as any;
-  const beforeJs = before && typeof before.toJSON === 'function' ? before.toJSON() : before;
   const known = new Set(validate(note, beforeAll).filter((i) => i.level === 'error').map((i) => `${i.path}|${i.message}`));
-  setInDoc(n.doc, segs, value);
+  const results: SetResult[] = typed.map(({ segs, label, value }) => {
+    const before = n.doc.getIn(segs) as any;
+    const beforeJs = before && typeof before.toJSON === 'function' ? before.toJSON() : before;
+    setInDoc(n.doc, segs, value);
+    return { file, path: label, before: beforeJs, after: value, changed: JSON.stringify(beforeJs) !== JSON.stringify(value) };
+  });
   const fresh = validate(note, n.doc.toJS()).filter((i) => i.level === 'error' && !known.has(`${i.path}|${i.message}`));
   if (fresh.length) throw new Error(fresh.map((i) => `${i.path}: ${i.message}${i.fix ? `. Fix: ${i.fix}` : ''}`).join('\n'));
-  const changed = JSON.stringify(beforeJs) !== JSON.stringify(value);
   let body = n.body;
   if (opts.because !== undefined) {
     const words = opts.because.replace(/\s+/g, ' ').trim();
     if (!words) throw new Error('--because-file is empty: it holds the user\'s own words for the change');
     if (words.length > 1000) throw new Error('--because-file is longer than 1000 characters');
-    if (changed) body = addChangeLine(body, `${opts.today}: ${label}: ${showValue(beforeJs)} → ${showValue(value)}. "${words}"`);
+    for (const r of results) if (r.changed) body = addChangeLine(body, `${opts.today}: ${r.path}: ${showValue(r.before)} → ${showValue(r.after)}. "${words}"`);
   }
-  if (changed) writeAtomic(file, renderNote(n.doc, body));
-  return { file, path: label, before: beforeJs, after: value, changed };
+  if (results.some((r) => r.changed)) writeAtomic(file, renderNote(n.doc, body));
+  return results;
 }
 
 const noteFile = (note: string) => ({ profile: 'me/profile.md', career: 'me/career.md', search: 'jobs/search.md' })[note] ?? note;

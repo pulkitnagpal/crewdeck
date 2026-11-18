@@ -18,7 +18,9 @@
   },
   "dependencies": {
     "backlog.md": "1.55.3",
+    "htm": "3.1.1",
     "playwright-core": "1.65.1",
+    "preact": "10.29.8",
     "yaml": "^2.8.1"
   },
   "repository": {
@@ -35,5 +37,8 @@
     "kanban",
     "agents",
     "local-first"
-  ]
+  ],
+  "devDependencies": {
+    "preact-render-to-string": "6.8.2"
+  }
 }

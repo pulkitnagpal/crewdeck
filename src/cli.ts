@@ -11,6 +11,7 @@ import { createProxy } from './proxy.ts';
 import { createShell } from './server.ts';
 import { boardHead, notesAppearancePage, notesHead } from './appearance.ts';
 import { findBrowser, installHint } from './jobs/browser.ts';
+import { agentCall } from './agent-client.ts';
 
 const say = (s: string) => console.log(s);
 
@@ -107,17 +108,9 @@ function up() {
   createShell(c, undefined, { token }).listen(c.port, '127.0.0.1', () => say(`Crewdeck on http://localhost:${c.port}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));
 }
 
-async function api(path: string, body?: unknown) {
-  const c = loadConfig();
-  const token = readToken();
-  if (body && !token) throw new Error(`No token at ${TOKEN_PATH}: run crewdeck up once`);
-  const r = await fetch(`http://127.0.0.1:${c.port}${path}`, body ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-crewdeck-token': token! }, body: JSON.stringify(body) } : {});
-  const out = await r.json();
-  if (!r.ok) throw new Error(out?.error ?? `HTTP ${r.status}`);
-  return out;
-}
+const api = agentCall;
 
-async function requestsCmd() { for (const r of await api('/api/requests')) say(`${r.id}\t${r.status}\t${r.lane}\t${r.text}${r.result ? `  → ${r.result}` : ''}`); }
+async function requestsCmd() { for (const r of await api('/api/requests')) say(`${r.id}\t${r.status}\t${r.lane}\t${r.kind ? `${r.kind}${r.ref ? ` ${r.ref}` : ''}` : r.text}${r.result ? `  → ${r.result}` : ''}`); }
 
 /** The result text: --result-file <path>, --result - (stdin), or --result "<text>". Files keep page text out of the shell. */
 function resultText(args: string[]): string {
@@ -130,9 +123,21 @@ function resultText(args: string[]): string {
 
 async function requestCmd(args: string[]) {
   const [verb, id] = args;
-  if (!['done', 'fail'].includes(verb ?? '') || !/^\d+$/.test(id ?? '')) throw new Error('usage: crewdeck request done|fail <id> --result-file <path> | --result - | --result "<one line>"');
+  if (verb === 'show' && /^\d+$/.test(id ?? '')) return say(JSON.stringify(await api(`/api/requests/${Number(id)}/show`, {}), null, 1));
+  if (!['done', 'fail'].includes(verb ?? '') || !/^\d+$/.test(id ?? '')) throw new Error('usage: crewdeck request done|fail <id> --result-file <path> | --result - | --result "<one line>"  |  request show <id>');
   const r = await api(`/api/requests/${Number(id)}/${verb}`, { result: resultText(args) });
   say(`request ${r.id} ${r.status}`);
+}
+
+/** crewdeck progress <id> --text-file <f> | --text - : a line the page shows while Claude works on a request. */
+async function progressCmd(args: string[]) {
+  const [id] = args;
+  const file = flag(args, 'text-file'), v = flag(args, 'text');
+  if (!/^\d+$/.test(id ?? '') || (!file && v === undefined)) throw new Error('usage: crewdeck progress <id> --text-file <path> | --text - (stdin)');
+  if (!file && v !== '-') throw new Error('progress text comes from a file (--text-file) or stdin (--text -), never the command line');
+  const text = file ? readFileSync(file, 'utf8') : readFileSync(0, 'utf8');
+  await api(`/api/requests/${Number(id)}/progress`, { text: text.trim() });
+  say('noted');
 }
 
 function doctor() {
@@ -152,6 +157,6 @@ const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return
 const [cmd, ...rest] = process.argv.slice(2);
 // Jobs loads only when used.
 const jobs = (a: string[]) => import('./jobs/cli.ts').then((m) => m.main(a));
-const run: Record<string, (a: string[]) => unknown> = { init, up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, jobs };
-if (!cmd || !run[cmd]) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail <id> --result-file <path> | jobs <cmd>'); process.exit(cmd ? 1 : 0); }
+const run: Record<string, (a: string[]) => unknown> = { init, up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, progress: progressCmd, jobs };
+if (!cmd || !run[cmd]) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>'); process.exit(cmd ? 1 : 0); }
 Promise.resolve(run[cmd](rest)).catch((e) => { console.error(e?.message ?? e); process.exit(1); });

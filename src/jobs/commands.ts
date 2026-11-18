@@ -8,7 +8,7 @@ import { ROLE_ID } from './db.ts';
 import { isDay } from './time.ts';
 import { flag, positional, textFrom } from './cli.ts';
 import { cleanQuestions, storeFormFields } from './kb/questions.ts';
-import { answerFirstTime, changeAnswer, knowledge, resolveField, undoLast } from './kb/ops.ts';
+import { answerFirstTime, changeAnswer, currentAnswers, knowledge, resolveField, undoLast } from './kb/ops.ts';
 import { learnField } from './kb/learn.ts';
 import type { Claim } from './kb/cite.ts';
 import { applyDraft, prepareDraft } from './draft/draft.ts';
@@ -19,6 +19,7 @@ import { candidates, cleanVerdict, dailyPicks, judge, pick, pickPasted } from '.
 import { markApplied, notInterested } from './pipeline/apply.ts';
 import { addContact, addMessage, checkMessage, followups, markSent, recordFollowup } from './pipeline/outreach.ts';
 import { KNOWLEDGE_TABS, type KnowledgeTab, applicationsView, knowledgeView, todayView } from './views.ts';
+import { showRequest } from '../agent-client.ts';
 
 const say = (s: string) => console.log(s);
 const json = (v: unknown) => say(JSON.stringify(v, null, 1));
@@ -45,10 +46,58 @@ function intArg(v: string | undefined, name: string, d?: number): number {
   return Number(v);
 }
 
+/**
+ * A request-scoped command's payload (design D11): the page's data comes from the server by request id, never through
+ * the shell. The request must be open and of the kind the command works.
+ */
+async function requestPayload(args: string[], kind: string): Promise<{ id: number; payload: any; ref: string | null }> {
+  const r = await showRequest(flag(args, 'request'));
+  if (r.kind !== kind) throw new Error(`request ${r.id} is ${r.kind ? `kind ${r.kind}` : 'not a Jobs request'}: this command works ${kind} requests`);
+  if (r.status !== 'new' && r.status !== 'picked') throw new Error(`request ${r.id} is already ${r.status}`);
+  return { id: r.id, payload: r.payload ?? {}, ref: r.ref };
+}
+
 /** Open the user's tracker for one command and close it after. */
 async function withCtx<T>(fn: (ctx: Ctx) => T | Promise<T>): Promise<T> {
   const ctx = openCtx(loadConfig());
   try { return await fn(ctx); } finally { ctx.db.close(); }
+}
+
+const answerUsage = 'usage: crewdeck jobs answer <role> --question Qn --text-file <f> (--quote-file <the user\'s words> | --claims-file <f> [--instruction-file <f>])  |  answer --request <id> --text-file <f> --claims-file <f>';
+const answerCmd = (args: string[]) => withCtx((ctx) => {
+  const usage = answerUsage;
+  const role = roleArg(positional(args)[0], usage);
+  const question = flag(args, 'question') ?? optText(args, 'question-file');
+  if (!question) throw new Error(usage);
+  const value = text(flag(args, 'text-file'), '--text-file');
+  const quote = optText(args, 'quote-file');
+  if (quote !== undefined) {
+    const r = answerFirstTime(ctx, { role, question, value, quote });
+    return json({ ok: true, answer: r.answer.text, remembered: r.remembered.id, also_filled: r.applied });
+  }
+  if (!flag(args, 'claims-file')) throw new Error(usage);
+  const r = changeAnswer(ctx, { role, question, new_text: value, claims: jsonFile(flag(args, 'claims-file'), '--claims-file') as Claim[], instruction: optText(args, 'instruction-file') ?? 'Claude rewrite' });
+  json(r.ok ? { ok: true, ref: resolveField(ctx.db, role, question).ref, answer: r.answer.text } : r);
+  if (!r.ok) process.exitCode = 1;
+});
+
+/** An "Ask Claude" (improve) request: Claude's rewrite, through the citation check; the question and instruction come from the page. */
+async function answerForRequest(args: string[]) {
+  const { payload } = await requestPayload(args, 'improve');
+  if (!flag(args, 'text-file') || !flag(args, 'claims-file')) throw new Error(answerUsage);
+  return withCtx((ctx) => {
+    const role = roleArg(String(payload.role ?? ''), answerUsage);
+    const f = currentAnswers(ctx.db, role).find((a) => a.field_id === Number(payload.field_id));
+    if (!f) throw new Error('that question is no longer on the role\'s form');
+    const r = changeAnswer(ctx, { role, question: f.ref, new_text: text(flag(args, 'text-file'), '--text-file'), claims: jsonFile(flag(args, 'claims-file'), '--claims-file') as Claim[], instruction: String(payload.instruction || 'Ask Claude on the Jobs page') });
+    json(r.ok ? { ok: true, ref: f.ref, answer: r.answer.text } : r);
+    if (!r.ok) process.exitCode = 1;
+  });
+}
+
+function fillPlanCmd(ctx: Ctx, args: string[], role: string, usage: string) {
+  const fields = jsonFile(flag(args, 'fields-file'), usage);
+  json(planForRole(ctx, role, fields, optText(args, 'page-url-file')?.trim() || undefined));
 }
 
 const cmds: Record<string, (args: string[]) => unknown> = {
@@ -145,10 +194,16 @@ const cmds: Record<string, (args: string[]) => unknown> = {
   }),
 
   link: (args) => withCtx(async (ctx) => {
-    const usage = 'usage: crewdeck jobs link --url-file <f with the posting\'s address> [--force]';
-    if (!flag(args, 'url-file')) throw new Error(usage);
+    const usage = 'usage: crewdeck jobs link --request <id> | --url-file <f with the posting\'s address> [--force]';
     const { link } = await import('./link.ts');
-    const r = await link(ctx, { url: text(flag(args, 'url-file'), '--url-file').trim(), force: args.includes('--force') });
+    let input: { url: string; force: boolean };
+    if (flag(args, 'request')) {
+      // The link and the user's "add anyway" come from the page's request; --force is not taken from the command line here.
+      const { payload } = await requestPayload(args, 'link');
+      input = { url: String(payload.url ?? ''), force: payload.force === true };
+    } else if (flag(args, 'url-file')) input = { url: text(flag(args, 'url-file'), '--url-file').trim(), force: args.includes('--force') };
+    else throw new Error(usage);
+    const r = await link(ctx, input);
     json(r);
     if (r.warnings.length && !r.picked && !r.closed) process.exitCode = 2;
   }),
@@ -187,23 +242,10 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     else throw new Error(usage);
   }),
 
-  answer: (args) => withCtx((ctx) => {
-    const usage = 'usage: crewdeck jobs answer <role> --question Qn --text-file <f> (--quote-file <the user\'s words> | --claims-file <f> [--instruction-file <f>])';
-    const role = roleArg(positional(args)[0], usage);
-    const question = flag(args, 'question') ?? optText(args, 'question-file');
-    if (!question) throw new Error(usage);
-    const value = text(flag(args, 'text-file'), '--text-file');
-    const quote = optText(args, 'quote-file');
-    if (quote !== undefined) {
-      const r = answerFirstTime(ctx, { role, question, value, quote });
-      return json({ ok: true, answer: r.answer.text, remembered: r.remembered.id, also_filled: r.applied });
-    }
-    if (!flag(args, 'claims-file')) throw new Error(usage);
-    const r = changeAnswer(ctx, { role, question, new_text: value, claims: jsonFile(flag(args, 'claims-file'), '--claims-file') as Claim[], instruction: optText(args, 'instruction-file') ?? 'Claude rewrite' });
-    json(r.ok ? { ok: true, ref: resolveField(ctx.db, role, question).ref, answer: r.answer.text } : r);
-    if (!r.ok) process.exitCode = 1;
-  }),
-
+  answer: async (args) => {
+    if (flag(args, 'request')) return answerForRequest(args);
+    return answerCmd(args);
+  },
   learn: (args) => withCtx((ctx) => {
     const usage = 'usage: crewdeck jobs learn <role> --label-file <f> [--answer-file f] [--quote-file f] [--options-file f] [--claims-file f] [--required]';
     const role = roleArg(positional(args)[0], usage);
@@ -227,12 +269,12 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     json(knowledge(ctx, q));
   }),
 
-  'fill-plan': (args) => withCtx((ctx) => {
-    const usage = 'usage: crewdeck jobs fill-plan <role> --fields-file <f> [--page-url-file <f>]';
-    const role = roleArg(positional(args)[0], usage);
-    const fields = jsonFile(flag(args, 'fields-file'), usage);
-    json(planForRole(ctx, role, fields, optText(args, 'page-url-file')?.trim() || undefined));
-  }),
+  'fill-plan': async (args) => {
+    const usage = 'usage: crewdeck jobs fill-plan <role> | --request <id> --fields-file <f> [--page-url-file <f>]';
+    // An apply request names its role; the Easy Apply cap is counted inside planForRole either way.
+    const role = flag(args, 'request') ? String((await requestPayload(args, 'apply')).payload.role ?? '') : positional(args)[0];
+    return withCtx((ctx) => fillPlanCmd(ctx, args, roleArg(role, usage), usage));
+  },
 
   contact: (args) => withCtx((ctx) => {
     if (positional(args)[0] !== 'add') throw new Error('usage: crewdeck jobs contact add --file <f.json> ({ company, name, title?, email?, email_verified?, linkedin_url?, source? })');
@@ -258,6 +300,13 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     say('recorded');
   }),
 
+  // What the page asked for: the payload (a link, a role, a question) and its context, read by request id (design D11).
+  request: async (args) => {
+    const [verb, id] = positional(args);
+    if (verb !== 'show' || !/^\d+$/.test(id ?? '')) throw new Error('usage: crewdeck jobs request show <id>');
+    json(await showRequest(id));
+  },
+
   view: (args) => withCtx((ctx) => {
     const [which] = positional(args);
     if (which === 'today') return json(todayView(ctx, flag(args, 'role')));
@@ -282,6 +331,11 @@ tracker and pipeline (text from postings and the user's words only through files
   add-role --role-file f | role <id> --apply-url-file f | status <role> <status> [--reason-file f]
   event add <role> --kind k --detail-file f | question add <role> --text-file f
   applied <role> | not-interested <role> --reason-file f [--title-words-file f]
+page requests (the payload comes from Crewdeck by id, never through the shell):
+  request show <id>                       what the Jobs page asked for (payload and context, as JSON)
+  link --request <id>                     a pasted link from the page
+  answer --request <id> --text-file f --claims-file f      an "Ask Claude" rewrite (citation check)
+  fill-plan --request <id> --fields-file f [--page-url-file f]   the plan for an apply request's live form
 the web (through the SSRF guard; addresses only from files):
   link --url-file f [--force]             read a pasted posting, add it, pick it for today
   linkedin search [--days N]              LinkedIn guest search (only when you switched it on)

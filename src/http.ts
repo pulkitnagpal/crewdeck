@@ -1,5 +1,5 @@
 // Checks every Crewdeck port shares: who may talk to a server that only this machine should reach.
-import type { IncomingMessage } from 'node:http';
+import type { IncomingMessage, IncomingMessage as Req, ServerResponse } from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
@@ -38,6 +38,68 @@ export const SECURITY_HEADERS: Record<string, string> = {
 
 export const SHELL_CSP = [
   "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self' data:", "connect-src 'self'",
-  'frame-src http://localhost:* http://127.0.0.1:*', "object-src 'none'", "base-uri 'none'",
+  "frame-src 'self' http://localhost:* http://127.0.0.1:*", "object-src 'none'", "base-uri 'none'",
   "form-action 'self'", "frame-ancestors 'self'",
+].join('; ');
+
+// ---- shared by the shell server and the Jobs API ----
+
+export const MAX_BODY = 100_000;
+
+export class HttpError extends Error {
+  code: number;
+  constructor(code: number, msg: string) { super(msg); this.code = code; }
+}
+
+export function send(res: ServerResponse, code: number, body: string | Buffer, type = 'application/json; charset=utf-8', extra: Record<string, string> = {}) {
+  const headers: Record<string, string> = { ...SECURITY_HEADERS, 'content-type': type, ...extra };
+  if (type.startsWith('text/html') && !headers['content-security-policy']) headers['content-security-policy'] = SHELL_CSP;
+  if (code === 413) headers.connection = 'close';
+  res.writeHead(code, headers);
+  res.end(body);
+}
+export const json = (res: ServerResponse, code: number, v: unknown) => send(res, code, JSON.stringify(v));
+
+export function readJson(req: Req): Promise<any> {
+  return new Promise((ok, bad) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (c: Buffer) => {
+      size += c.length;
+      // Too big: stop keeping it, drain the rest so the 413 reaches the client, then the connection closes.
+      if (size > MAX_BODY) { if (size - c.length <= MAX_BODY) { chunks.length = 0; bad(new HttpError(413, 'request too large')); } return; }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      const s = Buffer.concat(chunks).toString('utf8');
+      try { ok(s ? JSON.parse(s) : {}); } catch { bad(new HttpError(400, 'bad json')); }
+    });
+    req.on('error', () => bad(new HttpError(400, 'bad request')));
+  });
+}
+
+const isJson = (req: Req) => /^application\/json\b/i.test(String(req.headers['content-type'] ?? ''));
+
+/** A call from this very page: exact own origin, a same-origin fetch, a JSON body (not a form another site can post). */
+export function fromOwnPage(req: Req): boolean {
+  const origin = req.headers.origin;
+  if (!origin || !ownOrigins(req.socket.localPort ?? 0).includes(origin)) return false;
+  const site = req.headers['sec-fetch-site'];
+  if (site !== undefined && site !== 'same-origin') return false;
+  return isJson(req);
+}
+
+/** A call from an agent (bridge mod, CLI): the token, and no browser Origin. */
+export const fromAgent = (req: Req, token: string) => req.headers.origin === undefined && sameSecret(req.headers['x-crewdeck-token'], token);
+
+/** A GET of the user's data: from this origin's own pages, or typed in the address bar; never fetched by another site. */
+export function ownRead(req: Req): boolean {
+  const site = req.headers['sec-fetch-site'];
+  return site === undefined || site === 'same-origin' || site === 'none';
+}
+
+/** The Jobs page's CSP: like the shell's, plus its one inline importmap (by hash) and same-origin frames (the resume). */
+export const jobsCsp = (importmapHash: string) => [
+  "default-src 'self'", `script-src 'self' 'sha256-${importmapHash}'`, "style-src 'self'", "img-src 'self' data:", "connect-src 'self'",
+  "frame-src 'self'", "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'self'",
 ].join('; ');

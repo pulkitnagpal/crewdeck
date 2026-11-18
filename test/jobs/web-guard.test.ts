@@ -12,8 +12,9 @@ function files(dir: string): string[] {
 }
 const SRC = files(join(REPO, 'src', 'jobs')).map((f) => ({ f: relative(REPO, f), src: readFileSync(f, 'utf8').replace(/^\s*\/\/.*$/gm, '') }));
 
+// Type-only imports (the Jobs API's request/response types) make no requests.
 test('no web request in src/jobs bypasses netguard', () => {
-  const bad = SRC.filter(({ f, src }) => !f.startsWith('src/jobs/net/') && (/(?<![\w.])fetch\(/.test(src) || /\bhttps?\.(request|get)\(/.test(src) || /\bnet\.connect\(/.test(src) || /from 'node:(http|https|net|dgram)'/.test(src)));
+  const bad = SRC.filter(({ f, src }) => !f.startsWith('src/jobs/net/') && (/(?<![\w.])fetch\(/.test(src) || /\bhttps?\.(request|get)\(/.test(src) || /\bnet\.connect\(/.test(src) || /^import (?!type )[^;]*from 'node:(http|https|net|dgram)'/m.test(src)));
   assert.deepEqual(bad.map((x) => x.f), []);
 });
 

@@ -698,6 +698,13 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P3 built (2026-11-19):** typed requests on one queue (kind/ref/payload/progress, dedupe, payloads cleared on close,
+  presence, reconcile, jobs lane before projects, the Ask box can't reach it), the Jobs API in the shell server (lazy;
+  page-only actions incl. feature switches, token-only `request show`/progress, SSE from data_version + fs.watch + queue,
+  resume route, Show in Finder, busy → 503), request-scoped CLI (`link|answer|fill-plan --request`), the Jobs page in Preact +
+  htm (Today, the §2.3a apply panel in every state, Applications, What Claude knows, Preferences, Settings, setup card,
+  banners), Jobs in the rail, the bridge's per-lane hint with payload keys only. Details and deviations:
+  [impl/03-server-ui-bridge.md](impl/03-server-ui-bridge.md) ("Open the form" opens a new tab; Ask stays cockpit).
 - **P2b built (2026-11-19):** netguard (DNS checked inside the connect, every address, mapped/compatible IPv6, 5
   re-checked redirects, one 15 s deadline, 2 MB decoded cap, no env proxies), an in-process guard proxy for headless
   Chromium (loopback through the proxy, no QUIC/UDP around it), browser discovery + `doctor`, `jobs link` (JSON-LD/meta,

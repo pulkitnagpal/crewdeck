@@ -1,0 +1,46 @@
+// First run (design §2.2): Claude interviews the user and writes their notes, or the user edits the files themselves.
+import { useState } from 'preact/hooks';
+import { html, noop, CopyButton, Icon } from '../lib.js';
+
+const LABEL = { profile: 'Who you are', career: 'Your career (resume facts)', search: 'What you want', memory: 'What Claude learned', sources: 'Where to look' };
+
+function fileState(f) {
+  if (!f.exists) return html`<span class="chip warn">missing</span>`;
+  if (f.errors) return html`<span class="chip bad">${f.errors} error${f.errors > 1 ? 's' : ''}</span>`;
+  return html`<span class="chip ok">ok</span>`;
+}
+
+export function SetupCard({ state, onSetup = noop, onNotes = noop, onToast = noop }) {
+  const [editing, setEditing] = useState(false);
+  const s = state.setup;
+  const a = state.agent ?? {};
+  const req = s.request && (s.request.status === 'new' || s.request.status === 'picked') ? s.request : null;
+  return html`<section class="card setup" aria-labelledby="setup-title">
+    <div class="stack">
+      <span class="chip info self-start"><${Icon} name="sparkle" size=${12} /> First run</span>
+      <h1 id="setup-title">Set up Jobs</h1>
+      <p class="lead">Claude reads your resume, proposes your career facts word for word, and asks what you are looking for: titles, places, workplace, pay, languages. Everything lands in notes you can read and change in Notes at any time.</p>
+    </div>
+    <ol class="how">
+      <li><div class="stack"><span>Open a Claude session in your jobs folder</span>
+        <span class="row-flex"><code>${a.workspace}</code><${CopyButton} text=${a.workspace} label="Copy" onCopied=${onToast} />
+          ${a.connected ? html`<span class="chip ok">Claude connected</span>` : html`<span class="chip">not connected yet</span>`}</span></div></li>
+      <li><span>Click <b>Set up with Claude</b> and answer its questions in the chat. Have your resume file ready.</span></li>
+      <li><span>Review what Claude wrote in Notes. Nothing is used until you are happy with it.</span></li>
+    </ol>
+    ${req ? html`<div class="state info" role="status"><span class="title"><span class=${`dot ${req.status === 'picked' ? 'busy' : 'wait'}`}></span>${req.status === 'picked' ? 'Claude is setting up Jobs with you in the chat' : 'Waiting for Claude to start the setup'}</span>
+        ${req.last ? html`<span class="small soft">${req.last.text}</span>` : null}</div>` : null}
+    ${s.request?.status === 'failed' ? html`<div class="state bad"><span class="title">Setup stopped</span><span class="small">${s.request.result}</span></div>` : null}
+    <div class="row-flex">
+      <button type="button" class="btn primary" onClick=${onSetup} disabled=${!!req}>Set up with Claude</button>
+      <button type="button" class="btn" aria-expanded=${editing} onClick=${() => setEditing(!editing)}>I'll edit the files</button>
+    </div>
+    ${editing ? html`<div class="stack">
+      <p class="soft small">These notes live in your vault. Templates with comments are in <code>vault-template/</code> in the Crewdeck repo.</p>
+      <ul class="files">${s.files.map((f) => html`<li key=${f.name}><code title=${f.path}>${f.file}</code><span class="small soft">${LABEL[f.name] ?? ''}</span>${fileState(f)}
+        ${f.exists ? html`<button type="button" class="btn small" onClick=${() => onNotes(f.page)}>Open in Notes</button>` : null}</li>`)}</ul>
+      <p class="small">When you are done, check them in a terminal:</p>
+      <div class="row-flex"><code>crewdeck jobs check</code><${CopyButton} text="crewdeck jobs check" onCopied=${onToast} /></div>
+    </div>` : null}
+  </section>`;
+}
