@@ -84,10 +84,18 @@ All of it is on your machine. Notes are plain Markdown and open in SilverBullet 
    command fetches the page through the SSRF guard (§14), reads JobPosting JSON-LD/meta, adds the role and
    picks it for today. Cooldown, already-applied and company-already-in-progress come back as warnings, and
    Claude asks the user.
-4. **Prepare:**
-   - `crewdeck jobs form <role>` reads the real application form headlessly; questions are stored per role.
+4. **Prepare:** every question is known before the user is asked to approve anything.
+   - `crewdeck jobs form <role>` reads the application form headlessly; questions are stored per role.
+   - **Forms that can't be read headlessly:** this covers Notion and other JS-built forms, LinkedIn Easy Apply
+     and anything behind the user's sign-in.
+     - Claude reads them live instead, in a background tab of Claude desktop's browser pane.
+     - It opens the application, steps through it reading each page's questions, and records them with
+       `crewdeck jobs learn`. It presses Next only between pages of questions, never on Review or Submit.
+     - Then it closes the tab, so nothing is filled yet.
    - `crewdeck jobs draft <role> --brief …` fills what the profile and memory already answer and lists the rest.
-   - Claude drafts the rest from facts and memory only; `draft --answers` runs the **citation check**, and
+     Profile answers (name, email, phone, …) are stored as approved answers with a `profile:` source, so they
+     never show as first-time questions.
+   - Claude drafts the rest from facts and memory only. `draft --answers` runs the **citation check**, and
      anything unsupported becomes a **first-time question**.
    - `crewdeck jobs resume <role> --variant-file …` selects facts by id and renders a PDF.
 5. Jobs shows the role.
@@ -95,30 +103,63 @@ All of it is on your machine. Notes are plain Markdown and open in SilverBullet 
    - First-time questions sit on top.
 6. The user answers first-time questions on the page (typing or picking an option) or in chat. **Each answer is
    remembered** in `jobs/memory.md` with the user's quote and reused on every later form (§8).
-7. The user clicks **Apply** (allowed once required questions are answered), which queues an `apply` request:
-   - Claude opens the form in the browser pane;
-   - it writes the visible questions to a file and runs `crewdeck jobs fill-plan --request <id> --fields-file …`;
-   - it fills exactly the plan;
-   - it records new questions it met (`crewdeck jobs learn`);
-   - it never clicks Submit.
-   - If a required question has no answer, Claude stops and closes the request as `needs you: <question>`.
-8. The user attaches the resume if the site needs an upload, reviews and clicks Submit, then **I submitted it**:
+7. The user clicks **Apply**. It is enabled once every required question has an answer. Everything else is
+   §2.3a.
+8. After submitting, the user clicks **I submitted it**, or confirms Claude's "I see the confirmation page: mark
+   applied?":
    - the status becomes `applied`;
    - the company cooldown starts;
    - a journal line is added;
    - open requests for the role close.
 
+### 2.3a Apply: what happens and what the user sees
+Example: the user found a LinkedIn Easy Apply role (or any company posting) in Crewdeck → Jobs and clicks
+**Apply**.
+
+| | Crewdeck (Jobs page) | Claude desktop |
+|---|---|---|
+| 1 | Queues an `apply` request; the role's **apply panel** opens: "Waiting for Claude" (or the "no Claude session on Jobs" banner, §2.9) | The jobs session's bridge claims the request (idle-only) |
+| 2 | Panel: "Opening the application" | Claude opens a **new tab in the same browser pane**, next to the Crewdeck tab. LinkedIn Easy Apply: the posting in the user's own signed-in LinkedIn, then **Easy Apply**. "Apply on company site": Claude follows Apply to the company's ATS, or uses the stored `apply_url` |
+| 3 | Live progress lines ("Step 2 of 4: filled 6 fields") and an **Open the form** button that brings that tab to the front | Per page: Claude reads the questions → `fill-plan --request <id> --fields-file …` → fills exactly the plan → re-reads to check → Next, only to another page of questions |
+| 4 | A question that wasn't seen in Prepare appears in the panel as a first-time question with an answer box; the request waits (`needs you`) | Claude stops on that page and closes the request as `needs you: <question>`. Once the user answers in Crewdeck (remembered, §8), Crewdeck queues `apply` again and Claude continues from where the form is |
+| 5 | **Resume:** the panel shows the tailored PDF with **Reveal in Finder** / **Download** | Easy Apply: Claude selects a resume already uploaded to LinkedIn when one matches; otherwise the upload is left to the user (the pane can't attach files) |
+| 6 | "Your turn: review the form tab and click Submit" | Claude stops at the Review/Submit page and **never clicks it** |
+| 7 | The user switches to the form tab, reviews, clicks Submit, then **I submitted it** in Crewdeck. If Claude sees the confirmation page, the panel offers "Mark applied" | — |
+| ✕ | Sign-in, checkpoint, CAPTCHA, "restricted", or a limit (`daily_quick_apply`, cooldown): the panel says why and what to do | Claude stops at once and doesn't retry |
+
+The user never types answers into the job site, and never leaves Claude desktop: Crewdeck, the form tab and
+the chat are all there. LinkedIn Easy Apply needs `linkedin.easy_apply` on (§12). Without it, Apply on a
+LinkedIn role opens the posting for the user and shows the answers to copy.
+
 ### 2.4 Find jobs (manual or daily)
-1. **Find N jobs** (N = `daily_picks`), or a Claude desktop scheduled task in the jobs folder running the
-   `jobs-daily-run` skill.
-2. Steps:
-   - `source` (providers, run sandboxed);
-   - `linkedin search` if enabled;
-   - `prefilter` (compiled rules, only near-certain drops);
-   - `judge-brief`, `candidates`, `judge` (Claude judges eligibility and fit against `search.md` and memory);
-   - `pick` (one per company, cooldown, daily count);
-   - prepare each pick as in 2.3 step 4.
-3. Progress lines show live on the page.
+Fetching costs no tokens: it is code making HTTP calls. Tokens go on Claude reading postings (judging) and preparing
+picks. So fetching runs on a schedule, and the button spends Claude only on what can still pass.
+
+1. **Collect (scheduled, no Claude):**
+   - Crewdeck's server runs `crewdeck jobs source` on a timer (default every 12 h, `jobs.fetch_every`; also on
+     demand with **Refresh sources**).
+   - It runs the sandboxed providers, plus LinkedIn guest search if enabled.
+   - The rule prefilter runs straight after.
+   - Jobs shows "N new roles since <time>".
+2. **Rank (code, no Claude):** every surviving role gets a cheap score from the notes:
+   - title match to `roles.titles` and seniority;
+   - skills overlap with `me/career.md`;
+   - freshness;
+   - source quality (pasted > LinkedIn > ATS boards > aggregators).
+
+   Roles with no description get their detail fetched only if they rank in the top 50. Companies with a remembered
+   company-wide rule (for example "requires regular travel") are dropped here.
+3. **Find N jobs** (or the daily run):
+   - Claude judges candidates **in rank order, in batches of 10, and stops once N pass**.
+   - The eligibility first pass uses a small, fast model (a subagent with a light model); the full model is used
+     only to prepare picks.
+   - It never judges the same role twice, and a company-wide verdict is remembered as a `company_rule` in
+     `jobs/memory.md`.
+4. `pick` (one per company, cooldown, daily count), then prepare each pick as in 2.3 step 4. Progress lines show
+   live on the page.
+
+Budget (enforced by `crewdeck jobs candidates --budget`): at most 40 postings judged per Find. The panel shows how
+many were judged and how many remain in the pool.
 
 ### 2.5 Change a preference ("I'm OK with hybrid now")
 - **In any Claude session** (the plugin's `crewdeck-memory` skill applies everywhere):
@@ -644,9 +685,9 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 | P0 | `00-foundations.md` | Security baseline on the existing shell: try/catch, `[::1]`, token + page/agent split, exact Origin + `Sec-Fetch-Site`, SilverBullet on its own origin, file modes, CSP headers, queue caps; leak scan + CI matrix; tokens.css (new deps arrive with the phase that uses them) | Tests for each control; CI green on 22/24 |
 | P1 | `01-notes-and-rules.md` | Note read/write (frontmatter, atomic, last-valid), schemas and validators, `me/pref/remember` commands, compiled rules + gazetteer, pay, `jobs check`, `rules`, `judge-brief` | Rule tests on three fictional people |
 | P2 | `02-core.md` | DB v1 + migrations, link + netguard, form reading (guard proxy), KB (memory in notes, answers in DB), draft brief + citation check, resume template + PDF, fill-plan, learn, avoid, refilter, outreach (gated) | Ported unit tests green |
-| P3 | `03-server-ui-bridge.md` | `/api/jobs/*`, SSE (data_version + fs.watch), queue extension, presence, bridge token handshake, UI port + rail + preferences/settings/setup screens | Server and UI tests |
+| P3 | `03-server-ui-bridge.md` | `/api/jobs/*`, SSE (data_version + fs.watch), queue extension, presence, bridge token handshake, UI port + rail + preferences/settings/setup screens, the apply panel (§2.3a: progress, Open the form, first-time questions mid-apply, resume reveal, Mark applied) | Server and UI tests |
 | P4 | `04-setup-and-skills.md` | `jobs init`, presets, note templates, workspace CLAUDE.md + settings.json, skills, rename the plugin to `crewdeck` | **First acceptance test possible** |
-| P5 | `05-sources.md` | Providers manifest, download/verify, sandboxed runner, source, LinkedIn (gated), find/daily | Sandbox tests; sourcing on fixtures |
+| P5 | `05-sources.md` | Providers manifest, download/verify, sandboxed runner, scheduled fetch, code ranking, budgeted early-stop judging with a light model (§2.4), LinkedIn (gated), find/daily | Sandbox tests; sourcing on fixtures |
 | P6 | `06-e2e.md` | Journey tests for two fictional people | E2E green with outputs |
 | P7 | `07-security-review.md` | `/security-review`, multi-lens review on the diff, fixes | Findings + fixes + tests |
 | P8 | `08-docs-visual.md` | README (setup, safety, terms of service), `docs/design.md`, CHANGELOG, roadmap, screenshots | Owner sign-off; PR opened, no push without asking |
@@ -657,6 +698,17 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **v0.3 (2026-11-19):** from the first real run (one application filled outside Crewdeck, then stopped):
+  - §2.3a, exactly what Apply does on LinkedIn Easy Apply and company sites, and what the user sees in Crewdeck;
+  - Prepare reads non-headless forms live, so every question is known before Apply;
+  - profile answers are stored as answers;
+  - §2.4 token budget: scheduled fetching, cheap ranking, early-stop judging, a light model for triage.
+
+  Observed:
+  - boards gave 870 new roles but only 2 weak fits, because most arrived with no description;
+  - LinkedIn guest search was rate-limited (HTTP 429);
+  - Notion forms can't be read headlessly;
+  - the bridge plugin was missing in the Claude account in use, so Crewdeck clicks reached nobody.
 - **v0.2.1 (2026-11-18):** P0 implementer doc written; explicit file modes instead of a global umask; deps move to the phases that use them; bridge proof is SHA-256 over token and nonce (the mod runtime has no HMAC).
 - **v0.2 (2026-11-18):**
   - Owner direction: designed for every user as a new user, including its builder; user knowledge in the vault
