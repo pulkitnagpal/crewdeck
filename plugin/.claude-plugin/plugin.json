@@ -1,8 +1,8 @@
 {
-  "name": "crewdeck-bridge",
-  "displayName": "Crewdeck bridge",
-  "version": "0.2.0",
-  "description": "Brings clicks from the Crewdeck page into the Claude session that owns that work (one lane per project).",
+  "name": "crewdeck",
+  "displayName": "Crewdeck",
+  "version": "0.3.0",
+  "description": "Crewdeck in every Claude session: the bridge brings clicks from the Crewdeck page to the session that owns that work, and the skills work Jobs (setup, find, apply) and remember what you tell Claude in your notes.",
   "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {

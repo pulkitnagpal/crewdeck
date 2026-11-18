@@ -93,17 +93,37 @@ Check your setup any time with `node src/cli.ts doctor`. Logs are in `~/.crewdec
 
 Notes open on their own port (4849 by default), boards on theirs; the page links to them for you.
 
-### Install the bridge (for the two-way part)
+### Install the `crewdeck` plugin (the bridge and the skills)
 
 In a terminal Claude Code session:
 
 ```
-/plugin install crewdeck-bridge --marketplace pulkitnagpal/crewdeck
+/plugin install crewdeck --marketplace pulkitnagpal/crewdeck
 ```
 
 In the desktop app: + next to the prompt box → Plugins → Add marketplace `pulkitnagpal/crewdeck` → add
-**crewdeck-bridge**. Start a new session in a project folder: its status line shows `Crewdeck · project:<name>`.
+**crewdeck**. Start a new session in a project folder: its status line shows `Crewdeck · project:<name>`.
 Type in **Ask Claude about this…** on that project's board and the request arrives in that session.
+
+The plugin was called `crewdeck-bridge` before 0.3.0: if you installed that, uninstall it and install `crewdeck`.
+Besides the bridge it carries the skills: `crewdeck-memory` (remember what you say, in any session) and the Jobs
+playbooks below.
+
+Optional: `npm link` in the Crewdeck folder puts `crewdeck` on your PATH. The skills write `crewdeck …`; without the
+link they use `node <path-to>/crewdeck/src/cli.ts`, which the jobs workspace's `CLAUDE.md` names for you.
+
+### Jobs (in progress)
+
+```bash
+node src/cli.ts jobs init                      # or: jobs init --preset remote-any-country | onsite-city | healthcare-us | non-engineering
+```
+
+This switches Jobs on, creates your job notes in the vault (it never overwrites a note you have), the tracker in
+`~/.crewdeck/jobs/`, and the jobs workspace's `CLAUDE.md` and `.claude/settings.json` (hard rules and deny rules for the
+Claude session that works Jobs; rewritten on every `init` and `up`). It checks for a Chromium-based browser and tells you
+how to install one. Then open a Claude session in the workspace folder it prints, open Crewdeck → Jobs and click
+**Set up with Claude**. `node src/cli.ts doctor` shows what is missing. Job-board sourcing is not built yet; pasted links,
+Prepare and Apply work.
 
 ### Config
 

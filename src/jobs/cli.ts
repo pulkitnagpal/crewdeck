@@ -158,7 +158,16 @@ async function features(args: string[]) {
   say(`${name}: ${typeof v === 'boolean' ? (v ? 'on' : 'off') : v}`);
 }
 
+/** crewdeck jobs init [--preset <name>] [--home <dir>]: switch Jobs on and set it up (idempotent). */
+async function init(args: string[]) {
+  const { jobsInit, PRESETS } = await import('./setup.ts');
+  const preset = flag(args, 'preset'), home = flag(args, 'home');
+  if ((args.includes('--preset') && !preset) || (args.includes('--home') && !home)) throw new Error(`usage: crewdeck jobs init [--preset ${PRESETS.join('|')}] [--home <dir>]`);
+  for (const l of await jobsInit({ preset, home })) say(l);
+}
+
 const USAGE = `usage: crewdeck jobs <command>
+  init [--preset <name>] [--home <dir>]   switch Jobs on: notes, tracker, workspace guard rails (run again any time)
   check                                   validate your job notes (errors and warnings)
   rules                                   the hard drops compiled from your notes
   judge-brief                             the judging instructions built from your notes
@@ -173,9 +182,12 @@ const P2 = ['prefilter', 'refilter', 'candidates', 'judge', 'pick', 'status', 'e
   'form', 'draft', 'answer', 'learn', 'undo', 'knowledge', 'fill-plan', 'contact', 'message', 'followups', 'followup', 'view',
   'link', 'linkedin', 'resume', 'request'];
 
+/** Every `crewdeck jobs` command (the skills lint checks commands against this). */
+export const JOBS_COMMANDS = ['init', 'check', 'rules', 'judge-brief', 'me', 'pref', 'remember', 'features', ...P2];
+
 export async function main(args: string[]) {
   const [cmd, ...rest] = args;
-  const run: Record<string, (a: string[]) => unknown> = { check, rules: rulesCmd, 'judge-brief': briefCmd, me, pref, remember: rememberCmd, features };
+  const run: Record<string, (a: string[]) => unknown> = { init, check, rules: rulesCmd, 'judge-brief': briefCmd, me, pref, remember: rememberCmd, features };
   if (cmd && P2.includes(cmd)) {
     const m = await import('./commands.ts');
     return await m.COMMANDS[cmd](rest);

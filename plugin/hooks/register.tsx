@@ -1,4 +1,4 @@
-// Crewdeck bridge: the page → the right Claude session, and back.
+// Crewdeck plugin, bridge mod: the page → the right Claude session, and back.
 //
 // Crewdeck (a local web app) queues requests per lane. This mod runs inside each Claude Code session:
 // it asks Crewdeck which lane the session's folder belongs to (the jobs workspace → "jobs", a project →
@@ -33,10 +33,10 @@ function describe(r: Claimed['requests'][number]): string {
   return `- request ${r.id}: ${kind}${ref}${keys ? ` (payload: ${keys})` : ''}`
 }
 
-const busy = atom({ plugin: 'crewdeck-bridge', key: 'busy' } as const, false, { shape: 'busy-1' })
-const holdUntil = atom({ plugin: 'crewdeck-bridge', key: 'holdUntil' } as const, 0, { shape: 'hold-1' })
-const inflight = atom({ plugin: 'crewdeck-bridge', key: 'inflight' } as const, [] as number[], { shape: 'inflight-1' })
-const laneAtom = atom({ plugin: 'crewdeck-bridge', key: 'lane' } as const, '', { shape: 'lane-1' })
+const busy = atom({ plugin: 'crewdeck', key: 'busy' } as const, false, { shape: 'busy-1' })
+const holdUntil = atom({ plugin: 'crewdeck', key: 'holdUntil' } as const, 0, { shape: 'hold-1' })
+const inflight = atom({ plugin: 'crewdeck', key: 'inflight' } as const, [] as number[], { shape: 'inflight-1' })
+const laneAtom = atom({ plugin: 'crewdeck', key: 'lane' } as const, '', { shape: 'lane-1' })
 
 // The token, read once per load (module variables start over on reload, which re-reads it).
 let token = ''

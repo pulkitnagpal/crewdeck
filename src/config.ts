@@ -113,6 +113,22 @@ export function setFeature(name: string, value: boolean | number, path = CONFIG_
   renameSync(tmp, path);
 }
 
+/**
+ * Change Jobs' own settings (enabled, home, workspace) in config.yaml, keeping the rest of the file and its comments.
+ * Used by `crewdeck jobs init`; never the feature switches (those are the user's: setFeature).
+ */
+export function setJobsSettings(changes: { enabled?: boolean; home?: string; workspace?: string }, path = CONFIG_PATH) {
+  const doc = parseDocument(existsSync(path) ? readFileSync(path, 'utf8') : '');
+  if (doc.errors.length) throw new Error(`${path}: ${doc.errors[0].message}`);
+  if (doc.contents === null) doc.contents = doc.createNode({}) as any;
+  for (const [k, v] of Object.entries(changes)) if (v !== undefined) doc.setIn(['jobs', k], v);
+  normaliseJobs((doc.toJS() as any)?.jobs);
+  ensureHome(dirname(path));
+  const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+  writeFileSync(tmp, doc.toString(), { mode: 0o600 });
+  renameSync(tmp, path);
+}
+
 export function loadConfig(path = CONFIG_PATH): Config {
   if (!existsSync(path)) throw new Error(`No config yet. Run: crewdeck init`);
   const c = { ...defaults(), ...(parse(readFileSync(path, 'utf8')) ?? {}) } as Config;

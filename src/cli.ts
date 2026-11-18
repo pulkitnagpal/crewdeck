@@ -85,10 +85,12 @@ function addProject(args: string[]) {
   say(`Added ${name} → ${expand(path)}`);
 }
 
-function up() {
+async function up() {
   const c = loadConfig();
   ensureHome();
   const token = ensureToken();
+  // The jobs workspace's CLAUDE.md and deny rules are managed: rewritten on every start, so they follow this Crewdeck.
+  if (c.jobs.enabled) (await import('./jobs/setup.ts')).writeWorkspaceFiles(c);
   const theme = readFileSync(join(REPO, 'themes', 'backlog.css'), 'utf8');
   // Notes follows Crewdeck's appearance through a managed vault page (SilverBullet's own light/dark switch).
   mkdirSync(join(c.vault, 'Library', 'Crewdeck'), { recursive: true });
@@ -140,7 +142,18 @@ async function progressCmd(args: string[]) {
   say('noted');
 }
 
-function doctor() {
+/** What the running Crewdeck says about the jobs lane (a page read; never starts or stops anything). */
+async function jobsPresence(c: Config) {
+  try {
+    const r = await fetch(`http://127.0.0.1:${c.port}/api/jobs/state`, { signal: AbortSignal.timeout(2000) });
+    if (r.status === 404) return { jobs: false as const };
+    if (!r.ok) return null;
+    const s = await r.json() as any;
+    return { jobs: true as const, connected: !!s?.agent?.connected, seen: s?.agent?.seen ?? null };
+  } catch { return null; }
+}
+
+async function doctor() {
   const c = loadConfig();
   const ok = (b: boolean, s: string) => say(`${b ? '✓' : '✗'} ${s}`);
   ok(existsSync(silverbulletBin()), `SilverBullet binary (${silverbulletBin()})`);
@@ -150,7 +163,10 @@ function doctor() {
   for (const p of c.projects) ok(existsSync(join(p.path, 'backlog', 'config.yml')), `board ${p.name} (${p.path})`);
   // Jobs reads forms and prints resumes in the user's own Chromium-based browser, headless.
   const b = findBrowser(c.jobs.browser);
-  ok(!!b, b ? `browser for Jobs (forms, resume PDFs): ${b.name} (${b.path})` : `no Chromium-based browser for Jobs (forms, resume PDFs). ${installHint()}`);
+  if (!c.jobs.enabled) ok(!!b, b ? `browser for Jobs (forms, resume PDFs): ${b.name} (${b.path})` : `no Chromium-based browser for Jobs (forms, resume PDFs). ${installHint()}`);
+  say('\nJobs');
+  const { jobsDoctor, mark } = await import('./jobs/doctor.ts');
+  for (const l of await jobsDoctor(c, c.jobs.enabled ? await jobsPresence(c) : null)) say(`${mark(l.ok)} ${l.text}`);
 }
 
 const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };

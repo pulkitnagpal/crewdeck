@@ -14,7 +14,9 @@ It opens in SilverBullet (Crewdeck → Notes) and in Obsidian.
   approved; never guesses.
 - `jobs/` — the job search: `search.md` (what they want, with a dated **Changes** log), `memory.md` (answers, facts,
   style rules and "not interested" reasons Claude learned, with their quotes), `sources.md` (boards and companies).
-  Their frontmatter is written only through `crewdeck jobs …` commands, which validate it.
+  The resume and search notes start from `crewdeck jobs init` (optionally a preset) and the `jobs-setup` interview.
+  Their frontmatter is written only through `crewdeck jobs …` commands, which validate it (`jobs/sources.md` by hand,
+  then `crewdeck jobs check`).
 - `journal/YYYY-MM-DD.md` — what happened that day: sessions, decisions, tickets moved, notes. Claude appends; the human may write too.
 - `projects/<name>/` — notes per project; tickets live in the project's repo (Backlog.md), link them as `TASK-12`.
 
@@ -23,8 +25,8 @@ It opens in SilverBullet (Crewdeck → Notes) and in Obsidian.
   (people, companies, concepts, project notes) with links back; add it to `wiki/index.md`; append to `wiki/log.md`. Say which pages changed.
 - **Query**: read `wiki/index.md`, open the relevant pages, answer with links to them. If the answer is worth keeping, file it as a new page.
 - **Lint** (weekly, or when asked): contradictions, stale claims, orphan pages, missing links, concepts that deserve a page. Fix what is safe; list the rest in the log.
-- **Remember** (the human says "remember…"): job-search things go through commands, with their words in a file
-  (single-quoted heredoc), never typed into the command line:
+- **Remember** (the human says "remember…"): the `crewdeck-memory` skill of the `crewdeck` plugin does this in any session.
+  Job-search things go through commands, with their words in a file (single-quoted heredoc), never typed into the command line:
   - a job preference ("I'm OK with hybrid now") → `crewdeck jobs pref set <field> <value> --because-file <f>`;
   - an answer, a fact about them, a style rule, a "not interested" reason or a company rule →
     `crewdeck jobs remember --kind answer|fact|preference|style|avoid|company_rule --text-file <f> --quote-file <f>`;

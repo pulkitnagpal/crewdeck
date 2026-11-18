@@ -694,10 +694,16 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 
 ## 23. Open questions for the owner
 
-1. Rename the plugin `crewdeck-bridge` → `crewdeck` now that it carries skills? (Assumed yes in P4.)
+1. ~~Rename the plugin `crewdeck-bridge` → `crewdeck` now that it carries skills?~~ Done in P4 (0.3.0).
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P4 built (2026-11-19):** `crewdeck jobs init [--preset] [--home]` (Jobs on, private jobs.home + tracker, missing notes
+  only, preset search/sources, managed workspace `CLAUDE.md` + `.claude/settings.json` deny rules, browser check, the P5
+  providers hook), `doctor` Jobs section, four presets, the skills `jobs-workspace`, `jobs-setup`, `jobs-daily-run`,
+  `crewdeck-memory` (every command line linted against the CLI), the plugin renamed `crewdeck` 0.3.0. Details and
+  deviations: [impl/04-setup-and-skills.md](impl/04-setup-and-skills.md) (Edit rules cover writes, WebFetch denied, flow
+  lists, sources.md edited by hand).
 - **P3 built (2026-11-19):** typed requests on one queue (kind/ref/payload/progress, dedupe, payloads cleared on close,
   presence, reconcile, jobs lane before projects, the Ask box can't reach it), the Jobs API in the shell server (lazy;
   page-only actions incl. feature switches, token-only `request show`/progress, SSE from data_version + fs.watch + queue,
