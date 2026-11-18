@@ -1,0 +1,670 @@
+# Gazetteer for Crewdeck Jobs: places, their other names and what contains them (city ⊂ state ⊂ country ⊂ regions).
+# Used to compile location rules from jobs/search.md, so "EU only" passes for someone in Berlin.
+#
+# Matching: names and aliases ignore case and accents; `codes` match only as written (capitals), so "US" is the
+# country but "us" is a pronoun; US state and Canadian province `abbr` match only after a comma ("Austin, TX").
+# `in` lists direct parents; containment is transitive. Cities carry approximate coordinates [lat, lon] for the
+# commute-distance check (places.commute_km).
+
+regions:
+  - { id: world, name: Worldwide, aliases: [world, world-wide, anywhere, anywhere in the world, global, globally, worldwide remote] }
+  - { id: emea, name: EMEA, aliases: [Europe Middle East and Africa], codes: [EMEA], in: [world] }
+  - { id: europe, name: Europe, in: [emea] }
+  - { id: eea, name: European Economic Area, codes: [EEA], in: [europe] }
+  - { id: european-union, name: European Union, codes: [EU, E.U.], in: [eea] }
+  - { id: dach, name: DACH region, aliases: [D-A-CH], codes: [DACH], in: [europe] }
+  - { id: nordics, name: Nordics, aliases: [Nordic countries, Nordic region, Scandinavia], in: [europe] }
+  - { id: benelux, name: Benelux, in: [europe] }
+  - { id: middle-east, name: Middle East, in: [emea] }
+  - { id: gcc, name: Gulf Cooperation Council, aliases: [Gulf states, GCC countries], codes: [GCC], in: [middle-east] }
+  - { id: mena, name: MENA, aliases: [Middle East and North Africa], codes: [MENA], in: [emea] }
+  - { id: africa, name: Africa, in: [emea] }
+  - { id: apac, name: APAC, aliases: [Asia-Pacific, Asia Pacific, Asia/Pacific], codes: [APAC, APJ], in: [world] }
+  - { id: asia, name: Asia, in: [apac] }
+  - { id: south-asia, name: South Asia, in: [asia] }
+  - { id: southeast-asia, name: Southeast Asia, aliases: [South East Asia, South-East Asia], in: [asia] }
+  - { id: east-asia, name: East Asia, in: [asia] }
+  - { id: central-asia, name: Central Asia, in: [asia] }
+  - { id: oceania, name: Oceania, aliases: [Australasia], in: [apac] }
+  - { id: anz, name: Australia and New Zealand, aliases: [Australia & New Zealand], codes: [ANZ], in: [oceania] }
+  - { id: americas, name: Americas, aliases: [the Americas], codes: [AMER, AMERS], in: [world] }
+  - { id: north-america, name: North America, codes: [NORAM, NAM], in: [americas] }
+  - { id: latam, name: Latin America, aliases: [LatAm, Latam, Latin America and the Caribbean], codes: [LATAM, LAC], in: [americas] }
+  - { id: central-america, name: Central America, in: [latam] }
+  - { id: south-america, name: South America, in: [latam] }
+  - { id: caribbean, name: Caribbean, in: [latam] }
+
+countries:   # id = ISO 3166-1 alpha-2, lowercase
+  # European Union
+  - { id: at, name: Austria, aliases: [Osterreich], in: [european-union, dach] }
+  - { id: be, name: Belgium, aliases: [Belgique, Belgie], in: [european-union, benelux] }
+  - { id: bg, name: Bulgaria, in: [european-union] }
+  - { id: hr, name: Croatia, aliases: [Hrvatska], in: [european-union] }
+  - { id: cy, name: Cyprus, in: [european-union] }
+  - { id: cz, name: Czechia, aliases: [Czech Republic], in: [european-union] }
+  - { id: dk, name: Denmark, aliases: [Danmark], in: [european-union, nordics] }
+  - { id: ee, name: Estonia, in: [european-union] }
+  - { id: fi, name: Finland, aliases: [Suomi], in: [european-union, nordics] }
+  - { id: fr, name: France, in: [european-union] }
+  - { id: de, name: Germany, aliases: [Deutschland], in: [european-union, dach] }
+  - { id: gr, name: Greece, in: [european-union] }
+  - { id: hu, name: Hungary, in: [european-union] }
+  - { id: ie, name: Ireland, aliases: [Republic of Ireland], in: [european-union] }
+  - { id: it, name: Italy, aliases: [Italia], in: [european-union] }
+  - { id: lv, name: Latvia, in: [european-union] }
+  - { id: lt, name: Lithuania, in: [european-union] }
+  - { id: lu, name: Luxembourg, in: [european-union, benelux] }
+  - { id: mt, name: Malta, in: [european-union] }
+  - { id: nl, name: Netherlands, aliases: [The Netherlands, Holland, Nederland], in: [european-union, benelux] }
+  - { id: pl, name: Poland, aliases: [Polska], in: [european-union] }
+  - { id: pt, name: Portugal, in: [european-union] }
+  - { id: ro, name: Romania, in: [european-union] }
+  - { id: sk, name: Slovakia, in: [european-union] }
+  - { id: si, name: Slovenia, in: [european-union] }
+  - { id: es, name: Spain, aliases: [Espana], in: [european-union] }
+  - { id: se, name: Sweden, aliases: [Sverige], in: [european-union, nordics] }
+  # Rest of Europe
+  - { id: al, name: Albania, in: [europe] }
+  - { id: ad, name: Andorra, in: [europe] }
+  - { id: am, name: Armenia, in: [europe, asia] }
+  - { id: az, name: Azerbaijan, in: [europe, asia] }
+  - { id: by, name: Belarus, in: [europe] }
+  - { id: ba, name: Bosnia and Herzegovina, aliases: [Bosnia], in: [europe] }
+  - { id: ge, name: Georgia, in: [europe, asia] }
+  - { id: is, name: Iceland, in: [eea, nordics] }
+  - { id: xk, name: Kosovo, in: [europe] }
+  - { id: li, name: Liechtenstein, in: [eea] }
+  - { id: md, name: Moldova, in: [europe] }
+  - { id: mc, name: Monaco, in: [europe] }
+  - { id: me, name: Montenegro, in: [europe] }
+  - { id: mk, name: North Macedonia, aliases: [Macedonia], in: [europe] }
+  - { id: "no", name: Norway, aliases: [Norge], in: [eea, nordics] }
+  - { id: ru, name: Russia, aliases: [Russian Federation], in: [europe, asia] }
+  - { id: sm, name: San Marino, in: [europe] }
+  - { id: rs, name: Serbia, in: [europe] }
+  - { id: ch, name: Switzerland, aliases: [Schweiz, Suisse, Svizzera], in: [europe, dach] }
+  - { id: tr, name: Turkey, aliases: [Turkiye], in: [europe, middle-east] }
+  - { id: ua, name: Ukraine, in: [europe] }
+  - { id: gb, name: United Kingdom, aliases: [Great Britain, Britain, England, Scotland, Wales, Northern Ireland, U.K.], codes: [UK], in: [europe] }
+  - { id: va, name: Vatican City, aliases: [Holy See, Vatican], in: [europe] }
+  # Middle East
+  - { id: bh, name: Bahrain, in: [gcc, mena] }
+  - { id: ir, name: Iran, in: [middle-east, mena] }
+  - { id: iq, name: Iraq, in: [middle-east, mena] }
+  - { id: il, name: Israel, in: [middle-east, mena] }
+  - { id: jo, name: Jordan, in: [middle-east, mena] }
+  - { id: kw, name: Kuwait, in: [gcc, mena] }
+  - { id: lb, name: Lebanon, in: [middle-east, mena] }
+  - { id: om, name: Oman, in: [gcc, mena] }
+  - { id: ps, name: Palestine, in: [middle-east, mena] }
+  - { id: qa, name: Qatar, in: [gcc, mena] }
+  - { id: sa, name: Saudi Arabia, aliases: [Kingdom of Saudi Arabia], codes: [KSA], in: [gcc, mena] }
+  - { id: sy, name: Syria, in: [middle-east, mena] }
+  - { id: ae, name: United Arab Emirates, aliases: [Emirates, U.A.E.], codes: [UAE], in: [gcc, mena] }
+  - { id: ye, name: Yemen, in: [middle-east, mena] }
+  # Africa
+  - { id: dz, name: Algeria, in: [africa, mena] }
+  - { id: ao, name: Angola, in: [africa] }
+  - { id: bj, name: Benin, in: [africa] }
+  - { id: bw, name: Botswana, in: [africa] }
+  - { id: bf, name: Burkina Faso, in: [africa] }
+  - { id: bi, name: Burundi, in: [africa] }
+  - { id: cv, name: Cabo Verde, aliases: [Cape Verde], in: [africa] }
+  - { id: cm, name: Cameroon, in: [africa] }
+  - { id: cf, name: Central African Republic, in: [africa] }
+  - { id: td, name: Chad, in: [africa] }
+  - { id: km, name: Comoros, in: [africa] }
+  - { id: cg, name: Republic of the Congo, aliases: [Congo, Congo-Brazzaville], in: [africa] }
+  - { id: cd, name: Democratic Republic of the Congo, aliases: [DR Congo, Congo, Congo-Kinshasa], codes: [DRC], in: [africa] }
+  - { id: ci, name: Ivory Coast, aliases: [Cote d'Ivoire, Cote dIvoire], in: [africa] }
+  - { id: dj, name: Djibouti, in: [africa] }
+  - { id: eg, name: Egypt, in: [africa, middle-east, mena] }
+  - { id: gq, name: Equatorial Guinea, in: [africa] }
+  - { id: er, name: Eritrea, in: [africa] }
+  - { id: sz, name: Eswatini, aliases: [Swaziland], in: [africa] }
+  - { id: et, name: Ethiopia, in: [africa] }
+  - { id: ga, name: Gabon, in: [africa] }
+  - { id: gm, name: Gambia, aliases: [The Gambia], in: [africa] }
+  - { id: gh, name: Ghana, in: [africa] }
+  - { id: gn, name: Guinea, in: [africa] }
+  - { id: gw, name: Guinea-Bissau, in: [africa] }
+  - { id: ke, name: Kenya, in: [africa] }
+  - { id: ls, name: Lesotho, in: [africa] }
+  - { id: lr, name: Liberia, in: [africa] }
+  - { id: ly, name: Libya, in: [africa, mena] }
+  - { id: mg, name: Madagascar, in: [africa] }
+  - { id: mw, name: Malawi, in: [africa] }
+  - { id: ml, name: Mali, in: [africa] }
+  - { id: mr, name: Mauritania, in: [africa] }
+  - { id: mu, name: Mauritius, in: [africa] }
+  - { id: ma, name: Morocco, in: [africa, mena] }
+  - { id: mz, name: Mozambique, in: [africa] }
+  - { id: na, name: Namibia, in: [africa] }
+  - { id: ne, name: Niger, in: [africa] }
+  - { id: ng, name: Nigeria, in: [africa] }
+  - { id: rw, name: Rwanda, in: [africa] }
+  - { id: st, name: Sao Tome and Principe, in: [africa] }
+  - { id: sn, name: Senegal, in: [africa] }
+  - { id: sc, name: Seychelles, in: [africa] }
+  - { id: sl, name: Sierra Leone, in: [africa] }
+  - { id: so, name: Somalia, in: [africa] }
+  - { id: za, name: South Africa, in: [africa] }
+  - { id: ss, name: South Sudan, in: [africa] }
+  - { id: sd, name: Sudan, in: [africa, mena] }
+  - { id: tz, name: Tanzania, in: [africa] }
+  - { id: tg, name: Togo, in: [africa] }
+  - { id: tn, name: Tunisia, in: [africa, mena] }
+  - { id: ug, name: Uganda, in: [africa] }
+  - { id: zm, name: Zambia, in: [africa] }
+  - { id: zw, name: Zimbabwe, in: [africa] }
+  # Asia
+  - { id: af, name: Afghanistan, in: [south-asia, central-asia] }
+  - { id: bd, name: Bangladesh, in: [south-asia] }
+  - { id: bt, name: Bhutan, in: [south-asia] }
+  - { id: in, name: India, aliases: [Bharat], in: [south-asia] }
+  - { id: mv, name: Maldives, in: [south-asia] }
+  - { id: np, name: Nepal, in: [south-asia] }
+  - { id: pk, name: Pakistan, in: [south-asia] }
+  - { id: lk, name: Sri Lanka, in: [south-asia] }
+  - { id: bn, name: Brunei, in: [southeast-asia] }
+  - { id: kh, name: Cambodia, in: [southeast-asia] }
+  - { id: id, name: Indonesia, in: [southeast-asia] }
+  - { id: la, name: Laos, in: [southeast-asia] }
+  - { id: my, name: Malaysia, in: [southeast-asia] }
+  - { id: mm, name: Myanmar, aliases: [Burma], in: [southeast-asia] }
+  - { id: ph, name: Philippines, aliases: [The Philippines], in: [southeast-asia] }
+  - { id: sg, name: Singapore, in: [southeast-asia] }
+  - { id: th, name: Thailand, in: [southeast-asia] }
+  - { id: tl, name: Timor-Leste, aliases: [East Timor], in: [southeast-asia] }
+  - { id: vn, name: Vietnam, aliases: [Viet Nam], in: [southeast-asia] }
+  - { id: cn, name: China, aliases: [Mainland China, People's Republic of China], codes: [PRC], in: [east-asia] }
+  - { id: hk, name: Hong Kong, codes: [HK], in: [east-asia] }
+  - { id: mo, name: Macau, aliases: [Macao], in: [east-asia] }
+  - { id: jp, name: Japan, in: [east-asia] }
+  - { id: kp, name: North Korea, in: [east-asia] }
+  - { id: kr, name: South Korea, aliases: [Korea, Republic of Korea], in: [east-asia] }
+  - { id: mn, name: Mongolia, in: [east-asia] }
+  - { id: tw, name: Taiwan, in: [east-asia] }
+  - { id: kz, name: Kazakhstan, in: [central-asia] }
+  - { id: kg, name: Kyrgyzstan, in: [central-asia] }
+  - { id: tj, name: Tajikistan, in: [central-asia] }
+  - { id: tm, name: Turkmenistan, in: [central-asia] }
+  - { id: uz, name: Uzbekistan, in: [central-asia] }
+  # Oceania
+  - { id: au, name: Australia, in: [anz] }
+  - { id: nz, name: New Zealand, aliases: [Aotearoa], codes: [NZ], in: [anz] }
+  - { id: fj, name: Fiji, in: [oceania] }
+  - { id: ki, name: Kiribati, in: [oceania] }
+  - { id: mh, name: Marshall Islands, in: [oceania] }
+  - { id: fm, name: Micronesia, in: [oceania] }
+  - { id: nr, name: Nauru, in: [oceania] }
+  - { id: pw, name: Palau, in: [oceania] }
+  - { id: pg, name: Papua New Guinea, in: [oceania] }
+  - { id: ws, name: Samoa, in: [oceania] }
+  - { id: sb, name: Solomon Islands, in: [oceania] }
+  - { id: to, name: Tonga, in: [oceania] }
+  - { id: tv, name: Tuvalu, in: [oceania] }
+  - { id: vu, name: Vanuatu, in: [oceania] }
+  # Americas
+  - { id: us, name: United States, aliases: [United States of America, U.S., U.S.A.], codes: [US, USA], in: [north-america] }
+  - { id: ca, name: Canada, in: [north-america] }
+  - { id: mx, name: Mexico, in: [north-america, latam] }
+  - { id: bz, name: Belize, in: [central-america] }
+  - { id: cr, name: Costa Rica, in: [central-america] }
+  - { id: sv, name: El Salvador, in: [central-america] }
+  - { id: gt, name: Guatemala, in: [central-america] }
+  - { id: hn, name: Honduras, in: [central-america] }
+  - { id: ni, name: Nicaragua, in: [central-america] }
+  - { id: pa, name: Panama, in: [central-america] }
+  - { id: ag, name: Antigua and Barbuda, in: [caribbean] }
+  - { id: bs, name: Bahamas, aliases: [The Bahamas], in: [caribbean] }
+  - { id: bb, name: Barbados, in: [caribbean] }
+  - { id: cu, name: Cuba, in: [caribbean] }
+  - { id: dm, name: Dominica, in: [caribbean] }
+  - { id: do, name: Dominican Republic, in: [caribbean] }
+  - { id: gd, name: Grenada, in: [caribbean] }
+  - { id: ht, name: Haiti, in: [caribbean] }
+  - { id: jm, name: Jamaica, in: [caribbean] }
+  - { id: kn, name: Saint Kitts and Nevis, in: [caribbean] }
+  - { id: lc, name: Saint Lucia, in: [caribbean] }
+  - { id: vc, name: Saint Vincent and the Grenadines, in: [caribbean] }
+  - { id: tt, name: Trinidad and Tobago, in: [caribbean] }
+  - { id: pr, name: Puerto Rico, in: [caribbean] }
+  - { id: ar, name: Argentina, in: [south-america] }
+  - { id: bo, name: Bolivia, in: [south-america] }
+  - { id: br, name: Brazil, aliases: [Brasil], in: [south-america] }
+  - { id: cl, name: Chile, in: [south-america] }
+  - { id: co, name: Colombia, in: [south-america] }
+  - { id: ec, name: Ecuador, in: [south-america] }
+  - { id: gy, name: Guyana, in: [south-america] }
+  - { id: py, name: Paraguay, in: [south-america] }
+  - { id: pe, name: Peru, in: [south-america] }
+  - { id: sr, name: Suriname, in: [south-america] }
+  - { id: uy, name: Uruguay, in: [south-america] }
+  - { id: ve, name: Venezuela, in: [south-america] }
+
+states:   # US states (+ DC) and Canadian provinces and territories
+  - { id: us-al, name: Alabama, abbr: AL, in: [us] }
+  - { id: us-ak, name: Alaska, abbr: AK, in: [us] }
+  - { id: us-az, name: Arizona, abbr: AZ, in: [us] }
+  - { id: us-ar, name: Arkansas, abbr: AR, in: [us] }
+  - { id: us-ca, name: California, abbr: CA, in: [us] }
+  - { id: us-co, name: Colorado, abbr: CO, in: [us] }
+  - { id: us-ct, name: Connecticut, abbr: CT, in: [us] }
+  - { id: us-de, name: Delaware, abbr: DE, in: [us] }
+  - { id: us-dc, name: District of Columbia, abbr: DC, codes: [D.C.], in: [us] }
+  - { id: us-fl, name: Florida, abbr: FL, in: [us] }
+  - { id: us-ga, name: Georgia, abbr: GA, in: [us] }
+  - { id: us-hi, name: Hawaii, abbr: HI, in: [us] }
+  - { id: us-id, name: Idaho, abbr: ID, in: [us] }
+  - { id: us-il, name: Illinois, abbr: IL, in: [us] }
+  - { id: us-in, name: Indiana, abbr: IN, in: [us] }
+  - { id: us-ia, name: Iowa, abbr: IA, in: [us] }
+  - { id: us-ks, name: Kansas, abbr: KS, in: [us] }
+  - { id: us-ky, name: Kentucky, abbr: KY, in: [us] }
+  - { id: us-la, name: Louisiana, abbr: LA, in: [us] }
+  - { id: us-me, name: Maine, abbr: ME, in: [us] }
+  - { id: us-md, name: Maryland, abbr: MD, in: [us] }
+  - { id: us-ma, name: Massachusetts, abbr: MA, in: [us] }
+  - { id: us-mi, name: Michigan, abbr: MI, in: [us] }
+  - { id: us-mn, name: Minnesota, abbr: MN, in: [us] }
+  - { id: us-ms, name: Mississippi, abbr: MS, in: [us] }
+  - { id: us-mo, name: Missouri, abbr: MO, in: [us] }
+  - { id: us-mt, name: Montana, abbr: MT, in: [us] }
+  - { id: us-ne, name: Nebraska, abbr: NE, in: [us] }
+  - { id: us-nv, name: Nevada, abbr: NV, in: [us] }
+  - { id: us-nh, name: New Hampshire, abbr: NH, in: [us] }
+  - { id: us-nj, name: New Jersey, abbr: NJ, in: [us] }
+  - { id: us-nm, name: New Mexico, abbr: NM, in: [us] }
+  - { id: us-ny, name: New York State, aliases: [New York], abbr: NY, in: [us] }
+  - { id: us-nc, name: North Carolina, abbr: NC, in: [us] }
+  - { id: us-nd, name: North Dakota, abbr: ND, in: [us] }
+  - { id: us-oh, name: Ohio, abbr: OH, in: [us] }
+  - { id: us-ok, name: Oklahoma, abbr: OK, in: [us] }
+  - { id: us-or, name: Oregon, abbr: OR, in: [us] }
+  - { id: us-pa, name: Pennsylvania, abbr: PA, in: [us] }
+  - { id: us-ri, name: Rhode Island, abbr: RI, in: [us] }
+  - { id: us-sc, name: South Carolina, abbr: SC, in: [us] }
+  - { id: us-sd, name: South Dakota, abbr: SD, in: [us] }
+  - { id: us-tn, name: Tennessee, abbr: TN, in: [us] }
+  - { id: us-tx, name: Texas, abbr: TX, in: [us] }
+  - { id: us-ut, name: Utah, abbr: UT, in: [us] }
+  - { id: us-vt, name: Vermont, abbr: VT, in: [us] }
+  - { id: us-va, name: Virginia, abbr: VA, in: [us] }
+  - { id: us-wa, name: Washington State, aliases: [Washington], abbr: WA, in: [us] }
+  - { id: us-wv, name: West Virginia, abbr: WV, in: [us] }
+  - { id: us-wi, name: Wisconsin, abbr: WI, in: [us] }
+  - { id: us-wy, name: Wyoming, abbr: WY, in: [us] }
+  - { id: ca-ab, name: Alberta, abbr: AB, in: [ca] }
+  - { id: ca-bc, name: British Columbia, abbr: BC, in: [ca] }
+  - { id: ca-mb, name: Manitoba, abbr: MB, in: [ca] }
+  - { id: ca-nb, name: New Brunswick, abbr: NB, in: [ca] }
+  - { id: ca-nl, name: Newfoundland and Labrador, aliases: [Newfoundland], abbr: NL, in: [ca] }
+  - { id: ca-ns, name: Nova Scotia, abbr: NS, in: [ca] }
+  - { id: ca-on, name: Ontario, abbr: "ON", in: [ca] }
+  - { id: ca-pe, name: Prince Edward Island, abbr: PE, in: [ca] }
+  - { id: ca-qc, name: Quebec, abbr: QC, in: [ca] }
+  - { id: ca-sk, name: Saskatchewan, abbr: SK, in: [ca] }
+  - { id: ca-nt, name: Northwest Territories, abbr: NT, in: [ca] }
+  - { id: ca-nu, name: Nunavut, abbr: NU, in: [ca] }
+  - { id: ca-yt, name: Yukon, abbr: YT, in: [ca] }
+
+cities:   # at: [lat, lon], approximate
+  # Germany, Austria, Switzerland
+  - { id: de/berlin, name: Berlin, in: [de], at: [52.52, 13.40] }
+  - { id: de/potsdam, name: Potsdam, in: [de], at: [52.39, 13.06] }
+  - { id: de/munich, name: Munich, aliases: [Muenchen, Munchen], in: [de], at: [48.14, 11.58] }
+  - { id: de/hamburg, name: Hamburg, in: [de], at: [53.55, 9.99] }
+  - { id: de/frankfurt, name: Frankfurt, aliases: [Frankfurt am Main], in: [de], at: [50.11, 8.68] }
+  - { id: de/cologne, name: Cologne, aliases: [Koln, Koeln], in: [de], at: [50.94, 6.96] }
+  - { id: de/stuttgart, name: Stuttgart, in: [de], at: [48.78, 9.18] }
+  - { id: de/dusseldorf, name: Dusseldorf, aliases: [Duesseldorf], in: [de], at: [51.23, 6.78] }
+  - { id: de/leipzig, name: Leipzig, in: [de], at: [51.34, 12.37] }
+  - { id: de/dresden, name: Dresden, in: [de], at: [51.05, 13.74] }
+  - { id: de/hanover, name: Hanover, aliases: [Hannover], in: [de], at: [52.37, 9.73] }
+  - { id: de/nuremberg, name: Nuremberg, aliases: [Nurnberg, Nuernberg], in: [de], at: [49.45, 11.08] }
+  - { id: de/bonn, name: Bonn, in: [de], at: [50.73, 7.10] }
+  - { id: de/karlsruhe, name: Karlsruhe, in: [de], at: [49.01, 8.40] }
+  - { id: de/bremen, name: Bremen, in: [de], at: [53.08, 8.80] }
+  - { id: de/essen, name: Essen, in: [de], at: [51.46, 7.01] }
+  - { id: de/dortmund, name: Dortmund, in: [de], at: [51.51, 7.47] }
+  - { id: de/mannheim, name: Mannheim, in: [de], at: [49.49, 8.47] }
+  - { id: de/heidelberg, name: Heidelberg, in: [de], at: [49.40, 8.67] }
+  - { id: de/aachen, name: Aachen, in: [de], at: [50.78, 6.08] }
+  - { id: de/munster, name: Munster, aliases: [Muenster], in: [de], at: [51.96, 7.63] }
+  - { id: de/freiburg, name: Freiburg, in: [de], at: [47.99, 7.84] }
+  - { id: at/vienna, name: Vienna, aliases: [Wien], in: [at], at: [48.21, 16.37] }
+  - { id: at/graz, name: Graz, in: [at], at: [47.07, 15.44] }
+  - { id: at/linz, name: Linz, in: [at], at: [48.31, 14.29] }
+  - { id: at/salzburg, name: Salzburg, in: [at], at: [47.81, 13.06] }
+  - { id: at/innsbruck, name: Innsbruck, in: [at], at: [47.27, 11.39] }
+  - { id: ch/zurich, name: Zurich, aliases: [Zuerich], in: [ch], at: [47.38, 8.54] }
+  - { id: ch/geneva, name: Geneva, aliases: [Geneve, Genf], in: [ch], at: [46.20, 6.14] }
+  - { id: ch/basel, name: Basel, in: [ch], at: [47.56, 7.59] }
+  - { id: ch/bern, name: Bern, aliases: [Berne], in: [ch], at: [46.95, 7.45] }
+  - { id: ch/lausanne, name: Lausanne, in: [ch], at: [46.52, 6.63] }
+  - { id: ch/zug, name: Zug, in: [ch], at: [47.17, 8.52] }
+  # United Kingdom and Ireland
+  - { id: gb/london, name: London, in: [gb], at: [51.51, -0.13] }
+  - { id: gb/manchester, name: Manchester, in: [gb], at: [53.48, -2.24] }
+  - { id: gb/birmingham, name: Birmingham, in: [gb], at: [52.49, -1.89] }
+  - { id: gb/edinburgh, name: Edinburgh, in: [gb], at: [55.95, -3.19] }
+  - { id: gb/glasgow, name: Glasgow, in: [gb], at: [55.86, -4.25] }
+  - { id: gb/bristol, name: Bristol, in: [gb], at: [51.45, -2.59] }
+  - { id: gb/leeds, name: Leeds, in: [gb], at: [53.80, -1.55] }
+  - { id: gb/liverpool, name: Liverpool, in: [gb], at: [53.41, -2.98] }
+  - { id: gb/cambridge, name: Cambridge, in: [gb], at: [52.21, 0.12] }
+  - { id: gb/oxford, name: Oxford, in: [gb], at: [51.75, -1.26] }
+  - { id: gb/belfast, name: Belfast, in: [gb], at: [54.60, -5.93] }
+  - { id: gb/cardiff, name: Cardiff, in: [gb], at: [51.48, -3.18] }
+  - { id: gb/newcastle, name: Newcastle upon Tyne, aliases: [Newcastle], in: [gb], at: [54.98, -1.61] }
+  - { id: gb/sheffield, name: Sheffield, in: [gb], at: [53.38, -1.47] }
+  - { id: gb/nottingham, name: Nottingham, in: [gb], at: [52.95, -1.15] }
+  - { id: ie/dublin, name: Dublin, in: [ie], at: [53.35, -6.26] }
+  - { id: ie/cork, name: Cork, in: [ie], at: [51.90, -8.47] }
+  - { id: ie/galway, name: Galway, in: [ie], at: [53.27, -9.05] }
+  # Western and Southern Europe
+  - { id: fr/paris, name: Paris, in: [fr], at: [48.86, 2.35] }
+  - { id: fr/lyon, name: Lyon, in: [fr], at: [45.76, 4.84] }
+  - { id: fr/marseille, name: Marseille, in: [fr], at: [43.30, 5.37] }
+  - { id: fr/toulouse, name: Toulouse, in: [fr], at: [43.60, 1.44] }
+  - { id: fr/bordeaux, name: Bordeaux, in: [fr], at: [44.84, -0.58] }
+  - { id: fr/lille, name: Lille, in: [fr], at: [50.63, 3.06] }
+  - { id: fr/nantes, name: Nantes, in: [fr], at: [47.22, -1.55] }
+  - { id: fr/strasbourg, name: Strasbourg, in: [fr], at: [48.57, 7.75] }
+  - { id: fr/montpellier, name: Montpellier, in: [fr], at: [43.61, 3.88] }
+  - { id: fr/grenoble, name: Grenoble, in: [fr], at: [45.19, 5.72] }
+  - { id: nl/amsterdam, name: Amsterdam, in: [nl], at: [52.37, 4.90] }
+  - { id: nl/rotterdam, name: Rotterdam, in: [nl], at: [51.92, 4.48] }
+  - { id: nl/the-hague, name: The Hague, aliases: [Den Haag], in: [nl], at: [52.08, 4.30] }
+  - { id: nl/utrecht, name: Utrecht, in: [nl], at: [52.09, 5.12] }
+  - { id: nl/eindhoven, name: Eindhoven, in: [nl], at: [51.44, 5.47] }
+  - { id: be/brussels, name: Brussels, aliases: [Bruxelles, Brussel], in: [be], at: [50.85, 4.35] }
+  - { id: be/antwerp, name: Antwerp, aliases: [Antwerpen], in: [be], at: [51.22, 4.40] }
+  - { id: be/ghent, name: Ghent, aliases: [Gent], in: [be], at: [51.05, 3.72] }
+  - { id: be/leuven, name: Leuven, in: [be], at: [50.88, 4.70] }
+  - { id: lu/luxembourg-city, name: Luxembourg City, in: [lu], at: [49.61, 6.13] }
+  - { id: es/madrid, name: Madrid, in: [es], at: [40.42, -3.70] }
+  - { id: es/barcelona, name: Barcelona, in: [es], at: [41.39, 2.17] }
+  - { id: es/valencia, name: Valencia, in: [es], at: [39.47, -0.38] }
+  - { id: es/seville, name: Seville, aliases: [Sevilla], in: [es], at: [37.39, -5.98] }
+  - { id: es/malaga, name: Malaga, in: [es], at: [36.72, -4.42] }
+  - { id: es/bilbao, name: Bilbao, in: [es], at: [43.26, -2.93] }
+  - { id: pt/lisbon, name: Lisbon, aliases: [Lisboa], in: [pt], at: [38.72, -9.14] }
+  - { id: pt/porto, name: Porto, aliases: [Oporto], in: [pt], at: [41.15, -8.61] }
+  - { id: pt/braga, name: Braga, in: [pt], at: [41.55, -8.42] }
+  - { id: pt/coimbra, name: Coimbra, in: [pt], at: [40.21, -8.43] }
+  - { id: it/milan, name: Milan, aliases: [Milano], in: [it], at: [45.46, 9.19] }
+  - { id: it/rome, name: Rome, aliases: [Roma], in: [it], at: [41.90, 12.50] }
+  - { id: it/turin, name: Turin, aliases: [Torino], in: [it], at: [45.07, 7.69] }
+  - { id: it/bologna, name: Bologna, in: [it], at: [44.49, 11.34] }
+  - { id: it/florence, name: Florence, aliases: [Firenze], in: [it], at: [43.77, 11.26] }
+  - { id: it/naples, name: Naples, aliases: [Napoli], in: [it], at: [40.85, 14.27] }
+  - { id: mt/valletta, name: Valletta, in: [mt], at: [35.90, 14.51] }
+  - { id: gr/athens, name: Athens, in: [gr], at: [37.98, 23.73] }
+  - { id: gr/thessaloniki, name: Thessaloniki, in: [gr], at: [40.64, 22.94] }
+  - { id: cy/limassol, name: Limassol, in: [cy], at: [34.68, 33.04] }
+  - { id: cy/nicosia, name: Nicosia, in: [cy], at: [35.17, 33.36] }
+  # Nordics and Baltics
+  - { id: dk/copenhagen, name: Copenhagen, aliases: [Kobenhavn], in: [dk], at: [55.68, 12.57] }
+  - { id: dk/aarhus, name: Aarhus, in: [dk], at: [56.16, 10.20] }
+  - { id: se/stockholm, name: Stockholm, in: [se], at: [59.33, 18.07] }
+  - { id: se/gothenburg, name: Gothenburg, aliases: [Goteborg], in: [se], at: [57.71, 11.97] }
+  - { id: se/malmo, name: Malmo, in: [se], at: [55.60, 13.00] }
+  - { id: no/oslo, name: Oslo, in: ["no"], at: [59.91, 10.75] }
+  - { id: no/bergen, name: Bergen, in: ["no"], at: [60.39, 5.32] }
+  - { id: no/trondheim, name: Trondheim, in: ["no"], at: [63.43, 10.40] }
+  - { id: fi/helsinki, name: Helsinki, in: [fi], at: [60.17, 24.94] }
+  - { id: fi/espoo, name: Espoo, in: [fi], at: [60.21, 24.66] }
+  - { id: fi/tampere, name: Tampere, in: [fi], at: [61.50, 23.76] }
+  - { id: is/reykjavik, name: Reykjavik, in: [is], at: [64.15, -21.94] }
+  - { id: ee/tallinn, name: Tallinn, in: [ee], at: [59.44, 24.75] }
+  - { id: ee/tartu, name: Tartu, in: [ee], at: [58.38, 26.72] }
+  - { id: lv/riga, name: Riga, in: [lv], at: [56.95, 24.11] }
+  - { id: lt/vilnius, name: Vilnius, in: [lt], at: [54.69, 25.28] }
+  - { id: lt/kaunas, name: Kaunas, in: [lt], at: [54.90, 23.90] }
+  # Central and Eastern Europe
+  - { id: pl/warsaw, name: Warsaw, aliases: [Warszawa], in: [pl], at: [52.23, 21.01] }
+  - { id: pl/krakow, name: Krakow, aliases: [Cracow], in: [pl], at: [50.06, 19.94] }
+  - { id: pl/wroclaw, name: Wroclaw, in: [pl], at: [51.11, 17.04] }
+  - { id: pl/gdansk, name: Gdansk, in: [pl], at: [54.35, 18.65] }
+  - { id: pl/poznan, name: Poznan, in: [pl], at: [52.41, 16.93] }
+  - { id: pl/lodz, name: Lodz, in: [pl], at: [51.76, 19.46] }
+  - { id: cz/prague, name: Prague, aliases: [Praha], in: [cz], at: [50.08, 14.44] }
+  - { id: cz/brno, name: Brno, in: [cz], at: [49.20, 16.61] }
+  - { id: sk/bratislava, name: Bratislava, in: [sk], at: [48.15, 17.11] }
+  - { id: hu/budapest, name: Budapest, in: [hu], at: [47.50, 19.04] }
+  - { id: ro/bucharest, name: Bucharest, aliases: [Bucuresti], in: [ro], at: [44.43, 26.10] }
+  - { id: ro/cluj-napoca, name: Cluj-Napoca, aliases: [Cluj], in: [ro], at: [46.77, 23.59] }
+  - { id: bg/sofia, name: Sofia, in: [bg], at: [42.70, 23.32] }
+  - { id: hr/zagreb, name: Zagreb, in: [hr], at: [45.81, 15.98] }
+  - { id: si/ljubljana, name: Ljubljana, in: [si], at: [46.06, 14.51] }
+  - { id: rs/belgrade, name: Belgrade, aliases: [Beograd], in: [rs], at: [44.79, 20.45] }
+  - { id: rs/novi-sad, name: Novi Sad, in: [rs], at: [45.27, 19.83] }
+  - { id: ua/kyiv, name: Kyiv, aliases: [Kiev], in: [ua], at: [50.45, 30.52] }
+  - { id: ua/lviv, name: Lviv, in: [ua], at: [49.84, 24.03] }
+  - { id: ua/kharkiv, name: Kharkiv, in: [ua], at: [49.99, 36.23] }
+  - { id: by/minsk, name: Minsk, in: [by], at: [53.90, 27.56] }
+  - { id: tr/istanbul, name: Istanbul, in: [tr], at: [41.01, 28.98] }
+  - { id: tr/ankara, name: Ankara, in: [tr], at: [39.93, 32.86] }
+  - { id: tr/izmir, name: Izmir, in: [tr], at: [38.42, 27.14] }
+  - { id: ru/moscow, name: Moscow, in: [ru], at: [55.76, 37.62] }
+  - { id: ru/saint-petersburg, name: Saint Petersburg, aliases: [St. Petersburg, St Petersburg], in: [ru], at: [59.93, 30.34] }
+  - { id: ge/tbilisi, name: Tbilisi, in: [ge], at: [41.72, 44.79] }
+  - { id: am/yerevan, name: Yerevan, in: [am], at: [40.18, 44.51] }
+  # Middle East and Africa
+  - { id: ae/dubai, name: Dubai, in: [ae], at: [25.20, 55.27] }
+  - { id: ae/abu-dhabi, name: Abu Dhabi, in: [ae], at: [24.45, 54.38] }
+  - { id: sa/riyadh, name: Riyadh, in: [sa], at: [24.71, 46.68] }
+  - { id: sa/jeddah, name: Jeddah, in: [sa], at: [21.49, 39.19] }
+  - { id: qa/doha, name: Doha, in: [qa], at: [25.29, 51.53] }
+  - { id: il/tel-aviv, name: Tel Aviv, aliases: [Tel Aviv-Yafo], in: [il], at: [32.09, 34.78] }
+  - { id: il/jerusalem, name: Jerusalem, in: [il], at: [31.77, 35.21] }
+  - { id: il/haifa, name: Haifa, in: [il], at: [32.79, 34.99] }
+  - { id: jo/amman, name: Amman, in: [jo], at: [31.95, 35.93] }
+  - { id: kw/kuwait-city, name: Kuwait City, in: [kw], at: [29.38, 47.99] }
+  - { id: bh/manama, name: Manama, in: [bh], at: [26.23, 50.59] }
+  - { id: om/muscat, name: Muscat, in: [om], at: [23.59, 58.38] }
+  - { id: lb/beirut, name: Beirut, in: [lb], at: [33.89, 35.50] }
+  - { id: eg/cairo, name: Cairo, in: [eg], at: [30.04, 31.24] }
+  - { id: eg/alexandria, name: Alexandria, in: [eg], at: [31.20, 29.92] }
+  - { id: ng/lagos, name: Lagos, in: [ng], at: [6.52, 3.38] }
+  - { id: ng/abuja, name: Abuja, in: [ng], at: [9.08, 7.40] }
+  - { id: ke/nairobi, name: Nairobi, in: [ke], at: [-1.29, 36.82] }
+  - { id: za/johannesburg, name: Johannesburg, in: [za], at: [-26.20, 28.05] }
+  - { id: za/cape-town, name: Cape Town, in: [za], at: [-33.92, 18.42] }
+  - { id: za/durban, name: Durban, in: [za], at: [-29.86, 31.02] }
+  - { id: za/pretoria, name: Pretoria, in: [za], at: [-25.75, 28.19] }
+  - { id: gh/accra, name: Accra, in: [gh], at: [5.60, -0.19] }
+  - { id: ma/casablanca, name: Casablanca, in: [ma], at: [33.57, -7.59] }
+  - { id: ma/rabat, name: Rabat, in: [ma], at: [34.02, -6.84] }
+  - { id: tn/tunis, name: Tunis, in: [tn], at: [36.81, 10.18] }
+  - { id: rw/kigali, name: Kigali, in: [rw], at: [-1.95, 30.06] }
+  - { id: et/addis-ababa, name: Addis Ababa, in: [et], at: [9.03, 38.74] }
+  - { id: ug/kampala, name: Kampala, in: [ug], at: [0.35, 32.58] }
+  - { id: tz/dar-es-salaam, name: Dar es Salaam, in: [tz], at: [-6.79, 39.21] }
+  - { id: sn/dakar, name: Dakar, in: [sn], at: [14.72, -17.47] }
+  - { id: dz/algiers, name: Algiers, in: [dz], at: [36.75, 3.06] }
+  - { id: ci/abidjan, name: Abidjan, in: [ci], at: [5.36, -4.01] }
+  # South Asia
+  - { id: in/bengaluru, name: Bengaluru, aliases: [Bangalore], in: [in], at: [12.97, 77.59] }
+  - { id: in/mumbai, name: Mumbai, aliases: [Bombay], in: [in], at: [19.08, 72.88] }
+  - { id: in/delhi, name: Delhi, aliases: [New Delhi, Delhi NCR, NCR], in: [in], at: [28.61, 77.21] }
+  - { id: in/noida, name: Noida, in: [in], at: [28.54, 77.39] }
+  - { id: in/hyderabad, name: Hyderabad, in: [in], at: [17.39, 78.49] }
+  - { id: in/chennai, name: Chennai, aliases: [Madras], in: [in], at: [13.08, 80.27] }
+  - { id: in/pune, name: Pune, in: [in], at: [18.52, 73.86] }
+  - { id: in/kolkata, name: Kolkata, aliases: [Calcutta], in: [in], at: [22.57, 88.36] }
+  - { id: in/ahmedabad, name: Ahmedabad, in: [in], at: [23.02, 72.57] }
+  - { id: in/kochi, name: Kochi, aliases: [Cochin], in: [in], at: [9.93, 76.27] }
+  - { id: in/jaipur, name: Jaipur, in: [in], at: [26.91, 75.79] }
+  - { id: in/chandigarh, name: Chandigarh, in: [in], at: [30.73, 76.78] }
+  - { id: pk/karachi, name: Karachi, in: [pk], at: [24.86, 67.01] }
+  - { id: pk/lahore, name: Lahore, in: [pk], at: [31.55, 74.34] }
+  - { id: pk/islamabad, name: Islamabad, in: [pk], at: [33.68, 73.05] }
+  - { id: bd/dhaka, name: Dhaka, in: [bd], at: [23.81, 90.41] }
+  - { id: lk/colombo, name: Colombo, in: [lk], at: [6.93, 79.86] }
+  - { id: np/kathmandu, name: Kathmandu, in: [np], at: [27.72, 85.32] }
+  # Southeast and East Asia
+  - { id: my/kuala-lumpur, name: Kuala Lumpur, in: [my], at: [3.14, 101.69] }
+  - { id: id/jakarta, name: Jakarta, in: [id], at: [-6.21, 106.85] }
+  - { id: th/bangkok, name: Bangkok, in: [th], at: [13.76, 100.50] }
+  - { id: vn/ho-chi-minh-city, name: Ho Chi Minh City, aliases: [Saigon], codes: [HCMC], in: [vn], at: [10.82, 106.63] }
+  - { id: vn/hanoi, name: Hanoi, in: [vn], at: [21.03, 105.85] }
+  - { id: vn/da-nang, name: Da Nang, in: [vn], at: [16.05, 108.22] }
+  - { id: ph/manila, name: Manila, aliases: [Metro Manila], in: [ph], at: [14.60, 120.98] }
+  - { id: ph/makati, name: Makati, in: [ph], at: [14.55, 121.02] }
+  - { id: ph/cebu, name: Cebu, aliases: [Cebu City], in: [ph], at: [10.32, 123.89] }
+  - { id: jp/tokyo, name: Tokyo, in: [jp], at: [35.68, 139.69] }
+  - { id: jp/osaka, name: Osaka, in: [jp], at: [34.69, 135.50] }
+  - { id: jp/kyoto, name: Kyoto, in: [jp], at: [35.01, 135.77] }
+  - { id: jp/fukuoka, name: Fukuoka, in: [jp], at: [33.59, 130.40] }
+  - { id: jp/yokohama, name: Yokohama, in: [jp], at: [35.44, 139.64] }
+  - { id: kr/seoul, name: Seoul, in: [kr], at: [37.57, 126.98] }
+  - { id: kr/busan, name: Busan, in: [kr], at: [35.18, 129.08] }
+  - { id: cn/beijing, name: Beijing, in: [cn], at: [39.90, 116.41] }
+  - { id: cn/shanghai, name: Shanghai, in: [cn], at: [31.23, 121.47] }
+  - { id: cn/shenzhen, name: Shenzhen, in: [cn], at: [22.54, 114.06] }
+  - { id: cn/guangzhou, name: Guangzhou, in: [cn], at: [23.13, 113.26] }
+  - { id: cn/hangzhou, name: Hangzhou, in: [cn], at: [30.27, 120.16] }
+  - { id: cn/chengdu, name: Chengdu, in: [cn], at: [30.57, 104.07] }
+  - { id: tw/taipei, name: Taipei, in: [tw], at: [25.03, 121.57] }
+  - { id: tw/hsinchu, name: Hsinchu, in: [tw], at: [24.80, 120.97] }
+  - { id: kz/almaty, name: Almaty, in: [kz], at: [43.24, 76.89] }
+  - { id: kz/astana, name: Astana, in: [kz], at: [51.17, 71.45] }
+  - { id: uz/tashkent, name: Tashkent, in: [uz], at: [41.30, 69.24] }
+  # Oceania
+  - { id: au/sydney, name: Sydney, in: [au], at: [-33.87, 151.21] }
+  - { id: au/melbourne, name: Melbourne, in: [au], at: [-37.81, 144.96] }
+  - { id: au/brisbane, name: Brisbane, in: [au], at: [-27.47, 153.03] }
+  - { id: au/perth, name: Perth, in: [au], at: [-31.95, 115.86] }
+  - { id: au/adelaide, name: Adelaide, in: [au], at: [-34.93, 138.60] }
+  - { id: au/canberra, name: Canberra, in: [au], at: [-35.28, 149.13] }
+  - { id: nz/auckland, name: Auckland, in: [nz], at: [-36.85, 174.76] }
+  - { id: nz/wellington, name: Wellington, in: [nz], at: [-41.29, 174.78] }
+  - { id: nz/christchurch, name: Christchurch, in: [nz], at: [-43.53, 172.64] }
+  # Canada
+  - { id: ca/toronto, name: Toronto, aliases: [Greater Toronto Area], codes: [GTA], in: [ca-on], at: [43.65, -79.38] }
+  - { id: ca/mississauga, name: Mississauga, in: [ca-on], at: [43.59, -79.64] }
+  - { id: ca/ottawa, name: Ottawa, in: [ca-on], at: [45.42, -75.70] }
+  - { id: ca/waterloo, name: Waterloo, in: [ca-on], at: [43.46, -80.52] }
+  - { id: ca/kitchener, name: Kitchener, in: [ca-on], at: [43.45, -80.49] }
+  - { id: ca/montreal, name: Montreal, in: [ca-qc], at: [45.50, -73.57] }
+  - { id: ca/quebec-city, name: Quebec City, in: [ca-qc], at: [46.81, -71.21] }
+  - { id: ca/vancouver, name: Vancouver, in: [ca-bc], at: [49.28, -123.12] }
+  - { id: ca/victoria, name: Victoria, in: [ca-bc], at: [48.43, -123.37] }
+  - { id: ca/calgary, name: Calgary, in: [ca-ab], at: [51.05, -114.07] }
+  - { id: ca/edmonton, name: Edmonton, in: [ca-ab], at: [53.55, -113.49] }
+  - { id: ca/winnipeg, name: Winnipeg, in: [ca-mb], at: [49.90, -97.14] }
+  - { id: ca/halifax, name: Halifax, in: [ca-ns], at: [44.65, -63.57] }
+  # United States
+  - { id: us/austin, name: Austin, in: [us-tx], at: [30.27, -97.74] }
+  - { id: us/round-rock, name: Round Rock, in: [us-tx], at: [30.51, -97.68] }
+  - { id: us/dallas, name: Dallas, aliases: [Dallas-Fort Worth], codes: [DFW], in: [us-tx], at: [32.78, -96.80] }
+  - { id: us/fort-worth, name: Fort Worth, in: [us-tx], at: [32.76, -97.33] }
+  - { id: us/houston, name: Houston, in: [us-tx], at: [29.76, -95.37] }
+  - { id: us/san-antonio, name: San Antonio, in: [us-tx], at: [29.42, -98.49] }
+  - { id: us/el-paso, name: El Paso, in: [us-tx], at: [31.76, -106.49] }
+  - { id: us/plano, name: Plano, in: [us-tx], at: [33.02, -96.70] }
+  - { id: us/phoenix, name: Phoenix, in: [us-az], at: [33.45, -112.07] }
+  - { id: us/tucson, name: Tucson, in: [us-az], at: [32.22, -110.97] }
+  - { id: us/scottsdale, name: Scottsdale, in: [us-az], at: [33.49, -111.93] }
+  - { id: us/tempe, name: Tempe, in: [us-az], at: [33.43, -111.94] }
+  - { id: us/mesa, name: Mesa, in: [us-az], at: [33.42, -111.83] }
+  - { id: us/san-francisco, name: San Francisco, codes: [SF], in: [us-ca], at: [37.77, -122.42] }
+  - { id: us/bay-area, name: San Francisco Bay Area, aliases: [Bay Area, SF Bay Area, Silicon Valley], in: [us-ca], at: [37.60, -122.20] }
+  - { id: us/los-angeles, name: Los Angeles, codes: [LA], in: [us-ca], at: [34.05, -118.24] }
+  - { id: us/san-diego, name: San Diego, in: [us-ca], at: [32.72, -117.16] }
+  - { id: us/san-jose, name: San Jose, in: [us-ca], at: [37.34, -121.89] }
+  - { id: us/oakland, name: Oakland, in: [us-ca], at: [37.80, -122.27] }
+  - { id: us/palo-alto, name: Palo Alto, in: [us-ca], at: [37.44, -122.14] }
+  - { id: us/mountain-view, name: Mountain View, in: [us-ca], at: [37.39, -122.08] }
+  - { id: us/sunnyvale, name: Sunnyvale, in: [us-ca], at: [37.37, -122.04] }
+  - { id: us/santa-clara, name: Santa Clara, in: [us-ca], at: [37.35, -121.96] }
+  - { id: us/menlo-park, name: Menlo Park, in: [us-ca], at: [37.45, -122.18] }
+  - { id: us/cupertino, name: Cupertino, in: [us-ca], at: [37.32, -122.03] }
+  - { id: us/berkeley, name: Berkeley, in: [us-ca], at: [37.87, -122.27] }
+  - { id: us/sacramento, name: Sacramento, in: [us-ca], at: [38.58, -121.49] }
+  - { id: us/irvine, name: Irvine, in: [us-ca], at: [33.68, -117.83] }
+  - { id: us/santa-monica, name: Santa Monica, in: [us-ca], at: [34.02, -118.49] }
+  - { id: us/new-york-city, name: New York City, aliases: [New York, Manhattan, Brooklyn], codes: [NYC], in: [us-ny], at: [40.71, -74.01] }
+  - { id: us/buffalo, name: Buffalo, in: [us-ny], at: [42.89, -78.88] }
+  - { id: us/albany, name: Albany, in: [us-ny], at: [42.65, -73.76] }
+  - { id: us/seattle, name: Seattle, in: [us-wa], at: [47.61, -122.33] }
+  - { id: us/redmond, name: Redmond, in: [us-wa], at: [47.67, -122.12] }
+  - { id: us/bellevue, name: Bellevue, in: [us-wa], at: [47.61, -122.20] }
+  - { id: us/spokane, name: Spokane, in: [us-wa], at: [47.66, -117.43] }
+  - { id: us/boston, name: Boston, in: [us-ma], at: [42.36, -71.06] }
+  - { id: us/cambridge-ma, name: Cambridge, in: [us-ma], at: [42.37, -71.11] }
+  - { id: us/chicago, name: Chicago, in: [us-il], at: [41.88, -87.63] }
+  - { id: us/denver, name: Denver, in: [us-co], at: [39.74, -104.99] }
+  - { id: us/boulder, name: Boulder, in: [us-co], at: [40.01, -105.27] }
+  - { id: us/atlanta, name: Atlanta, in: [us-ga], at: [33.75, -84.39] }
+  - { id: us/miami, name: Miami, in: [us-fl], at: [25.76, -80.19] }
+  - { id: us/tampa, name: Tampa, in: [us-fl], at: [27.95, -82.46] }
+  - { id: us/orlando, name: Orlando, in: [us-fl], at: [28.54, -81.38] }
+  - { id: us/jacksonville, name: Jacksonville, in: [us-fl], at: [30.33, -81.66] }
+  - { id: us/washington-dc, name: Washington DC, aliases: ["Washington, DC", "Washington, D.C.", Washington D.C.], in: [us-dc], at: [38.91, -77.04] }
+  - { id: us/arlington-va, name: Arlington, in: [us-va], at: [38.88, -77.10] }
+  - { id: us/reston, name: Reston, in: [us-va], at: [38.96, -77.36] }
+  - { id: us/richmond, name: Richmond, in: [us-va], at: [37.54, -77.44] }
+  - { id: us/philadelphia, name: Philadelphia, in: [us-pa], at: [39.95, -75.17] }
+  - { id: us/pittsburgh, name: Pittsburgh, in: [us-pa], at: [40.44, -80.00] }
+  - { id: us/portland, name: Portland, in: [us-or], at: [45.52, -122.68] }
+  - { id: us/raleigh, name: Raleigh, in: [us-nc], at: [35.78, -78.64] }
+  - { id: us/durham, name: Durham, in: [us-nc], at: [35.99, -78.90] }
+  - { id: us/charlotte, name: Charlotte, in: [us-nc], at: [35.23, -80.84] }
+  - { id: us/nashville, name: Nashville, in: [us-tn], at: [36.16, -86.78] }
+  - { id: us/memphis, name: Memphis, in: [us-tn], at: [35.15, -90.05] }
+  - { id: us/minneapolis, name: Minneapolis, in: [us-mn], at: [44.98, -93.27] }
+  - { id: us/detroit, name: Detroit, in: [us-mi], at: [42.33, -83.05] }
+  - { id: us/ann-arbor, name: Ann Arbor, in: [us-mi], at: [42.28, -83.74] }
+  - { id: us/columbus, name: Columbus, in: [us-oh], at: [39.96, -83.00] }
+  - { id: us/cleveland, name: Cleveland, in: [us-oh], at: [41.50, -81.69] }
+  - { id: us/cincinnati, name: Cincinnati, in: [us-oh], at: [39.10, -84.51] }
+  - { id: us/salt-lake-city, name: Salt Lake City, in: [us-ut], at: [40.76, -111.89] }
+  - { id: us/las-vegas, name: Las Vegas, in: [us-nv], at: [36.17, -115.14] }
+  - { id: us/st-louis, name: St. Louis, aliases: [Saint Louis, St Louis], in: [us-mo], at: [38.63, -90.20] }
+  - { id: us/kansas-city, name: Kansas City, in: [us-mo], at: [39.10, -94.58] }
+  - { id: us/baltimore, name: Baltimore, in: [us-md], at: [39.29, -76.61] }
+  - { id: us/jersey-city, name: Jersey City, in: [us-nj], at: [40.72, -74.08] }
+  - { id: us/princeton, name: Princeton, in: [us-nj], at: [40.36, -74.67] }
+  - { id: us/indianapolis, name: Indianapolis, in: [us-in], at: [39.77, -86.16] }
+  - { id: us/milwaukee, name: Milwaukee, in: [us-wi], at: [43.04, -87.91] }
+  - { id: us/new-orleans, name: New Orleans, in: [us-la], at: [29.95, -90.07] }
+  - { id: us/louisville, name: Louisville, in: [us-ky], at: [38.25, -85.76] }
+  - { id: us/oklahoma-city, name: Oklahoma City, in: [us-ok], at: [35.47, -97.52] }
+  - { id: us/albuquerque, name: Albuquerque, in: [us-nm], at: [35.08, -106.65] }
+  - { id: us/honolulu, name: Honolulu, in: [us-hi], at: [21.31, -157.86] }
+  - { id: us/anchorage, name: Anchorage, in: [us-ak], at: [61.22, -149.90] }
+  - { id: us/boise, name: Boise, in: [us-id], at: [43.62, -116.20] }
+  - { id: us/omaha, name: Omaha, in: [us-ne], at: [41.26, -95.93] }
+  - { id: us/charleston, name: Charleston, in: [us-sc], at: [32.78, -79.93] }
+  - { id: us/hartford, name: Hartford, in: [us-ct], at: [41.76, -72.68] }
+  - { id: us/stamford, name: Stamford, in: [us-ct], at: [41.05, -73.54] }
+  - { id: us/providence, name: Providence, in: [us-ri], at: [41.82, -71.41] }
+  # Latin America
+  - { id: mx/mexico-city, name: Mexico City, aliases: [Ciudad de Mexico], codes: [CDMX], in: [mx], at: [19.43, -99.13] }
+  - { id: mx/guadalajara, name: Guadalajara, in: [mx], at: [20.66, -103.35] }
+  - { id: mx/monterrey, name: Monterrey, in: [mx], at: [25.69, -100.32] }
+  - { id: br/sao-paulo, name: Sao Paulo, in: [br], at: [-23.55, -46.63] }
+  - { id: br/rio-de-janeiro, name: Rio de Janeiro, in: [br], at: [-22.91, -43.17] }
+  - { id: br/belo-horizonte, name: Belo Horizonte, in: [br], at: [-19.92, -43.94] }
+  - { id: br/florianopolis, name: Florianopolis, in: [br], at: [-27.60, -48.55] }
+  - { id: br/curitiba, name: Curitiba, in: [br], at: [-25.43, -49.27] }
+  - { id: br/porto-alegre, name: Porto Alegre, in: [br], at: [-30.03, -51.23] }
+  - { id: br/recife, name: Recife, in: [br], at: [-8.05, -34.88] }
+  - { id: ar/buenos-aires, name: Buenos Aires, in: [ar], at: [-34.60, -58.38] }
+  - { id: ar/cordoba, name: Cordoba, in: [ar], at: [-31.42, -64.18] }
+  - { id: cl/santiago, name: Santiago, aliases: [Santiago de Chile], in: [cl], at: [-33.45, -70.67] }
+  - { id: co/bogota, name: Bogota, in: [co], at: [4.71, -74.07] }
+  - { id: co/medellin, name: Medellin, in: [co], at: [6.24, -75.58] }
+  - { id: co/cali, name: Cali, in: [co], at: [3.45, -76.53] }
+  - { id: pe/lima, name: Lima, in: [pe], at: [-12.05, -77.04] }
+  - { id: uy/montevideo, name: Montevideo, in: [uy], at: [-34.90, -56.16] }
+  - { id: ec/quito, name: Quito, in: [ec], at: [-0.18, -78.47] }
+  - { id: cr/san-jose, name: San Jose, in: [cr], at: [9.93, -84.08] }
+  - { id: pa/panama-city, name: Panama City, in: [pa], at: [8.98, -79.52] }
+  - { id: ve/caracas, name: Caracas, in: [ve], at: [10.48, -66.90] }
+  - { id: do/santo-domingo, name: Santo Domingo, in: [do], at: [18.49, -69.93] }
+  - { id: pr/san-juan, name: San Juan, in: [pr], at: [18.47, -66.11] }

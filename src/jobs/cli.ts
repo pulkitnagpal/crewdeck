@@ -1,0 +1,176 @@
+// crewdeck jobs <cmd>: the notes Claude and the user share, the rules compiled from them, and the risky switches.
+// Text in the user's words (because, text, quote, company) comes from files or stdin, never from the command line.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createInterface } from 'node:readline/promises';
+import { type Config, CONFIG_PATH, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, ensureHome, loadConfig, setFeature } from '../config.ts';
+import { type Issue, MEMORY_KINDS } from './schema.ts';
+import { NOTES, NOTE_NAMES, loadJobNotes } from './notes.ts';
+import { compileRules, describeRules, judgeBrief } from './rules.ts';
+import { meTarget, parsePath, setField } from './edit.ts';
+import { remember, retire } from './memory.ts';
+
+const say = (s: string) => console.log(s);
+const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
+const positional = (a: string[]) => a.filter((x, i) => !x.startsWith('--') && !(i > 0 && a[i - 1].startsWith('--')));
+
+/** A file's text, or stdin for "-". */
+function textFrom(path: string | undefined, what: string): string {
+  if (!path) throw new Error(`${what} is required`);
+  return readFileSync(path === '-' ? 0 : path, 'utf8');
+}
+
+function context() {
+  const c = loadConfig();
+  ensureHome(c.jobs.home); // Jobs' own machine state: private (0700)
+  return c;
+}
+
+/** Today in the user's time zone (jobs/search.md schedule.timezone), else the system's. */
+function today(c: Config): string {
+  const tz = loadJobNotes(c.vault, null).search.data.schedule.timezone;
+  try { return new Date().toLocaleDateString('en-CA', tz ? { timeZone: tz } : {}); } catch { return new Date().toLocaleDateString('en-CA'); }
+}
+
+export function formatIssues(issues: Issue[]): string[] {
+  return issues.map((i) => `   ${i.level === 'error' ? 'error  ' : 'warning'}  ${i.path}: ${i.message}${i.fix ? `. Fix: ${i.fix}` : ''}`);
+}
+
+function check() {
+  const c = context();
+  const notes = loadJobNotes(c.vault, c.jobs.home);
+  say(`Jobs notes in ${c.vault}`);
+  for (const n of NOTE_NAMES) {
+    const l = notes[n];
+    const errs = l.issues.filter((i) => i.level === 'error').length;
+    say(`${errs ? '✗' : '✓'} ${NOTES[n]}${l.source === 'last-valid' ? '  (using its last valid version)' : ''}`);
+    for (const line of formatIssues(l.issues)) say(line);
+  }
+  const e = notes.issues.filter((i) => i.level === 'error').length, w = notes.issues.length - e;
+  say(`${e} error${e === 1 ? '' : 's'}, ${w} warning${w === 1 ? '' : 's'}`);
+  if (e) process.exitCode = 1;
+}
+
+function rulesCmd() {
+  const c = context();
+  const notes = loadJobNotes(c.vault, c.jobs.home);
+  say(describeRules(compileRules(notes)));
+  warnBroken(notes.issues);
+}
+
+function briefCmd() {
+  const c = context();
+  const notes = loadJobNotes(c.vault, c.jobs.home);
+  process.stdout.write(judgeBrief(notes));
+  warnBroken(notes.issues);
+}
+
+function warnBroken(issues: Issue[]) {
+  const errs = issues.filter((i) => i.level === 'error');
+  if (errs.length) console.error(`\n${errs.length} error(s) in your notes (run crewdeck jobs check); broken notes count as their last valid version or empty.`);
+}
+
+/** The value: positional, --value-file <f>, or "-" for stdin. */
+function valueArg(args: string[]): string {
+  const file = flag(args, 'value-file');
+  if (file) return readFileSync(file, 'utf8').replace(/\n$/, '');
+  const v = positional(args)[2];
+  if (v === undefined) throw new Error('give a value, --value-file <file>, or - for stdin');
+  return v === '-' ? readFileSync(0, 'utf8').replace(/\n$/, '') : v;
+}
+
+function me(args: string[]) {
+  const [verb, path] = positional(args);
+  if (verb !== 'set' || !path) throw new Error('usage: crewdeck jobs me set <field.path> <value> | --value-file <f> | -');
+  const c = context();
+  const { note, segs } = meTarget(path);
+  const r = setField(join(c.vault, NOTES[note]), note, segs, valueArg(args));
+  say(r.changed ? `${NOTES[note]}: ${r.path} set` : `${NOTES[note]}: ${r.path} unchanged`);
+}
+
+function pref(args: string[]) {
+  const [verb, path] = positional(args);
+  if (verb !== 'set' || !path) throw new Error('usage: crewdeck jobs pref set <field.path> <value> --because-file <file with the user\'s words>');
+  const because = textFrom(flag(args, 'because-file'), '--because-file (the user\'s own words for the change)');
+  const c = context();
+  let segs = parsePath(path);
+  if (segs[0] === 'search') segs = segs.slice(1);
+  const r = setField(join(c.vault, NOTES.search), 'search', segs, valueArg(args), { because, today: today(c) });
+  say(r.changed ? `jobs/search.md: ${r.path} set; change logged under ## Changes` : `jobs/search.md: ${r.path} unchanged`);
+}
+
+function rememberCmd(args: string[]) {
+  const c = context();
+  const file = join(c.vault, NOTES.memory);
+  const retireId = flag(args, 'retire');
+  if (retireId) {
+    retire(file, retireId);
+    return say(`${retireId} retired (kept in jobs/memory.md as superseded_by: retired)`);
+  }
+  const kind = flag(args, 'kind') as (typeof MEMORY_KINDS)[number] | undefined;
+  if (!kind) throw new Error(`usage: crewdeck jobs remember --kind ${MEMORY_KINDS.join('|')} --text-file <f> --quote-file <f> [--key k] [--scope all|company --company-file <f>] [--title-words-file <f>] [--supersedes m-N]  |  --retire m-N`);
+  const words = flag(args, 'title-words-file');
+  const r = remember(file, {
+    kind,
+    text: textFrom(flag(args, 'text-file'), '--text-file'),
+    quote: textFrom(flag(args, 'quote-file'), '--quote-file (the user\'s exact words)'),
+    key: flag(args, 'key'),
+    scope: flag(args, 'scope') as 'all' | 'company' | undefined,
+    company: flag(args, 'company-file') ? textFrom(flag(args, 'company-file'), '--company-file').trim() : undefined,
+    title_words: words ? textFrom(words, '--title-words-file').split(/[,\n]/).map((w) => w.trim()).filter(Boolean) : undefined,
+    supersedes: flag(args, 'supersedes'),
+  }, today(c));
+  if (r.existing) say(`already remembered as ${r.item.id}`);
+  else say(`remembered ${r.item.id} (${r.item.kind})${r.superseded.length ? `; replaces ${r.superseded.join(', ')}` : ''}`);
+}
+
+const RISK: Record<keyof JobsFeatures, string> = {
+  linkedin_search: 'Reads LinkedIn\'s public job search as a guest. LinkedIn\'s terms forbid automated access: your IP can be rate-limited or blocked. Paced at 2.5 s; stops at the first refusal.',
+  linkedin_links: 'Lets you paste LinkedIn job links; Crewdeck reads that one posting page. Same terms-of-service risk, one page per link.',
+  easy_apply: 'Lets Claude fill LinkedIn Easy Apply forms in your signed-in browser (you click Submit). Automated use of your account is against LinkedIn\'s terms and can get it restricted.',
+  daily_quick_apply: `How many Easy Apply forms Claude may fill per day (0 to ${FEATURE_CAPS.daily_quick_apply}).`,
+  email_drafts: 'Lets Claude create Gmail drafts to recruiters. Drafts only: nothing is ever sent by Crewdeck.',
+  max_emails_per_day: `Most email drafts per day (0 to ${FEATURE_CAPS.max_emails_per_day}).`,
+  linkedin_message_text: 'Lets Claude write LinkedIn message text for you to send yourself.',
+};
+
+async function features(args: string[]) {
+  const [name, value] = positional(args);
+  const c = loadConfig();
+  if (!name) {
+    for (const [k, v] of Object.entries(c.jobs.features)) say(`${k.padEnd(22)} ${String(typeof v === 'boolean' ? (v ? 'on' : 'off') : v).padEnd(4)} ${RISK[k as keyof JobsFeatures]}`);
+    return say('\nOnly you can change these: Jobs → Settings, or crewdeck jobs features <name> <on|off|number> in your own terminal.');
+  }
+  if (!(name in FEATURE_DEFAULTS)) throw new Error(`unknown feature ${name} (known: ${Object.keys(FEATURE_DEFAULTS).join(', ')})`);
+  // An agent's shell is not a terminal: risky switches change only when a person is at the keyboard (design D13).
+  if (!process.stdin.isTTY) throw new Error('Only you can change feature switches: run this yourself in a terminal, or use Jobs → Settings.');
+  if (value === undefined) throw new Error(`usage: crewdeck jobs features ${name} <${name in FEATURE_CAPS ? 'number' : 'on|off'}>`);
+  const v: boolean | number = name in FEATURE_CAPS ? Number(value) : value === 'on' ? true : value === 'off' ? false : (() => { throw new Error('use on or off'); })();
+  const enabling = v === true || (typeof v === 'number' && v > 0);
+  if (enabling) {
+    say(RISK[name as keyof JobsFeatures]);
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = (await rl.question('Type yes to switch it on: ')).trim().toLowerCase();
+    rl.close();
+    if (answer !== 'yes') return say('Unchanged.');
+  }
+  setFeature(name, v, CONFIG_PATH);
+  say(`${name}: ${typeof v === 'boolean' ? (v ? 'on' : 'off') : v}`);
+}
+
+const USAGE = `usage: crewdeck jobs <command>
+  check                                   validate your job notes (errors and warnings)
+  rules                                   the hard drops compiled from your notes
+  judge-brief                             the judging instructions built from your notes
+  me set <field.path> <value>             me/profile.md or me/career.md (value, --value-file <f> or -)
+  pref set <field.path> <value> --because-file <f>   jobs/search.md, logged under ## Changes
+  remember --kind <kind> --text-file <f> --quote-file <f> [--key k] [--scope all|company --company-file <f>]
+           [--title-words-file <f>] [--supersedes m-N]  |  remember --retire m-N
+  features [<name> <on|off|number>]       risky switches (changing needs your own terminal)`;
+
+export async function main(args: string[]) {
+  const [cmd, ...rest] = args;
+  const run: Record<string, (a: string[]) => unknown> = { check, rules: rulesCmd, 'judge-brief': briefCmd, me, pref, remember: rememberCmd, features };
+  if (!cmd || !run[cmd]) { say(USAGE); if (cmd) process.exitCode = 1; return; }
+  await run[cmd](rest);
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// crewdeck — init | up | add-project <name> <path> | doctor
+// crewdeck — init | up | add-project <name> <path> | doctor | jobs <cmd>
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -146,6 +146,8 @@ function doctor() {
 
 const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
 const [cmd, ...rest] = process.argv.slice(2);
-const run: Record<string, (a: string[]) => unknown> = { init, up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd };
-if (!cmd || !run[cmd]) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail <id> --result-file <path>'); process.exit(cmd ? 1 : 0); }
+// Jobs loads only when used.
+const jobs = (a: string[]) => import('./jobs/cli.ts').then((m) => m.main(a));
+const run: Record<string, (a: string[]) => unknown> = { init, up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, jobs };
+if (!cmd || !run[cmd]) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail <id> --result-file <path> | jobs <cmd>'); process.exit(cmd ? 1 : 0); }
 Promise.resolve(run[cmd](rest)).catch((e) => { console.error(e?.message ?? e); process.exit(1); });

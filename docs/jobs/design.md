@@ -698,6 +698,10 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P1 built (2026-11-19):** notes read/write with last-valid fallback, schema v1 validators, gazetteer, pay, compiled
+  rules + judge brief, `crewdeck jobs check|rules|judge-brief|me|pref|remember|features`, `jobs` config section. Details
+  and deviations: [impl/01-notes-and-rules.md](impl/01-notes-and-rules.md) (commute distance for on-site cities,
+  `exclude.travel` = lowest level that drops, `temporary` employment type, avoid `title_words` in memory).
 - **v0.3 (2026-11-19):** from the first real run (one application filled outside Crewdeck, then stopped):
   - §2.3a, exactly what Apply does on LinkedIn Easy Apply and company sites, and what the user sees in Crewdeck;
   - Prepare reads non-headless forms live, so every question is known before Apply;
