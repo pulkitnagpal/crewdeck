@@ -14,7 +14,7 @@
   // Embedded apps that understand ?appearance= follow Crewdeck's light/dark choice.
   const withAppearance = (u) => { const x = new URL(u); x.searchParams.set('appearance', state.appearance); return x.toString(); };
   const views = [
-    { id: 'notes', kind: 'Notes', label: 'Memory', short: 'Notes', url: state.notes, icon: ICON.notes },
+    { id: 'notes', kind: 'Notes', label: 'Memory', short: 'Notes', url: `${host}:${state.notes.port}/`, icon: ICON.notes },
     'sep',
     ...state.projects.map((p) => ({ id: `board:${p.name}`, kind: 'Board', label: p.label, short: p.label, url: `${host}:${p.boardPort}/`, icon: ICON.board })),
     ...(state.apps.length ? ['sep'] : []),

@@ -13,7 +13,8 @@
   },
   "scripts": {
     "crewdeck": "node src/cli.ts",
-    "test": "node --test --test-reporter=spec \"test/**/*.test.ts\""
+    "test": "node scripts/leak-scan.mjs && node --test --test-reporter=spec \"test/**/*.test.ts\"",
+    "leak-scan": "node scripts/leak-scan.mjs"
   },
   "dependencies": {
     "backlog.md": "1.55.3",

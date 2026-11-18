@@ -1,5 +1,6 @@
 // Per-user configuration: ~/.crewdeck/config.yaml. Never inside the repo.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,7 @@ import { parse, stringify } from 'yaml';
 export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const HOME = process.env.CREWDECK_HOME ?? join(homedir(), '.crewdeck');
 export const CONFIG_PATH = join(HOME, 'config.yaml');
+export const TOKEN_PATH = join(HOME, 'token');
 export const SB_VERSION = '2.12.1';
 
 /** label: what the nav shows (defaults to "Board" with one project, else the project name). */
@@ -51,6 +53,31 @@ export function loadConfig(path = CONFIG_PATH): Config {
 }
 
 export function saveConfig(c: Config, path = CONFIG_PATH) {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, stringify(c));
+  ensureHome(dirname(path));
+  writeFileSync(path, stringify(c), { mode: 0o600 });
+}
+
+/** Crewdeck's own folder: private to the user (0700). Refuses one others can write to after that. */
+export function ensureHome(home = HOME) {
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  chmodSync(home, 0o700);
+  if (statSync(home).mode & 0o022) throw new Error(`${home} is writable by other users: fix its permissions first`);
+}
+
+const TOKEN = /^[a-f0-9]{64}$/;
+
+/** The secret the bridge and the CLI present to the server's agent endpoints (64 hex chars, file mode 0600). */
+export function ensureToken(path = TOKEN_PATH): string {
+  const have = readToken(path);
+  if (have) { chmodSync(path, 0o600); return have; }
+  ensureHome(dirname(path));
+  const t = randomBytes(32).toString('hex');
+  writeFileSync(path, t + '\n', { mode: 0o600 });
+  return t;
+}
+
+export function readToken(path = TOKEN_PATH): string | null {
+  if (!existsSync(path)) return null;
+  const t = readFileSync(path, 'utf8').trim();
+  return TOKEN.test(t) ? t : null;
 }

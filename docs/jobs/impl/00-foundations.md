@@ -23,7 +23,7 @@ proxy, queue, CLI and bridge; it adds no Jobs code. Everything here must ship wi
 - **Headers on every response:** `x-content-type-options: nosniff`, `referrer-policy: no-referrer`,
   `cross-origin-resource-policy: same-origin`, `cache-control: no-store`. HTML also gets
   `content-security-policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;
-  connect-src 'self'; frame-src http://localhost:* http://127.0.0.1:* http://[::1]:*; object-src 'none';
+  connect-src 'self'; frame-src http://localhost:* http://127.0.0.1:*; object-src 'none';
   base-uri 'none'; form-action 'self'; frame-ancestors 'self'`.
 - Request body limit stays 100 KB (413 above it).
 

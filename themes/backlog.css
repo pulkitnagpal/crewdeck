@@ -1,8 +1,7 @@
 /* Crewdeck look for Backlog.md's board, injected by Crewdeck's proxy. Backlog.md itself stays unmodified. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 html { --cd-ground: #FBFAF7; --cd-panel: #F3F1EC; --cd-card: #FFFFFF; --cd-line: #E7E3DA; --cd-ink: #1C1B19; --cd-muted: #5E5A52; --cd-accent: #3550D6; --cd-accent-bg: #E8ECFB; }
 html.dark { --cd-ground: #171716; --cd-panel: #1F1E1C; --cd-card: #23221F; --cd-line: #2E2C29; --cd-ink: #ECE9E3; --cd-muted: #9A958C; --cd-accent: #8EA2FF; --cd-accent-bg: #252B48; }
-html, body, button, input, select, textarea { font-family: Inter, -apple-system, system-ui, sans-serif !important; -webkit-font-smoothing: antialiased; }
+html, body, button, input, select, textarea { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif !important; -webkit-font-smoothing: antialiased; }
 body, #root, main { background: var(--cd-ground) !important; color: var(--cd-ink); }
 /* surfaces */
 .bg-white, .dark .dark\:bg-gray-800, .dark .dark\:bg-gray-900 { background-color: var(--cd-card) !important; }

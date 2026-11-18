@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // crewdeck — init | up | add-project <name> <path> | doctor
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parse } from 'yaml';
-import { CONFIG_PATH, HOME, REPO, SB_VERSION, defaults, expand, loadConfig, saveConfig, type Config } from './config.ts';
+import { CONFIG_PATH, HOME, REPO, SB_VERSION, TOKEN_PATH, defaults, ensureHome, ensureToken, expand, loadConfig, readToken, saveConfig, type Config } from './config.ts';
 import { supervise, silverbulletBin, backlogBin } from './supervisor.ts';
 import { createProxy } from './proxy.ts';
 import { createShell } from './server.ts';
@@ -57,6 +57,7 @@ async function init(args: string[]) {
   const c: Config = existsSync(CONFIG_PATH) ? (loadConfigRaw()) : defaults();
   const v = flag(args, 'vault'); if (v) c.vault = v;
   saveConfig(c);
+  ensureToken();
   await installSilverBullet(c.silverbullet.version);
   initVault(expand(c.vault));
   say(`\nConfig: ${CONFIG_PATH}\nNext: crewdeck add-project <name> <path-to-git-repo>, then crewdeck up`);
@@ -83,25 +84,31 @@ function addProject(args: string[]) {
 
 function up() {
   const c = loadConfig();
+  ensureHome();
+  const token = ensureToken();
   const theme = readFileSync(join(REPO, 'themes', 'backlog.css'), 'utf8');
   // Backlog.md reads its light/dark choice from localStorage before it renders: set it first.
   const mode = `<script>try{localStorage.setItem('backlog-theme','${c.appearance}')}catch(e){}</script>`;
   const services = [
-    { name: 'silverbullet', cmd: silverbulletBin(), args: ['--single', '-L', '127.0.0.1', '-p', String(c.silverbullet.port), c.vault], env: { SB_URL_PREFIX: '/notes' } },
+    // SilverBullet on an internal port; the public Notes port is a Crewdeck proxy (its own origin, Host/Origin checks).
+    { name: 'silverbullet', cmd: silverbulletBin(), args: ['--single', '-L', '127.0.0.1', '-p', String(c.silverbullet.port + 100), c.vault] },
     ...c.projects.map((p) => ({ name: `board-${p.name}`, cmd: backlogBin(), args: ['browser', '-p', String(p.boardPort! + 100), '--no-open'], cwd: p.path })),
     ...c.apps.filter((a) => a.command).map((a) => ({ name: `app-${a.name}`, cmd: a.command!, args: a.args ?? [], cwd: a.cwd })),
   ];
   supervise(services);
+  createProxy({ target: { host: '127.0.0.1', port: c.silverbullet.port + 100 } }).listen(c.silverbullet.port, '127.0.0.1');
   for (const p of c.projects) {
     createProxy({ target: { host: '127.0.0.1', port: p.boardPort! + 100 }, injectHead: `${mode}<style id="crewdeck-theme">${theme}</style>` })
       .listen(p.boardPort!, '127.0.0.1');
   }
-  createShell(c).listen(c.port, '127.0.0.1', () => say(`Crewdeck on http://localhost:${c.port}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));
+  createShell(c, undefined, { token }).listen(c.port, '127.0.0.1', () => say(`Crewdeck on http://localhost:${c.port}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));
 }
 
 async function api(path: string, body?: unknown) {
   const c = loadConfig();
-  const r = await fetch(`http://127.0.0.1:${c.port}${path}`, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const token = readToken();
+  if (body && !token) throw new Error(`No token at ${TOKEN_PATH}: run crewdeck up once`);
+  const r = await fetch(`http://127.0.0.1:${c.port}${path}`, body ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-crewdeck-token': token! }, body: JSON.stringify(body) } : {});
   const out = await r.json();
   if (!r.ok) throw new Error(out?.error ?? `HTTP ${r.status}`);
   return out;
@@ -109,10 +116,19 @@ async function api(path: string, body?: unknown) {
 
 async function requestsCmd() { for (const r of await api('/api/requests')) say(`${r.id}\t${r.status}\t${r.lane}\t${r.text}${r.result ? `  → ${r.result}` : ''}`); }
 
+/** The result text: --result-file <path>, --result - (stdin), or --result "<text>". Files keep page text out of the shell. */
+function resultText(args: string[]): string {
+  const file = flag(args, 'result-file');
+  if (file) return readFileSync(file, 'utf8').trim();
+  const v = flag(args, 'result');
+  if (v === '-') return readFileSync(0, 'utf8').trim();
+  return v ?? '';
+}
+
 async function requestCmd(args: string[]) {
   const [verb, id] = args;
-  if (!['done', 'fail'].includes(verb ?? '') || !id) throw new Error('usage: crewdeck request done|fail <id> --result "<one line for the page>"');
-  const r = await api(`/api/requests/${Number(id)}/${verb}`, { result: flag(args, 'result') ?? '' });
+  if (!['done', 'fail'].includes(verb ?? '') || !/^\d+$/.test(id ?? '')) throw new Error('usage: crewdeck request done|fail <id> --result-file <path> | --result - | --result "<one line>"');
+  const r = await api(`/api/requests/${Number(id)}/${verb}`, { result: resultText(args) });
   say(`request ${r.id} ${r.status}`);
 }
 
@@ -120,6 +136,8 @@ function doctor() {
   const c = loadConfig();
   const ok = (b: boolean, s: string) => say(`${b ? '✓' : '✗'} ${s}`);
   ok(existsSync(silverbulletBin()), `SilverBullet binary (${silverbulletBin()})`);
+  ok(existsSync(HOME) && (statSync(HOME).mode & 0o077) === 0, `${HOME} is private (0700)`);
+  ok(!!readToken() && (statSync(TOKEN_PATH).mode & 0o077) === 0, `bridge token ${TOKEN_PATH} (0600)`);
   ok(existsSync(join(c.vault, 'CLAUDE.md')), `vault ${c.vault}`);
   for (const p of c.projects) ok(existsSync(join(p.path, 'backlog', 'config.yml')), `board ${p.name} (${p.path})`);
 }
@@ -127,5 +145,5 @@ function doctor() {
 const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
 const [cmd, ...rest] = process.argv.slice(2);
 const run: Record<string, (a: string[]) => unknown> = { init, up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd };
-if (!cmd || !run[cmd]) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail <id> --result <text>'); process.exit(cmd ? 1 : 0); }
+if (!cmd || !run[cmd]) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail <id> --result-file <path>'); process.exit(cmd ? 1 : 0); }
 Promise.resolve(run[cmd](rest)).catch((e) => { console.error(e?.message ?? e); process.exit(1); });

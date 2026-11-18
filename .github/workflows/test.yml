@@ -1,11 +1,29 @@
 name: test
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.x, 24.x]
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with: { node-version: '${{ matrix.node }}' }
       - run: npm ci
+      # The leak scan also checks every commit being pushed or proposed, authors included.
+      - name: commit range for the leak scan
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "LEAK_SCAN_RANGE=${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$GITHUB_ENV"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "LEAK_SCAN_RANGE=${{ github.event.before }}..${{ github.sha }}" >> "$GITHUB_ENV"
+          fi
       - run: npm test
+        env:
+          LEAK_SCAN_KEY: ${{ secrets.LEAK_SCAN_KEY }}
+      - run: npm audit --omit=dev --audit-level=high

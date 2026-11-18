@@ -1,0 +1,3 @@
+/* Crewdeck's colours and type, shared by the shell and Jobs. Light by default; dark follows Crewdeck's appearance setting. */
+:root { --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; --ground: #FBFAF7; --rail: #F3F1EC; --line: #E7E3DA; --ink: #1C1B19; --muted: #8A857B; --soft: #5E5A52; --accent: #3550D6; --accent-bg: #E8ECFB; --chip: #EFEDE8; }
+html[data-appearance="dark"] { --ground: #171716; --rail: #1F1E1C; --line: #2E2C29; --ink: #ECE9E3; --muted: #9A958C; --soft: #BDB7AC; --accent: #8EA2FF; --accent-bg: #252B48; --chip: #2A2926; }

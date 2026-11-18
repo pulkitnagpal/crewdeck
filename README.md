@@ -40,12 +40,14 @@ Crewdeck page ── "Ask Claude about this…" ──► request queue (lane pe
                                                    ▼  matches that project claims it while idle
                                       Claude session (project:myapp) does the work
                                                    │
-Crewdeck page ◄── result shows up ─── `crewdeck request done <id> --result "…"`
+Crewdeck page ◄── result shows up ─── `crewdeck request done <id> --result-file <file>`
 ```
 
 A session inside a project's folder (or one of its worktrees) owns `project:<name>`; any other session owns
 `cockpit`. Requests are only delivered while a session is idle, unfinished ones go back to the queue at the end of
-a turn, and a request that keeps failing is marked failed after three tries.
+a turn, and a request that keeps failing is marked failed after three tries. The bridge and Crewdeck share a secret
+token (`~/.crewdeck/token`), so only your own Claude sessions can pick up or close requests, and the bridge checks
+that it is really talking to Crewdeck before it delivers anything.
 
 Your memory follows the [LLM-wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
 you save sources to `raw/`, Claude maintains `wiki/` (summaries, links, `index.md`, `log.md`), and `me/` holds
@@ -65,8 +67,8 @@ npm install
 node src/cli.ts init
 ```
 
-This writes `~/.crewdeck/config.yaml`, downloads SilverBullet (pinned version) to `~/.crewdeck/bin/`, and
-creates your vault at `~/Crewdeck/vault` (change it with `--vault <path>`).
+This writes `~/.crewdeck/config.yaml` and the bridge token (both private to you), downloads SilverBullet (pinned
+version) to `~/.crewdeck/bin/`, and creates your vault at `~/Crewdeck/vault` (change it with `--vault <path>`).
 
 Add each project you work on (it must be a git repository):
 
@@ -87,6 +89,8 @@ Open **http://localhost:4848** in Claude desktop's browser pane (or any browser)
 apps share one light theme (set `appearance: dark` in the config for dark).
 
 Check your setup any time with `node src/cli.ts doctor`. Logs are in `~/.crewdeck/logs/`.
+
+Notes open on their own port (4849 by default), boards on theirs; the page links to them for you.
 
 ### Install the bridge (for the two-way part)
 
@@ -146,10 +150,16 @@ Add this to `.claude/launch.json` in any folder you open in Claude Code, then as
 
 ## Security
 
-- Everything binds to `127.0.0.1`. Crewdeck's own servers (the page and the board proxies) also refuse requests
-  whose `Host` isn't `localhost`/`127.0.0.1`, which blocks DNS-rebinding pages; SilverBullet and Backlog.md listen
-  on internal ports behind them.
-- SilverBullet runs with no accounts because only your machine can reach it. Don't expose the ports.
+- Everything binds to `127.0.0.1`. Every Crewdeck port (the page, Notes, each board) refuses requests whose `Host`
+  isn't `localhost`, `127.0.0.1` or `[::1]`, which blocks DNS-rebinding pages.
+- Notes and each board run behind their own proxy port, so each is its own origin: a note's scripts can't call the
+  Crewdeck page's API. Through a proxy, only that tool's own pages (or a non-browser client) can change anything.
+- The page's API only takes requests from the page itself (exact origin, same-origin fetch, JSON). The endpoints
+  your Claude sessions use need the token in `~/.crewdeck/token` (0600). No endpoint sends CORS headers.
+- `~/.crewdeck` is private (0700). Requests are capped (20 open per lane, 30 a minute).
+- SilverBullet and Backlog.md listen on internal ports behind the proxies with no accounts, because only your
+  machine can reach them. Other programs on your machine can; don't expose the ports.
+- The repo is scanned for personal data on every test run and in CI (`scripts/leak-scan.mjs`).
 - Agents edit your notes and tickets; review what they change like any other code (your vault and repos are git-friendly).
 
 ## Roadmap

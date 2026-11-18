@@ -28,3 +28,20 @@ test('config: one project is labelled "Board"; apps must be local http URLs', ()
   writeFileSync(p, 'apps:\n  - name: evil\n    url: https://example.com/\n');
   assert.throws(() => loadConfig(p), /localhost/);
 });
+
+test('home and token: private folder (0700), a 64-hex token (0600), stable once made', async () => {
+  const { ensureHome, ensureToken, readToken } = await import('../src/config.ts');
+  const { statSync, chmodSync } = await import('node:fs');
+  const home = join(mkdtempSync(join(tmpdir(), 'cdh-')), 'crew');
+  ensureHome(home);
+  assert.equal(statSync(home).mode & 0o777, 0o700);
+  const p = join(home, 'token');
+  const t = ensureToken(p);
+  assert.match(t, /^[a-f0-9]{64}$/);
+  assert.equal(statSync(p).mode & 0o777, 0o600);
+  assert.equal(ensureToken(p), t);
+  assert.equal(readToken(join(home, 'missing')), null);
+  writeFileSync(p, 'not a token');
+  assert.equal(readToken(p), null);
+  chmodSync(home, 0o777); ensureHome(home); assert.equal(statSync(home).mode & 0o777, 0o700, 'tightened');
+});

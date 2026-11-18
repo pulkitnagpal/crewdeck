@@ -1,8 +1,10 @@
 // A small reverse proxy: HTTP and WebSocket pass-through to a local service, with an optional
-// stylesheet injected into its HTML pages. Used to theme Backlog.md and to serve SilverBullet same-origin.
+// stylesheet injected into its HTML pages. Each tool (SilverBullet, every Backlog.md board) gets its own proxy port,
+// so it has its own origin, and only this machine's pages on that same origin can change anything through it.
 import { createServer, request, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { connect } from 'node:net';
 import { createGunzip, createBrotliDecompress, createInflate } from 'node:zlib';
+import { isLocalHost, isSafeMethod, originIsOwnOrAbsent } from './http.ts';
 
 export type ProxyOpts = { target: { host: string; port: number }; injectHead?: string };
 
@@ -59,13 +61,20 @@ export function forwardUpgrade(req: IncomingMessage, socket: any, head: Buffer, 
   up.on('error', close); socket.on('error', close);
 }
 
-/** A whole-server proxy (one port per themed service). Only answers on 127.0.0.1 / localhost. */
+/**
+ * A whole-server proxy (one port per tool). Answers only to this machine's host names (DNS rebinding), and lets a
+ * request change something (POST/PUT/DELETE…, WebSockets) only from this port's own pages or from a non-browser client.
+ */
 export function createProxy(o: ProxyOpts): Server {
-  const local = (req: IncomingMessage) => /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host ?? '');
   const s = createServer((req, res) => {
-    if (!local(req)) { res.writeHead(403); res.end('forbidden'); return; }
+    if (!isLocalHost(req.headers.host)) { res.writeHead(403); res.end('forbidden'); return; }
+    if (!isSafeMethod(req.method) && !originIsOwnOrAbsent(req)) { res.writeHead(403); res.end('forbidden'); return; }
     forward(req, res, o);
   });
-  s.on('upgrade', (req, socket, head) => { if (!local(req)) { socket.destroy(); return; } forwardUpgrade(req, socket, head, o); });
+  s.on('upgrade', (req, socket, head) => {
+    if (!isLocalHost(req.headers.host) || !originIsOwnOrAbsent(req)) { socket.destroy(); return; }
+    forwardUpgrade(req, socket, head, o);
+  });
+  s.on('clientError', (_e, socket) => socket.destroy());
   return s;
 }
