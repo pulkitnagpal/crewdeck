@@ -19,7 +19,7 @@ test('config: expands ~, assigns board ports, rejects unsafe project names', () 
 test('config: one project is labelled "Board"; apps must be local http URLs', () => {
   const dir = mkdtempSync(join(tmpdir(), 'cd-'));
   const p = join(dir, 'config.yaml');
-  writeFileSync(p, 'projects:\n  - name: alpha\n    path: /tmp/a\napps:\n  - name: jobs\n    url: http://localhost:4747/\n');
+  writeFileSync(p, 'projects:\n  - name: alpha\n    path: /tmp/a\napps:\n  - name: dashboard\n    url: http://localhost:4747/\n');
   const c = loadConfig(p);
   assert.equal(c.projects[0].label, 'Board');
   assert.equal(c.appearance, 'light');

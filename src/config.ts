@@ -12,7 +12,7 @@ export const SB_VERSION = '2.12.1';
 
 /** label: what the nav shows (defaults to "Board" with one project, else the project name). */
 export type Project = { name: string; path: string; label?: string; boardPort?: number };
-/** Any other local web app to show in Crewdeck (e.g. a jobs tracker). Crewdeck starts `command` if given. */
+/** Any other local web app to show in Crewdeck (e.g. a dashboard). Crewdeck starts `command` if given. */
 export type App = { name: string; label?: string; url: string; command?: string; args?: string[]; cwd?: string };
 export type Config = {
   port: number;

@@ -5,7 +5,7 @@ Status: approved direction (2026-11-17), stage 1 in build. Changelog at the end.
 ## Intent
 
 One workspace, inside Claude desktop, where a solo builder and their Claude agents work on the same things:
-tickets, notes and memory, and (optionally) job applications. It opens in Claude desktop's browser pane next
+tickets, notes and memory, plus any other local web app you plug in. It opens in Claude desktop's browser pane next
 to the chat. Humans click and edit; agents read and write the same files; requests from the page reach the
 right Claude session.
 
@@ -21,8 +21,8 @@ right Claude session.
 
 - No new note editor or kanban: if SilverBullet or Backlog.md does it, use theirs.
 - No cloud service, accounts or telemetry: everything binds to 127.0.0.1.
-- Agents never submit, send, post or pay on the user's behalf (job forms, email, X): they prepare, the human clicks.
-- No personal data in the repo: the vault, projects and job data live outside it.
+- Agents never submit, send, post or pay on the user's behalf (forms, email, social posts): they prepare, the human clicks.
+- No personal data in the repo: the vault and your projects live outside it.
 
 ## Layout on disk
 
@@ -65,18 +65,17 @@ The supervisor restarts a child that exits, and stops all children on exit.
 
 - The plugin's mod gives each Claude session a lane from its working folder: a project folder → `project:<name>`;
   else `cockpit`. It claims requests for its lane only while idle, and puts back unfinished ones at turn end
-  (lessons from the Job Agent bridge).
+  (idle-only delivery, put-back, bounded retries).
 - Requests come from the shell (Ask Claude, Start agent on ticket) and from Backlog.md's `onStatusChange` hook
   (ticket moved to In Progress → `start` request on the project lane).
 - Skills: `memory` (ingest / query / lint the vault), `board` (work a ticket in a worktree, keep its status and
-  notes current), `jobs` (stage 3).
+  notes current).
 
 ## Stages
 
 1. Shell + supervisor + proxies + theme + vault template + README/setup. **Done when** `crewdeck up` shows
    Notes and a project Board, themed, in Claude's browser pane, and edits from disk appear live.
 2. Plugin: lane bridge, request queue, ticket → agent, memory skills.
-3. Jobs module (extracted from the author's job agent, with example config only).
 
 ## Left to the builder
 

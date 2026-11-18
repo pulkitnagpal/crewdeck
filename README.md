@@ -26,7 +26,7 @@ Claude desktop
 └── browser pane → Crewdeck  http://localhost:4848
      ├── Notes  → SilverBullet over your vault folder (Markdown, also opens in Obsidian)
      ├── Board  → Backlog.md for each project (tickets live in the project's repo)
-     └── Apps   → any other local web app you add (a jobs tracker, a dashboard…)
+     └── Apps   → any other local web app you add (a dashboard, a tracker, your own tool…)
 ```
 
 ### Two-way: the page talks to your Claude sessions
@@ -113,12 +113,12 @@ projects:                  # added by `crewdeck add-project`
     path: ~/code/myapp
     label: Board           # what the nav shows (default: "Board" with one project, else the name)
 apps:                      # optional: other local web apps to show, started for you if `command` is set
-  - name: jobs
-    label: Jobs
+  - name: dashboard
+    label: Dashboard
     url: http://localhost:4747/
     command: node
     args: [src/cli.ts, web]
-    cwd: ~/code/my-job-tracker
+    cwd: ~/code/my-dashboard
 ```
 
 Apps that read an `?appearance=light|dark` query parameter can follow Crewdeck's theme.
@@ -141,7 +141,7 @@ Add this to `.claude/launch.json` in any folder you open in Claude Code, then as
 - **Tickets:** ask Claude in a project session to "take TASK-3". It updates the ticket with the Backlog.md CLI
   (`backlog task edit 3 -s "In Progress" -a @claude`) and the board updates live. Put work that needs your
   eyes in **Needs you**.
-- **Memory:** "ingest raw/2026-11-17 brief.md", "what do we know about pricing?", "remember I prefer remote roles".
+- **Memory:** "ingest raw/2026-11-17 brief.md", "what do we know about pricing?", "remember I prefer short answers".
   Claude follows the vault's `CLAUDE.md`.
 
 ## Security
@@ -159,8 +159,6 @@ Add this to `.claude/launch.json` in any folder you open in Claude Code, then as
 - [ ] Stage 2 — "start an agent on this ticket" (moving a card starts a worktree session), memory skills
       (ingest / query / lint), agent status on cards
 - [x] Apps — show any local web app in the same rail, with the same theme
-- [ ] Stage 3 — optional Jobs module: find roles, draft answers from your own words, fill forms in Claude's
-      browser pane; you press Submit
 
 Design notes: [docs/design.md](docs/design.md).
 
