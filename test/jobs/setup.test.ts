@@ -140,6 +140,32 @@ test('jobs init --preset seeds search and sources (with a Changes line), --home 
   assert.equal(check.code, 0, check.out);
 });
 
+test('jobs init --preset right after crewdeck init: the untouched template notes take the preset; an edited one keeps both as they are', async () => {
+  // crewdeck init copies vault-template, jobs notes included (found by the P6 journey: the preset never applied).
+  const s = await fresh();
+  const r = jobs(s.home, ['init', '--preset', 'onsite-city', '--no-providers']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /✓ created jobs\/search\.md from the onsite-city preset \(it was still the empty template\)/);
+  assert.match(r.out, /✓ created jobs\/sources\.md from the onsite-city preset/);
+  assert.doesNotMatch(r.out, /preset was not applied/);
+  const preset = (n: string) => readFileSync(join(REPO, 'presets', 'jobs', 'onsite-city', n), 'utf8');
+  assert.match(readFileSync(join(s.vault, 'jobs', 'search.md'), 'utf8'), /- \d{4}-\d{2}-\d{2}: created from the onsite-city preset\./);
+  assert.equal(readFileSync(join(s.vault, 'jobs', 'sources.md'), 'utf8'), preset('sources.md'));
+  assert.equal(mode(join(s.vault, 'jobs', 'search.md')), 0o600);
+  assert.equal(readFileSync(join(s.vault, 'me', 'career.md'), 'utf8'), readFileSync(join(REPO, 'vault-template', 'me', 'career.md'), 'utf8'), 'other notes untouched');
+
+  // One note with the user's own words: the preset is not applied to either (it is one set of settings).
+  const t = await fresh();
+  const sources = join(t.vault, 'jobs', 'sources.md');
+  writeFileSync(sources, readFileSync(sources, 'utf8').replace('watchlist: []', 'watchlist: [{ name: Example Co, careers_url: "https://jobs.example.com/careers" }]'));
+  const mine = { search: readFileSync(join(t.vault, 'jobs', 'search.md'), 'utf8'), sources: readFileSync(sources, 'utf8') };
+  const k = jobs(t.home, ['init', '--preset', 'onsite-city', '--no-providers']);
+  assert.equal(k.code, 0, k.out + k.err);
+  assert.match(k.out, /preset was not applied to jobs\/search\.md and jobs\/sources\.md/);
+  assert.equal(readFileSync(join(t.vault, 'jobs', 'search.md'), 'utf8'), mine.search);
+  assert.equal(readFileSync(sources, 'utf8'), mine.sources);
+});
+
 test('jobs init refuses: no config, no vault, unknown preset', async () => {
   const s = await fresh({ vault: false });
   const noVault = jobs(s.home, ['init', '--no-providers']);

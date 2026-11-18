@@ -698,6 +698,13 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P6 built (2026-11-19):** journey tests for the two fictional people (`test/jobs/e2e/`): setup through validated commands,
+  the real provider install and sandbox from a local site, budgeted Find with a scripted judge, paste a link through the
+  lane and the token, Prepare (form read, draft, citation failure → first-time → remembered and reused), Apply with a
+  test-only driver (the plan exactly, submit never touched, needs you → apply again → applied), preference change +
+  refilter, Not interested, risky switches, a broken note; ≈ 15 s for both. Fixed from them: a preset now applies after
+  `crewdeck init` (untouched template notes), a Yes/No "needs you" answer is remembered for every company, the last-valid
+  time says UTC. Details and captured outputs: [impl/06-e2e.md](impl/06-e2e.md).
 - **P5 built (2026-11-19):** pinned providers (`scripts/update-providers-manifest.mjs <checkout> <commit>` → a manifest of
   the import closure at career-ops-hq/career-ops@f3b043d: 137 providers, 166 files, js-yaml users and local-parser
   excluded), install through netguard with per-file sha256 into `providers/<commit>/` (read-only, LICENSE),

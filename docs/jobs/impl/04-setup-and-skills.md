@@ -99,7 +99,8 @@ Deny rules (absolute paths with Claude Code's `//` prefix, from the real config)
    switches on the user's region, plus an empty watchlist with an example comment. Every provider id is in
    `provider-ids.json`.
 8. **Preset only on new notes.** `--preset` never changes an existing `search.md`/`sources.md`; init says it kept them and
-   how to apply a preset by hand (move the note away and rerun).
+   how to apply a preset by hand (move the note away and rerun). (P6: a note that is still the untouched `vault-template` copy, as
+   `crewdeck init` leaves it, counts as not written yet: see [06-e2e.md](06-e2e.md).)
 9. **Doctor's bridge check** asks the running Crewdeck (`GET /api/jobs/state`, the page read, which a non-browser client
    may call) whether a session holds the jobs lane. Not running → "start crewdeck up"; running without Jobs → "restart
    crewdeck up". Doctor never starts or stops anything.

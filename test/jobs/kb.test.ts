@@ -114,6 +114,23 @@ test('learn: a profile question met on a live form is answered from the profile 
   assert.equal(field(w, id, /visa/).text, 'No');
 });
 
+test('learn: a Yes/No answer to a question met without its options is a choice about the user, reused for every company', () => {
+  // Found by the P6 journey: a "needs you" question answered on the page was kept for one company only.
+  const w = seed();
+  const [a, b] = [w.ids['Example Labs'], w.ids['Sample Retail']];
+  const r = learnField(w.ctx, a, { label: 'Do you hold a valid driving licence?', answer: 'yes', quote: 'yes', required: true });
+  assert.equal(r.ok && r.saved, 'Remembered.');
+  const f = field(w, a, /driving/);
+  assert.deepEqual([f.kind, f.options, f.text, f.status], ['choice', ['Yes', 'No'], 'Yes', 'approved']);
+  assert.equal(memItems(w).find((x) => x.key === f.canonical_key).scope, 'all');
+  const again = learnField(w.ctx, b, { label: 'Do you hold a valid driving licence?', options: ['Yes', 'No'], required: true });
+  assert.equal(again.ok && again.saved, 'Answered from what you already told Claude.');
+  assert.equal(field(w, b, /driving/).text, 'Yes');
+  // A written answer still stays with its company.
+  learnField(w.ctx, a, { label: 'What drew you to us?', answer: 'Your route planning product', quote: 'Your route planning product' });
+  assert.equal(memItems(w).find((x) => x.text === 'Your route planning product').scope, 'company');
+});
+
 test('canonical keys are snake_case and start with a letter', () => {
   assert.equal(slugKey('Years of experience with SQL?'), 'years_of_experience_with_sql');
   assert.equal(slugKey('2nd language'), 'q_2nd_language');

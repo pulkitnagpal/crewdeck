@@ -117,7 +117,7 @@ export function loadNote<N extends NoteName>(vault: string, home: string | null,
   }
   const cached = readCache(home, name);
   if (cached) {
-    issues.push({ level: 'warning', note: NOTES[name], path: '(file)', message: `has errors: using its last valid version (${cached.saved.slice(0, 16).replace('T', ' ')})`, fix: 'fix the errors above; the note itself is unchanged' });
+    issues.push({ level: 'warning', note: NOTES[name], path: '(file)', message: `has errors: using its last valid version (${cached.saved.slice(0, 16).replace('T', ' ')} UTC)`, fix: 'fix the errors above; the note itself is unchanged' });
     return out('last-valid', cached.raw, issues);
   }
   issues.push({ level: 'warning', note: NOTES[name], path: '(file)', message: 'has errors and no earlier valid version: treated as empty', fix: 'fix the errors above' });

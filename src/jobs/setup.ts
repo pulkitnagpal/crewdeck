@@ -2,7 +2,7 @@
 // makes jobs.home and the tracker, creates the notes the user doesn't have yet (never overwriting one), seeds the search
 // from a preset, and writes the jobs workspace's guard rails: a managed CLAUDE.md (the hard rules, §13) and a
 // .claude/settings.json with deny rules (§14). Running it again changes nothing but those two managed files.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -34,21 +34,42 @@ export function cliCommand(): string {
 
 // ---- notes ----
 
-/** Create the five notes that are missing: from the preset (search, sources) or vault-template. Never overwrites. */
-export function seedNotes(vault: string, preset?: string, today = localDay()): { created: string[]; kept: string[]; presetSkipped: string[] } {
-  const out = { created: [] as string[], kept: [] as string[], presetSkipped: [] as string[] };
+/** A note exactly as vault-template has it: `crewdeck init` copied it and the user hasn't written anything in it yet. */
+function untouchedTemplate(vault: string, rel: string): boolean {
+  try { return readFileSync(join(vault, rel), 'utf8') === readFileSync(join(TEMPLATE, rel), 'utf8'); } catch { return false; }
+}
+
+/**
+ * Create the five notes that are missing: from the preset (search, sources) or vault-template. Never overwrites a note
+ * the user wrote in. `crewdeck init` copies vault-template, jobs notes included, so a preset also replaces a search or
+ * sources note that is still the untouched template; it applies to both notes or to neither (once the user has edited
+ * one of them, the preset is skipped).
+ */
+export function seedNotes(vault: string, preset?: string, today = localDay()): { created: string[]; replaced: string[]; kept: string[]; presetSkipped: string[] } {
+  const out = { created: [] as string[], replaced: [] as string[], kept: [] as string[], presetSkipped: [] as string[] };
+  const presetOk = !!preset && PRESET_NOTES.every((n) => !existsSync(join(vault, NOTES[n])) || untouchedTemplate(vault, NOTES[n]));
   for (const n of NOTE_NAMES) {
     const rel = NOTES[n];
     const dest = join(vault, rel);
-    const fromPreset = !!preset && PRESET_NOTES.includes(n);
-    if (existsSync(dest)) {
+    const fromPreset = presetOk && PRESET_NOTES.includes(n);
+    if (existsSync(dest) && !(fromPreset && untouchedTemplate(vault, rel))) {
       out.kept.push(rel);
-      if (fromPreset) out.presetSkipped.push(rel);
+      if (preset && PRESET_NOTES.includes(n)) out.presetSkipped.push(rel);
       continue;
     }
     let text = readFileSync(fromPreset ? join(presetDir(preset!), basename(rel)) : join(TEMPLATE, rel), 'utf8');
     if (fromPreset && n === 'search') text = text.replace(/^## Changes[ \t]*\r?\n/m, (m) => `${m}- ${today}: created from the ${preset} preset.\n`);
     mkdirSync(dirname(dest), { recursive: true });
+    if (existsSync(dest)) {
+      // The untouched template: replaced atomically, and only if it is still untouched right before the swap.
+      const tmp = `${dest}.${randomBytes(4).toString('hex')}.tmp`;
+      writeFileSync(tmp, text, { flag: 'wx', mode: 0o600 });
+      if (!untouchedTemplate(vault, rel)) { rmSync(tmp, { force: true }); out.kept.push(rel); out.presetSkipped.push(rel); continue; }
+      renameSync(tmp, dest);
+      out.created.push(rel);
+      out.replaced.push(rel);
+      continue;
+    }
     try {
       writeFileSync(dest, text, { flag: 'wx', mode: 0o600 }); // wx: never overwrite, even if the user saved it a moment ago
       out.created.push(rel);
@@ -223,7 +244,7 @@ export async function jobsInit(o: { preset?: string; home?: string; providers?: 
   lines.push(`✓ ${c.jobs.home} (private), tracker jobs.db (schema v${version})`);
 
   const notes = seedNotes(c.vault, o.preset);
-  for (const n of notes.created) lines.push(`✓ created ${n}${o.preset && (n === NOTES.search || n === NOTES.sources) ? ` from the ${o.preset} preset` : ''}`);
+  for (const n of notes.created) lines.push(`✓ created ${n}${o.preset && (n === NOTES.search || n === NOTES.sources) ? ` from the ${o.preset} preset` : ''}${notes.replaced.includes(n) ? ' (it was still the empty template)' : ''}`);
   if (notes.kept.length) lines.push(`✓ kept your ${notes.kept.join(', ')}`);
   if (notes.presetSkipped.length) lines.push(`  the ${o.preset} preset was not applied to ${notes.presetSkipped.join(' and ')}: ${notes.presetSkipped.length > 1 ? 'they exist' : 'it exists'} (move it away and run this again to start from the preset)`);
 

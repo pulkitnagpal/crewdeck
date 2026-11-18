@@ -71,7 +71,7 @@ test('last valid: an invalid edit falls back to the cached version and reports t
   assert.match(period.message, /"yearly" is not one of: year, month, hour/);
   assert.match(period.fix!, /did you mean "year"/);
   assert.ok(bad.issues.some((i) => i.path === 'pay.floor' && /should be a number/.test(i.message)));
-  assert.ok(bad.issues.some((i) => /last valid version/.test(i.message)));
+  assert.ok(bad.issues.some((i) => /last valid version \(\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\)/.test(i.message)), 'the saved time says its zone');
 
   writeFileSync(file, '---\nroles: [unclosed\n---\n');
   const broken = loadJobNotes(vault, jobsHome);

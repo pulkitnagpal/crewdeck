@@ -20,7 +20,10 @@ export function learnField(ctx: Ctx, roleId: string, a: LearnInput): LearnResult
   const notes = notesOf(ctx);
   const label = String(a.label ?? '').replace(/\s+/g, ' ').trim();
   if (!label) return { ok: false, reason: 'the question has no label' };
-  const options = (a.options ?? []).map((o) => String(o).trim()).filter(Boolean);
+  const given = (a.options ?? []).map((o) => String(o).trim()).filter(Boolean);
+  // A Yes/No question recorded without its options (a "needs you" question the user answered on the page): their Yes or
+  // No makes it a choice about them, remembered for every company, not a written answer kept for this company only.
+  const options = given.length || !/^(yes|no)$/i.test(String(a.answer ?? '').trim()) ? given : ['Yes', 'No'];
   const kind = kbKind({ label, kind: a.kind ?? (options.length ? 'radio' : 'text'), options }, notes.profile.data);
   if (a.answer) {
     // Sensitive and choice answers are about the user: only their own words (quote), or what they already told us.
