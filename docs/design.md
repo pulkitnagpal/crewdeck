@@ -87,7 +87,11 @@ Exact ports, theme values, process restart backoff, and log format.
 
 - 2026-11-18: security baseline (Jobs P0, see `docs/jobs/`): Notes on its own origin; page vs agent endpoints with a
   token and a bridge identity proof; Host allowlist incl. `[::1]` and Origin checks on every proxy; crash-proof handler;
-  queue caps; private `~/.crewdeck`; leak scan in tests and CI; system fonts (no Google Fonts); shared `web/tokens.css`.
+  queue caps; private `~/.crewdeck`; leak scan in tests and CI; system fonts (no Google Fonts).
+- 2026-11-18: one look everywhere: the palette lives in `src/appearance.ts`; `appearance: auto` (new default) follows
+  the system, i.e. Claude desktop's light/dark; `light`/`dark` force it in the shell, boards and Notes. Notes gets
+  the palette from its proxy at first paint and its own dark-mode switch through a managed `Library/Crewdeck/Appearance.md`;
+  the Crewdeck Dark theme page now actually applies (it lost to SilverBullet's own dark rule before).
 
 - 2026-11-18: bridge shipped (basic): request queue on the shell (`/api/requests`, `/api/claim`, `/api/requeue`, `requests.json`), lane from the session's folder, `crewdeck-bridge` mod in `plugin/` with idle-only delivery and put-back; Ask Claude box in the shell.
 - 2026-11-17: apps in the rail (any local web app, optional `command`), `appearance` applied to all tools, project `label`; theme selected automatically via `Library/Crewdeck/Setup`.

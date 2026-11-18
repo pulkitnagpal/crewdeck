@@ -6,7 +6,8 @@ import { connect } from 'node:net';
 import { createGunzip, createBrotliDecompress, createInflate } from 'node:zlib';
 import { isLocalHost, isSafeMethod, originIsOwnOrAbsent } from './http.ts';
 
-export type ProxyOpts = { target: { host: string; port: number }; injectHead?: string };
+/** injectAt: 'start' (default) puts injectHead first in <head>; 'end' puts it last, after the page's own styles. */
+export type ProxyOpts = { target: { host: string; port: number }; injectHead?: string; injectAt?: 'start' | 'end' };
 
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 
@@ -33,7 +34,8 @@ export function forward(req: IncomingMessage, res: ServerResponse, o: ProxyOpts,
       src.on('data', (c: Buffer) => chunks.push(c));
       src.on('end', () => {
         let html = Buffer.concat(chunks).toString('utf8');
-        html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + o.injectHead) : o.injectHead + html;
+        if (o.injectAt === 'end' && /<\/head>/i.test(html)) html = html.replace(/<\/head>/i, (m) => o.injectHead + m);
+        else html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + o.injectHead) : o.injectHead + html;
         delete out['content-length']; delete out['content-encoding']; delete out['etag'];
         res.writeHead(r.statusCode ?? 200, out);
         res.end(html);

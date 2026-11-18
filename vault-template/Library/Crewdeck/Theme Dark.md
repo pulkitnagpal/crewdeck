@@ -6,7 +6,7 @@ scheme: dark
 counterpart: "[[Library/Crewdeck/Theme]]"
 ---
 ```space-style
-html {
+html[data-theme="dark"] {
   --root-background-color: #171716;
   --root-color: #ECE9E3;
   --subtle-color: #9A958C;

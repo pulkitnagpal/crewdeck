@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse, stringify } from 'yaml';
+import { normaliseAppearance, type Appearance } from './appearance.ts';
 
 export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const HOME = process.env.CREWDECK_HOME ?? join(homedir(), '.crewdeck');
@@ -22,15 +23,15 @@ export type Config = {
   silverbullet: { port: number; version: string };
   projects: Project[];
   apps: App[];
-  /** light (default) or dark: applied to the shell, Notes and boards so they look like one product. */
-  appearance: 'light' | 'dark';
+  /** auto (default: follow the system, i.e. Claude desktop's light/dark), light or dark: one look for every tool. */
+  appearance: Appearance;
 };
 
 export const expand = (p: string) => (p.startsWith('~/') ? join(homedir(), p.slice(2)) : resolve(p));
 const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 export function defaults(): Config {
-  return { port: 4848, vault: '~/Crewdeck/vault', silverbullet: { port: 4849, version: SB_VERSION }, projects: [], apps: [], appearance: 'light' };
+  return { port: 4848, vault: '~/Crewdeck/vault', silverbullet: { port: 4849, version: SB_VERSION }, projects: [], apps: [], appearance: 'auto' };
 }
 
 export function loadConfig(path = CONFIG_PATH): Config {
@@ -47,7 +48,7 @@ export function loadConfig(path = CONFIG_PATH): Config {
     if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+\/?/.test(a.url)) throw new Error(`app ${a.name}: url must be http://localhost:<port>/`);
     return { ...a, cwd: a.cwd ? expand(a.cwd) : undefined };
   });
-  c.appearance = c.appearance === 'dark' ? 'dark' : 'light';
+  c.appearance = normaliseAppearance(c.appearance);
   c.vault = expand(c.vault);
   return c;
 }

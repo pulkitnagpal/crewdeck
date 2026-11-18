@@ -10,6 +10,7 @@ import { extname, join, normalize, sep } from 'node:path';
 import { REPO, type Config } from './config.ts';
 import { Requests, laneFor } from './requests.ts';
 import { SECURITY_HEADERS, SHELL_CSP, isLocalHost, ownOrigins, proofFor, sameSecret } from './http.ts';
+import { tokensCss } from './appearance.ts';
 
 const WEB = join(REPO, 'web');
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
@@ -103,6 +104,7 @@ export function createShell(c: Config, requests = new Requests(), opts: { token:
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method not allowed');
     if (path === '/api/state') return json(res, 200, shellState(c));
+    if (path === '/tokens.css') return send(res, 200, tokensCss(c.appearance), 'text/css; charset=utf-8');
     if (path === '/api/requests') return json(res, 200, requests.list());
     if (path.startsWith('/api/')) throw new HttpError(404, 'not found');
     const rel = path === '/' ? 'index.html' : decodeURIComponent(path.slice(1));

@@ -22,7 +22,7 @@ test('config: one project is labelled "Board"; apps must be local http URLs', ()
   writeFileSync(p, 'projects:\n  - name: alpha\n    path: /tmp/a\napps:\n  - name: dashboard\n    url: http://localhost:4747/\n');
   const c = loadConfig(p);
   assert.equal(c.projects[0].label, 'Board');
-  assert.equal(c.appearance, 'light');
+  assert.equal(c.appearance, 'auto', 'follows the system unless set');
   writeFileSync(p, 'projects:\n  - name: alpha\n    path: /tmp/a\n  - name: beta\n    path: /tmp/b\n');
   assert.deepEqual(loadConfig(p).projects.map((x) => x.label), ['alpha', 'beta']);
   writeFileSync(p, 'apps:\n  - name: evil\n    url: https://example.com/\n');

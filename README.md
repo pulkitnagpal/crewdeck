@@ -86,7 +86,8 @@ node src/cli.ts up
 ```
 
 Open **http://localhost:4848** in Claude desktop's browser pane (or any browser). Notes, boards and your
-apps share one light theme (set `appearance: dark` in the config for dark).
+apps share one look. By default it follows Claude desktop's own light/dark setting; set `appearance: light` or
+`appearance: dark` in the config to force one everywhere, Notes included.
 
 Check your setup any time with `node src/cli.ts doctor`. Logs are in `~/.crewdeck/logs/`.
 
@@ -111,7 +112,7 @@ Type in **Ask Claude about this…** on that project's board and the request arr
 ```yaml
 port: 4848                 # the Crewdeck page
 vault: ~/Crewdeck/vault    # your notes
-appearance: light          # light | dark, applied to everything
+appearance: auto           # auto (follow the system / Claude desktop) | light | dark, applied to every tool
 projects:                  # added by `crewdeck add-project`
   - name: myapp
     path: ~/code/myapp
@@ -125,7 +126,10 @@ apps:                      # optional: other local web apps to show, started for
     cwd: ~/code/my-dashboard
 ```
 
-Apps that read an `?appearance=light|dark` query parameter can follow Crewdeck's theme.
+Apps that read an `?appearance=auto|light|dark` query parameter can follow Crewdeck's theme.
+
+Notes follows the setting through `Library/Crewdeck/Appearance.md` in your vault, which Crewdeck rewrites on every
+start (change the config, not that page). After switching from `light`/`dark` to `auto`, reload Notes once.
 
 ### Run it from the Claude desktop app
 

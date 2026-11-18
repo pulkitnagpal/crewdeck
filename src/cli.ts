@@ -9,6 +9,7 @@ import { CONFIG_PATH, HOME, REPO, SB_VERSION, TOKEN_PATH, defaults, ensureHome, 
 import { supervise, silverbulletBin, backlogBin } from './supervisor.ts';
 import { createProxy } from './proxy.ts';
 import { createShell } from './server.ts';
+import { boardHead, notesAppearancePage, notesHead } from './appearance.ts';
 
 const say = (s: string) => console.log(s);
 
@@ -87,8 +88,9 @@ function up() {
   ensureHome();
   const token = ensureToken();
   const theme = readFileSync(join(REPO, 'themes', 'backlog.css'), 'utf8');
-  // Backlog.md reads its light/dark choice from localStorage before it renders: set it first.
-  const mode = `<script>try{localStorage.setItem('backlog-theme','${c.appearance}')}catch(e){}</script>`;
+  // Notes follows Crewdeck's appearance through a managed vault page (SilverBullet's own light/dark switch).
+  mkdirSync(join(c.vault, 'Library', 'Crewdeck'), { recursive: true });
+  writeFileSync(join(c.vault, 'Library', 'Crewdeck', 'Appearance.md'), notesAppearancePage(c.appearance));
   const services = [
     // SilverBullet on an internal port; the public Notes port is a Crewdeck proxy (its own origin, Host/Origin checks).
     { name: 'silverbullet', cmd: silverbulletBin(), args: ['--single', '-L', '127.0.0.1', '-p', String(c.silverbullet.port + 100), c.vault] },
@@ -96,9 +98,9 @@ function up() {
     ...c.apps.filter((a) => a.command).map((a) => ({ name: `app-${a.name}`, cmd: a.command!, args: a.args ?? [], cwd: a.cwd })),
   ];
   supervise(services);
-  createProxy({ target: { host: '127.0.0.1', port: c.silverbullet.port + 100 } }).listen(c.silverbullet.port, '127.0.0.1');
+  createProxy({ target: { host: '127.0.0.1', port: c.silverbullet.port + 100 }, injectHead: notesHead(c.appearance), injectAt: 'end' }).listen(c.silverbullet.port, '127.0.0.1');
   for (const p of c.projects) {
-    createProxy({ target: { host: '127.0.0.1', port: p.boardPort! + 100 }, injectHead: `${mode}<style id="crewdeck-theme">${theme}</style>` })
+    createProxy({ target: { host: '127.0.0.1', port: p.boardPort! + 100 }, injectHead: boardHead(c.appearance, theme) })
       .listen(p.boardPort!, '127.0.0.1');
   }
   createShell(c, undefined, { token }).listen(c.port, '127.0.0.1', () => say(`Crewdeck on http://localhost:${c.port}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));

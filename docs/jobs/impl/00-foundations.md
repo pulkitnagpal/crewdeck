@@ -89,7 +89,8 @@ proxy, queue, CLI and bridge; it adds no Jobs code. Everything here must ship wi
 - `fetch-depth: 0` and `LEAK_SCAN_RANGE` = the pushed range or the PR's base..head; `LEAK_SCAN_KEY` from secrets (absent on
   forks: skipped with a notice).
 
-## 9. Theme tokens
+## 9. Theme tokens (done; superseded by `src/appearance.ts`)
+The palette now lives in `src/appearance.ts` and is served as `/tokens.css` per `appearance` (auto | light | dark).
 - `web/tokens.css`: the colour variables (light + `[data-appearance="dark"]`) and a system font stack
   (`-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`). `shell.css` imports it. No Google Fonts in the
   shell, `themes/backlog.css` or the SilverBullet theme page.
