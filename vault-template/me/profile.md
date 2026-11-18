@@ -13,6 +13,8 @@ identity:
 standard_answers: {}
 # One line per school, e.g. - { school: Example University, degree: MSc, discipline: Statistics, end_year: 2018 }
 education: []
+# Job sites whose terms forbid automated filling: Claude shows the answers for you to copy (wellfound.com and a few others are built in).
+copy_only_hosts: []
 ---
 # About me
 

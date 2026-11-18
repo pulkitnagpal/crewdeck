@@ -8,14 +8,14 @@ import { type Issue, MEMORY_KINDS } from './schema.ts';
 import { NOTES, NOTE_NAMES, loadJobNotes } from './notes.ts';
 import { compileRules, describeRules, judgeBrief } from './rules.ts';
 import { meTarget, parsePath, setField } from './edit.ts';
-import { remember, retire } from './memory.ts';
+import { retire } from './memory.ts';
 
 const say = (s: string) => console.log(s);
-const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
-const positional = (a: string[]) => a.filter((x, i) => !x.startsWith('--') && !(i > 0 && a[i - 1].startsWith('--')));
+export const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
+export const positional = (a: string[]) => a.filter((x, i) => !x.startsWith('--') && !(i > 0 && a[i - 1].startsWith('--')));
 
 /** A file's text, or stdin for "-". */
-function textFrom(path: string | undefined, what: string): string {
+export function textFrom(path: string | undefined, what: string): string {
   if (!path) throw new Error(`${what} is required`);
   return readFileSync(path === '-' ? 0 : path, 'utf8');
 }
@@ -99,7 +99,7 @@ function pref(args: string[]) {
   say(r.changed ? `jobs/search.md: ${r.path} set; change logged under ## Changes` : `jobs/search.md: ${r.path} unchanged`);
 }
 
-function rememberCmd(args: string[]) {
+async function rememberCmd(args: string[]) {
   const c = context();
   const file = join(c.vault, NOTES.memory);
   const retireId = flag(args, 'retire');
@@ -110,7 +110,7 @@ function rememberCmd(args: string[]) {
   const kind = flag(args, 'kind') as (typeof MEMORY_KINDS)[number] | undefined;
   if (!kind) throw new Error(`usage: crewdeck jobs remember --kind ${MEMORY_KINDS.join('|')} --text-file <f> --quote-file <f> [--key k] [--scope all|company --company-file <f>] [--title-words-file <f>] [--supersedes m-N]  |  --retire m-N`);
   const words = flag(args, 'title-words-file');
-  const r = remember(file, {
+  const input = {
     kind,
     text: textFrom(flag(args, 'text-file'), '--text-file'),
     quote: textFrom(flag(args, 'quote-file'), '--quote-file (the user\'s exact words)'),
@@ -119,9 +119,17 @@ function rememberCmd(args: string[]) {
     company: flag(args, 'company-file') ? textFrom(flag(args, 'company-file'), '--company-file').trim() : undefined,
     title_words: words ? textFrom(words, '--title-words-file').split(/[,\n]/).map((w) => w.trim()).filter(Boolean) : undefined,
     supersedes: flag(args, 'supersedes'),
-  }, today(c));
-  if (r.existing) say(`already remembered as ${r.item.id}`);
-  else say(`remembered ${r.item.id} (${r.item.kind})${r.superseded.length ? `; replaces ${r.superseded.join(', ')}` : ''}`);
+  };
+  // Through the knowledge base: the item is also applied to forms already read (and undoable with `jobs undo`).
+  const { openCtx } = await import('./ctx.ts');
+  const { remember: rememberKb } = await import('./kb/ops.ts');
+  const ctx = openCtx(c);
+  try {
+    const r = rememberKb(ctx, input);
+    if (r.existing) say(`already remembered as ${r.item.id}`);
+    else say(`remembered ${r.item.id} (${r.item.kind})${r.superseded.length ? `; replaces ${r.superseded.join(', ')}` : ''}`);
+    if (r.applied) say(`applied to ${r.applied} open question${r.applied > 1 ? 's' : ''}`);
+  } finally { ctx.db.close(); }
 }
 
 const RISK: Record<keyof JobsFeatures, string> = {
@@ -168,9 +176,22 @@ const USAGE = `usage: crewdeck jobs <command>
            [--title-words-file <f>] [--supersedes m-N]  |  remember --retire m-N
   features [<name> <on|off|number>]       risky switches (changing needs your own terminal)`;
 
+/** P2a's commands, loaded only when one of them runs (they open the tracker). */
+const P2 = ['prefilter', 'refilter', 'candidates', 'judge', 'pick', 'status', 'event', 'question', 'applied', 'not-interested', 'add-role', 'role',
+  'form', 'draft', 'answer', 'learn', 'undo', 'knowledge', 'fill-plan', 'contact', 'message', 'followups', 'followup', 'view'];
+
 export async function main(args: string[]) {
   const [cmd, ...rest] = args;
   const run: Record<string, (a: string[]) => unknown> = { check, rules: rulesCmd, 'judge-brief': briefCmd, me, pref, remember: rememberCmd, features };
-  if (!cmd || !run[cmd]) { say(USAGE); if (cmd) process.exitCode = 1; return; }
+  if (cmd && P2.includes(cmd)) {
+    const m = await import('./commands.ts');
+    return await m.COMMANDS[cmd](rest);
+  }
+  if (!cmd || !run[cmd]) {
+    say(USAGE);
+    if (cmd !== undefined) process.exitCode = 1;
+    if (cmd === undefined || cmd === 'help') say((await import('./commands.ts')).USAGE);
+    return;
+  }
   await run[cmd](rest);
 }

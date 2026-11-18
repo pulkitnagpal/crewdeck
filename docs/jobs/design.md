@@ -698,6 +698,11 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P2a built (2026-11-19):** tracker DB v1 + migrations (WAL, busy timeouts, 0600), knowledge base (answers in the DB,
+  memory in the note, citation check with a generic terms list), drafting brief with profile answers approved as
+  `profile:` sources, fill plan (copy-only hosts, Easy Apply cap per local day, never submit), prefilter/refilter, judge,
+  pick, applied (cooldown, journal), not interested, add-role, outreach gates, view models. Details and deviations:
+  [impl/02a-core.md](impl/02a-core.md) (URLs only from files, contact fields never drafted, dates in `pay.locale`).
 - **P1 built (2026-11-19):** notes read/write with last-valid fallback, schema v1 validators, gazetteer, pay, compiled
   rules + judge brief, `crewdeck jobs check|rules|judge-brief|me|pref|remember|features`, `jobs` config section. Details
   and deviations: [impl/01-notes-and-rules.md](impl/01-notes-and-rules.md) (commute distance for on-site cities,

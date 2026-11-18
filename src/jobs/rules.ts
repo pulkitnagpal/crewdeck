@@ -81,7 +81,8 @@ export function industryWords(name: string): string[] {
 }
 
 const LEGAL = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|gmbh|ag|plc|corp|corporation|co|sa|s\.a|bv|b\.v|srl|sarl|oy|ab|as|aps|pty|pvt|private)\b\.?/g;
-export const companyKey = (s: string) => fold(s).replace(/[,()]/g, ' ').replace(LEGAL, ' ').replace(/[^\p{L}\p{N}&]+/gu, ' ').trim();
+// "Example.com" and "Example" are one company: a trailing web domain is dropped first.
+export const companyKey = (s: string) => fold(s).replace(/\.(com|ai|io|co|dev|app|so|sh|tech|org|net)$/, '').replace(/[,()]/g, ' ').replace(LEGAL, ' ').replace(/[^\p{L}\p{N}&]+/gu, ' ').trim();
 
 function placeSet(names: string[]): PlaceSet {
   const set: PlaceSet = { labels: names, ids: [], unknown: [], world: false };
@@ -271,7 +272,7 @@ export function describeRules(c: Compiled): string {
   row('industry', c.regex.industry ? `/${pat('industry')}/` : 'off', c.source.industry);
   row('travel', c.travelDrop ? `${c.travelDrop}${c.travelDrop === 'occasional' ? ' or more' : ''} travel (≥ 50 % is frequent)` : 'off (exclude.travel: none)', 'exclude.travel');
   row('pay', c.pay ? (c.pay.floor > 0 ? `below ${c.pay.floor} ${c.pay.currency}/${c.pay.period} by ${c.pay.rule.replace(/_/g, ' ')}; unlisted: ${c.pay.unlisted}; fx: ${Object.entries(c.pay.fx).map(([k, v]) => `${k} ${v}`).join(', ') || '(none)'}` : `no floor; unlisted: ${c.pay.unlisted}`) : 'off (no pay.currency)', 'pay');
-  lines.push('  (company cooldown and one active pick per company arrive with the database)');
+  lines.push('  cooldown / active_pick  a company in its cooldown, or with a role already picked (checked by crewdeck jobs prefilter)');
   for (const n of c.notes) lines.push(`Note: ${n}`);
   return lines.join('\n');
 }

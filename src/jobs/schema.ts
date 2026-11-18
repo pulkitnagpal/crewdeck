@@ -46,6 +46,7 @@ const SECTION_ID = /^[a-z0-9][a-z0-9_-]*$/;
 const FACT_ID = /^[a-z0-9][a-z0-9_-]*\.[a-z0-9][a-z0-9_.-]*$/;
 const emailCheck = (v: string) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'is not an email address');
 const phoneCheck = (v: string) => (/^\+?[\d\s().-]{5,25}$/.test(v) ? null : 'is not a phone number (digits, spaces, + ( ) - . only)');
+const hostCheck = (v: string) => (/^(?=.{1,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/i.test(v) ? null : 'is not a host name (e.g. jobs.example.com)');
 const urlCheck = (v: string) => (/^https?:\/\/\S+$/.test(v) ? null : 'is not a web address (http:// or https://)');
 const currencyCheck = (v: string) => (/^[A-Z]{3}$/.test(v) ? null : 'is not a three-letter currency code (EUR, USD, INR …)');
 function tzCheck(v: string) { try { new Intl.DateTimeFormat('en', { timeZone: v }); return null; } catch { return 'is not a time zone (e.g. Europe/Berlin, America/Chicago)'; } }
@@ -65,6 +66,8 @@ export const SCHEMAS: Record<string, Schema> = {
     }),
     standard_answers: map({ t: 'scalar' }, SNAKE, 'lowercase words joined by _ (e.g. notice_period)'),
     education: list(obj({ school: str(), degree: str(), discipline: str(), start_year: num({ int: true, min: 1900, max: 2100 }), end_year: num({ int: true, min: 1900, max: 2100 }) }, { required: ['school'] })),
+    // Sites whose terms forbid automated filling: Claude shows the answers to copy instead.
+    copy_only_hosts: list(str({ required: true, check: hostCheck })),
   }),
   career: obj({
     resume: obj({ file_name: str({ check: fileNameCheck }), paper: oneOf(['A4', 'Letter']), max_pages: num({ int: true, min: 1, max: 5 }) }),
@@ -74,6 +77,8 @@ export const SCHEMAS: Record<string, Schema> = {
     }, { required: ['id', 'kind'] })),
     facts: list(obj({ id: str({ pattern: FACT_ID, hint: '<section id>.<slug>, e.g. example-gmbh.dashboards' }), text: str({ required: true }), tags: list(str()) }, { required: ['id', 'text'] })),
     skills: list(str()),
+    // Extra names the citation check treats as claims (tools, certifications) on top of the built-in list.
+    terms: obj({ extra: list(str({ required: true })) }),
   }),
   search: obj({
     roles: obj({ titles: list(str({ required: true })), seniority_prefer: list(str()), exclude_title_words: list(str({ required: true })) }),
@@ -297,9 +302,10 @@ export type Profile = {
   identity: { first_name: string; last_name: string; preferred_name: string; email: string; phone: string; city: string; region: string; country: string; links: Record<string, string> };
   standard_answers: Record<string, string>;
   education: { school: string; degree?: string; discipline?: string; start_year?: number; end_year?: number }[];
+  copy_only_hosts: string[];
 };
 export type Section = { id: string; kind: (typeof SECTION_KINDS)[number]; title?: string; org?: string; where?: string; dates?: string; max_bullets?: number; required?: boolean };
-export type Career = { resume: { file_name: string; paper: 'A4' | 'Letter'; max_pages: number }; sections: Section[]; facts: { id: string; text: string; tags: string[] }[]; skills: string[] };
+export type Career = { resume: { file_name: string; paper: 'A4' | 'Letter'; max_pages: number }; sections: Section[]; facts: { id: string; text: string; tags: string[] }[]; skills: string[]; terms: { extra: string[] } };
 export type Search = {
   roles: { titles: string[]; seniority_prefer: string[]; exclude_title_words: string[] };
   workplace: Workplace[];
@@ -330,6 +336,7 @@ export const normalise = {
       identity: { first_name: s_(id.first_name), last_name: s_(id.last_name), preferred_name: s_(id.preferred_name), email: s_(id.email), phone: s_(id.phone), city: s_(id.city), region: s_(id.region), country: s_(id.country), links: Object.fromEntries(Object.entries(o(id.links)).filter(([, v]) => typeof v === 'string' && v)) as Record<string, string> },
       standard_answers: Object.fromEntries(Object.entries(o(x.standard_answers)).filter(([, v]) => v !== null && v !== '').map(([k, v]) => [k, String(v)])),
       education: arr(x.education).filter(isObj) as Profile['education'],
+      copy_only_hosts: strs(x.copy_only_hosts).map((h) => h.toLowerCase()),
     };
   },
   career(d: unknown): Career {
@@ -339,6 +346,7 @@ export const normalise = {
       sections: arr(x.sections).filter(isObj) as Section[],
       facts: arr(x.facts).filter(isObj).map((f) => ({ id: String(f.id), text: String(f.text ?? ''), tags: strs(f.tags) })),
       skills: strs(x.skills),
+      terms: { extra: strs(o(x.terms).extra) },
     };
   },
   search(d: unknown): Search {

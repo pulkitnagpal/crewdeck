@@ -8,6 +8,8 @@ sections: []
 # Every bullet Claude may use, word for word. Ids are <section id>.<slug>, e.g. example-gmbh.dashboards
 facts: []
 skills: []
+# Names of tools or certifications from your field that answers may only mention when a fact does (beyond the built-in list).
+terms: { extra: [] }
 ---
 # Career
 

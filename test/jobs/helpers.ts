@@ -41,3 +41,26 @@ export function textFile(root: string, name: string, text: string) {
   writeFileSync(p, text);
   return p;
 }
+
+// ---- P2a: a fictional person's vault + a tracker in a temp jobs.home, with a clock tests can move ----
+import type { JobsFeatures } from '../../src/config.ts';
+import { openJobsDb, upsertRole, type RoleInput } from '../../src/jobs/db.ts';
+import { type Ctx, makeCtx } from '../../src/jobs/ctx.ts';
+
+export type World = ReturnType<typeof tempSetup> & { ctx: Ctx; at: (iso: string) => void };
+
+export function world(person: keyof typeof PEOPLE = 'berlin-analyst', o: { features?: Partial<JobsFeatures>; now?: string } = {}): World {
+  const s = tempSetup(person);
+  let now = new Date(o.now ?? '2026-11-19T10:00:00Z');
+  const ctx = makeCtx({ db: openJobsDb(s.jobsHome), vault: s.vault, home: s.jobsHome, features: o.features, clock: () => now });
+  return { ...s, ctx, at: (iso: string) => { now = new Date(iso); } };
+}
+
+let n = 0;
+/** A role on a fictional company (status new unless set). */
+export function role(ctx: Ctx, over: Partial<RoleInput> & { company: string }, status?: string): string {
+  const url = over.url ?? `https://jobs.example.com/${encodeURIComponent(over.company)}/${++n}`;
+  const { id } = upsertRole(ctx.db, { title: 'Senior Data Analyst', location: 'Berlin', description: '', source: 'board', ...over, url });
+  if (status) ctx.db.prepare('update roles set status=? where id=?').run(status, id);
+  return id;
+}

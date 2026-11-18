@@ -101,6 +101,21 @@ export function retire(file: string, id: string): MemoryItem {
   return node.toJSON() as MemoryItem;
 }
 
+/** Undo a remembered item: it is retired and the items it replaced are in force again. */
+export function undoRemember(file: string, id: string): string[] {
+  const n = open(file);
+  const seq = itemsSeq(n.doc);
+  const restored: string[] = [];
+  for (const x of seq.items) {
+    if (!isMap(x)) continue;
+    const m = x as YAMLMap;
+    if (String(m.get('id')) === id) m.set('superseded_by', 'retired');
+    else if (String(m.get('superseded_by') ?? '') === id) { m.delete('superseded_by'); restored.push(String(m.get('id'))); }
+  }
+  save(file, n.doc, n.body);
+  return restored;
+}
+
 function save(file: string, doc: Document, body: string) {
   const bad = validate('memory', doc.toJS()).filter((i) => i.level === 'error');
   if (bad.length) throw new Error(`refusing to write jobs/memory.md: ${bad[0].path}: ${bad[0].message}`);
