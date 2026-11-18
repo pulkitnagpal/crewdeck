@@ -14,7 +14,7 @@ import { resumePath } from '../../src/jobs/views.ts';
 import { jobsServer, preparedRole, wait } from './api-helpers.ts';
 import { role } from './helpers.ts';
 
-const ACTIONS = ['setup', 'find', 'addLink', 'approve', 'retryApply', 'improve', 'editAnswer', 'answer', 'firstTimeChoice', 'notInterested', 'markApplied', 'select', 'prefs', 'feature', 'reveal'];
+const ACTIONS = ['setup', 'find', 'addLink', 'approve', 'retryApply', 'improve', 'editAnswer', 'answer', 'firstTimeChoice', 'notInterested', 'markApplied', 'select', 'prefs', 'feature', 'reveal', 'refreshSources'];
 
 test('jobs off: no Jobs page, no Jobs API, and the workspace is not a lane', async () => {
   const s = await jobsServer('example', { enabled: false });

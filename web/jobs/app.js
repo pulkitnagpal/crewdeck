@@ -106,7 +106,8 @@ function App() {
   const warned = (state?.agent?.recent ?? []).find((r) => r.kind === 'link' && sentLinks.current.has(r.id) && /warning|cooldown|already|in progress/i.test(r.result ?? ''));
   return html`<div class="app">
     <${TopBar} screen=${screen} onNav=${nav} agent=${state?.agent} quota=${state?.quota ?? 5} setupNeeded=${!!state?.setup?.needed}
-      onFind=${() => run('find', { count: state?.quota ?? 5 }, 'Sent to Claude')} onLink=${onLink} />
+      onFind=${() => run('find', { count: state?.quota ?? 5 }, 'Sent to Claude')} onLink=${onLink}
+      sources=${state?.sources} onRefresh=${() => run('refreshSources', {}, (r) => (r.already ? 'Already fetching' : 'Fetching new roles (no Claude needed)'))} />
     <${Banners} state=${state} onNotes=${openNotes} onToast=${say} />
     ${warned ? html`<div class="banners"><div class="banner warn"><div class="body"><b>That link wasn't added</b><span class="fix">${warned.result}</span></div>
       <div class="row-flex"><button type="button" class="btn small" onClick=${() => { const url = sentLinks.current.get(warned.id); sentLinks.current.delete(warned.id); run('addLink', { url, force: true }, 'Sent to Claude: add it anyway'); }}>Add it anyway</button>

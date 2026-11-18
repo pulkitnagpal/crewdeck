@@ -698,6 +698,14 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P5 built (2026-11-19):** pinned providers (`scripts/update-providers-manifest.mjs <checkout> <commit>` → a manifest of
+  the import closure at career-ops-hq/career-ops@f3b043d: 137 providers, 166 files, js-yaml users and local-parser
+  excluded), install through netguard with per-file sha256 into `providers/<commit>/` (read-only, LICENSE),
+  `jobs providers install|status|verify`, the sandboxed runner (`--permission`, read grants for the providers and itself,
+  empty env, `registerHooks` resolve/load with hashes, no processes/workers/writes), `jobs source` (validation, LinkedIn
+  when on, prefilter, descriptions for the top 50), the server's `fetch_every` timer and Refresh sources, code ranking
+  with company-rule drops, `candidates --budget` Find runs, the budgeted `jobs-daily-run`. Details and deviations:
+  [impl/05-sources.md](impl/05-sources.md) (`--no-providers`, ats/board labels, `maxPages` 10, the onsite-city preset).
 - **P4 built (2026-11-19):** `crewdeck jobs init [--preset] [--home]` (Jobs on, private jobs.home + tracker, missing notes
   only, preset search/sources, managed workspace `CLAUDE.md` + `.claude/settings.json` deny rules, browser check, the P5
   providers hook), `doctor` Jobs section, four presets, the skills `jobs-workspace`, `jobs-setup`, `jobs-daily-run`,

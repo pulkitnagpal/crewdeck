@@ -9,7 +9,7 @@ import { basename, dirname, join } from 'node:path';
 import { type Config, CONFIG_PATH, HOME, REPO, TOKEN_PATH, ensureHome, expand, loadConfig, setJobsSettings } from '../config.ts';
 import { NOTES, NOTE_NAMES, type NoteName } from './notes.ts';
 import { findBrowser, installHint } from './browser.ts';
-import { installProviders } from './providers.ts';
+import { type InstallOptions, installProviders } from './providers.ts';
 
 export const PRESETS = ['remote-any-country', 'onsite-city', 'healthcare-us', 'non-engineering'] as const;
 export type Preset = (typeof PRESETS)[number];
@@ -199,7 +199,7 @@ export function workspaceStatus(c: Config): { name: string; path: string; exists
 
 // ---- init ----
 
-export async function jobsInit(o: { preset?: string; home?: string } = {}): Promise<string[]> {
+export async function jobsInit(o: { preset?: string; home?: string; providers?: false | InstallOptions } = {}): Promise<string[]> {
   if (o.preset !== undefined && !(PRESETS as readonly string[]).includes(o.preset)) throw new Error(`unknown preset "${o.preset}" (presets: ${PRESETS.join(', ')})`);
   let c = loadConfig(); // "No config yet. Run: crewdeck init"
   if (!existsSync(join(c.vault, 'CLAUDE.md'))) throw new Error(`No Crewdeck vault at ${c.vault}: run crewdeck init first.`);
@@ -234,8 +234,12 @@ export async function jobsInit(o: { preset?: string; home?: string } = {}): Prom
   const b = findBrowser(c.jobs.browser);
   lines.push(b ? `✓ browser for reading forms and resume PDFs: ${b.name}` : `✗ no Chromium-based browser (needed to read forms and make resume PDFs). ${installHint()}`);
 
-  const p = await installProviders(c);
-  lines.push(`${p.ready ? '✓' : '·'} ${p.message}`);
+  if (o.providers === false) lines.push('· job-board providers not downloaded (--no-providers): crewdeck jobs providers install when you are online');
+  else {
+    // Downloaded from GitHub and checked file by file against the pinned manifest; offline is fine, links work without them.
+    const p = await installProviders(c, o.providers ?? {});
+    lines.push(`${p.ready ? '✓' : '✗'} ${p.message}`);
+  }
 
   lines.push('', 'Next:',
     '  1. Install the crewdeck plugin in Claude desktop (+ → Plugins → Add marketplace pulkitnagpal/crewdeck → crewdeck).',

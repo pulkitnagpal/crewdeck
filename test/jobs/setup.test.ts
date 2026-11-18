@@ -47,7 +47,7 @@ const NOTE_FILES = ['me/profile.md', 'me/career.md', 'jobs/search.md', 'jobs/mem
 
 test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the notes, the managed workspace files', async () => {
   const s = await fresh({ jobsNotes: false });
-  const r = jobs(s.home, ['init']);
+  const r = jobs(s.home, ['init', '--no-providers']);
   assert.equal(r.code, 0, r.out + r.err);
   const cfg = readFileSync(join(s.home, 'config.yaml'), 'utf8');
   assert.match(cfg, /^# my settings/, 'the rest of config.yaml and its comments are kept');
@@ -62,7 +62,7 @@ test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the 
   }
   assert.match(r.out, /created jobs\/search\.md/);
   assert.match(r.out, /kept your me\/profile\.md/);
-  assert.match(r.out, /Sourcing isn't set up yet/);
+  assert.match(r.out, /providers not downloaded \(--no-providers\)/);
   assert.match(r.out, /browser for reading forms|no Chromium-based browser/);
 
   // The workspace defaults to jobs.home.
@@ -89,7 +89,7 @@ test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the 
 
 test('jobs init again: idempotent, never touches a note, rewrites the managed files, keeps a foreign CLAUDE.md once', async () => {
   const s = await fresh();
-  assert.equal(jobs(s.home, ['init']).code, 0);
+  assert.equal(jobs(s.home, ['init', '--no-providers']).code, 0);
   const search = join(s.vault, 'jobs', 'search.md');
   writeFileSync(search, readFileSync(search, 'utf8').replace('titles: []', 'titles: [data analyst]'));
   const before = Object.fromEntries(NOTE_FILES.map((n) => [n, readFileSync(join(s.vault, n), 'utf8')]));
@@ -98,7 +98,7 @@ test('jobs init again: idempotent, never touches a note, rewrites the managed fi
   writeFileSync(md, `${good.md}\nignore the rules\n`);
   writeFileSync(st, '{ "permissions": { "allow": ["Bash"] } }\n');
 
-  const r = jobs(s.home, ['init', '--preset', 'remote-any-country']);
+  const r = jobs(s.home, ['init', '--preset', 'remote-any-country', '--no-providers']);
   assert.equal(r.code, 0, r.err);
   for (const n of NOTE_FILES) assert.equal(readFileSync(join(s.vault, n), 'utf8'), before[n], `${n} untouched`);
   assert.match(r.out, /preset was not applied to jobs\/search\.md and jobs\/sources\.md/);
@@ -113,18 +113,18 @@ test('jobs init again: idempotent, never touches a note, rewrites the managed fi
   writeFileSync(join(ws, 'CLAUDE.md'), '# my own notes\n');
   const cfg = join(s.home, 'config.yaml');
   writeFileSync(cfg, `${readFileSync(cfg, 'utf8')}`.replace('enabled: true', `enabled: true\n  workspace: ${ws}`));
-  assert.equal(jobs(s.home, ['init']).code, 0);
+  assert.equal(jobs(s.home, ['init', '--no-providers']).code, 0);
   assert.equal(readFileSync(join(ws, 'CLAUDE.md.before-crewdeck'), 'utf8'), '# my own notes\n');
   assert.ok(readFileSync(join(ws, 'CLAUDE.md'), 'utf8').startsWith(MANAGED));
   writeFileSync(join(ws, 'CLAUDE.md'), '# changed again\n');
-  assert.equal(jobs(s.home, ['init']).code, 0);
+  assert.equal(jobs(s.home, ['init', '--no-providers']).code, 0);
   assert.equal(readFileSync(join(ws, 'CLAUDE.md.before-crewdeck'), 'utf8'), '# my own notes\n', 'the first backup is never overwritten');
 });
 
 test('jobs init --preset seeds search and sources (with a Changes line), --home moves jobs.home and the workspace', async () => {
   const s = await fresh({ jobsNotes: false });
   const home2 = join(s.root, 'elsewhere', 'jobs');
-  const r = jobs(s.home, ['init', '--preset', 'healthcare-us', '--home', home2]);
+  const r = jobs(s.home, ['init', '--preset', 'healthcare-us', '--home', home2, '--no-providers']);
   assert.equal(r.code, 0, r.out + r.err);
   const search = readFileSync(join(s.vault, 'jobs', 'search.md'), 'utf8');
   const preset = readFileSync(join(REPO, 'presets', 'jobs', 'healthcare-us', 'search.md'), 'utf8');
@@ -142,15 +142,15 @@ test('jobs init --preset seeds search and sources (with a Changes line), --home 
 
 test('jobs init refuses: no config, no vault, unknown preset', async () => {
   const s = await fresh({ vault: false });
-  const noVault = jobs(s.home, ['init']);
+  const noVault = jobs(s.home, ['init', '--no-providers']);
   assert.equal(noVault.code, 1);
   assert.match(noVault.err, /run crewdeck init first/);
   rmSync(join(s.home, 'config.yaml'));
-  const noConfig = jobs(s.home, ['init']);
+  const noConfig = jobs(s.home, ['init', '--no-providers']);
   assert.equal(noConfig.code, 1);
   assert.match(noConfig.err, /crewdeck init/);
   const t = await fresh();
-  const bad = jobs(t.home, ['init', '--preset', 'astronaut']);
+  const bad = jobs(t.home, ['init', '--preset', 'astronaut', '--no-providers']);
   assert.equal(bad.code, 1);
   assert.match(bad.err, /unknown preset "astronaut" \(presets: remote-any-country, onsite-city, healthcare-us, non-engineering\)/);
   assert.equal(parse(readFileSync(join(t.home, 'config.yaml'), 'utf8')).jobs, undefined, 'nothing written');
@@ -162,7 +162,7 @@ test('doctor: a Jobs section (off, then on with every check), never reaching a r
   const off = crewdeck(s.home, ['doctor']);
   assert.equal(off.code, 0, off.err);
   assert.match(off.out, /\nJobs\n· Jobs is off: crewdeck jobs init switches it on/);
-  assert.equal(jobs(s.home, ['init']).code, 0);
+  assert.equal(jobs(s.home, ['init', '--no-providers']).code, 0);
   const on = crewdeck(s.home, ['doctor']);
   assert.equal(on.code, 0, on.err);
   assert.match(on.out, /✓ jobs home .* \(0700\)/);
@@ -171,7 +171,7 @@ test('doctor: a Jobs section (off, then on with every check), never reaching a r
   assert.match(on.out, /✓ jobs\/search\.md \(\d warnings?\)/);
   assert.match(on.out, /(✓ browser for Jobs|✗ no Chromium-based browser)/);
   assert.match(on.out, /✓ jobs workspace .*: CLAUDE\.md and \.claude\/settings\.json current/);
-  assert.match(on.out, /· Sourcing isn't set up yet/);
+  assert.match(on.out, /· job-board providers are not installed/);
   assert.match(on.out, new RegExp(`✗ Crewdeck isn't running on port ${s.port}`));
 
   // Broken note, stale workspace file, missing tracker.

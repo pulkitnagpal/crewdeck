@@ -286,15 +286,19 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
       const p = `${k}[${i}]`;
       if ('parser' in e) add('error', `${p}.parser`, 'parser entries run local commands and are not allowed', 'remove the entry or use a provider / careers_url');
       if (!e.provider && !e.careers_url) add('error', p, 'needs a provider or a careers_url', 'add provider: <id> or careers_url: https://…');
-      if (typeof e.provider === 'string' && e.provider && !PROVIDERS.has(e.provider)) {
+      if (typeof e.provider === 'string' && e.provider && EXCLUDED_PROVIDERS.has(e.provider)) {
+        add('error', `${p}.provider`, `"${e.provider}" can't run in Crewdeck: ${EXCLUDED_PROVIDERS.get(e.provider)}`, 'remove the entry (or switch it off with enabled: false)');
+      } else if (typeof e.provider === 'string' && e.provider && !PROVIDERS.has(e.provider)) {
         const near = didYouMean(e.provider, [...PROVIDERS]);
         add('error', `${p}.provider`, `"${e.provider}" is not a known provider`, near ? `did you mean "${near}"?` : 'use a provider id from the career-ops list');
       }
     });
   },
 };
-// career-ops provider ids (P5 replaces this with the manifest's allow-list). local-parser runs commands: never.
-const PROVIDERS = new Set<string>((JSON.parse(readFileSync(pathJoin(import.meta.dirname, 'data', 'provider-ids.json'), 'utf8')) as string[]).filter((p) => p !== 'local-parser'));
+// The career-ops providers Crewdeck runs: the pinned manifest's allow-list (design §15). Excluded ones keep their reason.
+const MANIFEST = JSON.parse(readFileSync(pathJoin(import.meta.dirname, 'data', 'providers.manifest.json'), 'utf8')) as { providers: string[]; excluded: Record<string, string> };
+const PROVIDERS = new Set<string>(MANIFEST.providers);
+const EXCLUDED_PROVIDERS = new Map(Object.entries(MANIFEST.excluded).filter(([p]) => /^providers\/[^_/][^/]*\.mjs$/.test(p)).map(([p, why]) => [p.slice(10, -4), why.replace(/^imports .*\((.*)\)$/, '$1')]));
 
 // ---- typed, defaulted values ----
 export type Workplace = (typeof WORKPLACES)[number];

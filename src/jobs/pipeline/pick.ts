@@ -4,46 +4,17 @@
 // safety gates: those come back as warnings unless the user overrides them.
 import { type Ctx, notesOf, nowIso, todayOf } from '../ctx.ts';
 import { addEvent, getRole, setStatus, tx } from '../db.ts';
-import type { JobNotes } from '../notes.ts';
 import { compileRules, prefilter } from '../rules.ts';
-import { fold } from '../places.ts';
-import { clip, plainText } from '../text.ts';
+import { type Candidate, rankRoles, toCandidate } from './rank.ts';
 
-export type Candidate = { id: string; company: string; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string };
+export type { Candidate } from './rank.ts';
 export type Verdict = { role: string; eligible: 'yes' | 'no' | 'unclear'; score: number; evidence: string; reason?: string };
+export { rankScore } from './rank.ts';
 
-const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const has = (text: string, word: string) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(fold(word))}`, 'u').test(text);
-const SOURCE_RANK: Record<string, number> = { pasted: 15, manual: 12, alert: 12, linkedin: 10, board: 6 };
-
-/** A cheap score from the notes (no Claude): title, seniority, skills overlap, freshness and source quality. */
-export function rankScore(row: { title: string; description?: string; source?: string; posted_at?: string | null; first_seen?: string }, notes: Pick<JobNotes, 'search' | 'career'>, at: Date): number {
-  const s = notes.search.data, title = fold(row.title ?? ''), body = `${title}\n${fold(plainText(row.description ?? ''))}`;
-  let score = 0;
-  const ti = s.roles.titles.findIndex((t) => has(title, t));
-  if (ti >= 0) score += Math.max(10, 30 - ti * 3);
-  const si = s.roles.seniority_prefer.findIndex((t) => has(title, t));
-  if (si >= 0) score += Math.max(5, 15 - si * 3);
-  score += Math.min(25, 5 * notes.career.data.skills.filter((k) => has(body, k)).length);
-  const seen = Date.parse(row.posted_at ?? row.first_seen ?? '') || at.getTime();
-  const days = (at.getTime() - seen) / 86_400_000;
-  score += days <= 3 ? 15 : days <= 7 ? 10 : days <= 14 ? 6 : days <= 30 ? 3 : 0;
-  score += SOURCE_RANK[row.source ?? ''] ?? 3;
-  return score;
-}
-
-/** Unjudged roles that passed the prefilter, best first, with plain clipped descriptions. */
+/** Unjudged roles that passed the prefilter, best first, with plain clipped descriptions (rank.ts). */
 export function candidates(ctx: Ctx, limit = 40): Candidate[] {
   if (!Number.isInteger(limit) || limit < 1 || limit > 40) throw new Error('--limit must be from 1 to 40 (at most 40 postings are judged per run)');
-  const notes = notesOf(ctx);
-  const at = ctx.clock();
-  const rows = ctx.db.prepare(`select r.id, c.name company, r.title, r.url, r.location, coalesce(r.pay_text, r.pay_status, '') pay, r.source,
-      r.description, r.posted_at, r.first_seen from roles r join companies c on c.id=r.company_id
-      where r.status='new' and r.eligibility is null`).all() as any[];
-  return rows.map((r) => ({ ...r, rank: rankScore(r, notes, at) }))
-    .sort((a, b) => b.rank - a.rank || String(b.posted_at ?? b.first_seen).localeCompare(String(a.posted_at ?? a.first_seen)) || a.id.localeCompare(b.id))
-    .slice(0, limit)
-    .map((r) => ({ id: r.id, company: r.company, title: r.title, url: r.url, location: r.location, pay: r.pay, source: r.source, rank: r.rank, description: clip(plainText(r.description ?? '')) }));
+  return rankRoles(ctx).slice(0, limit).map(toCandidate);
 }
 
 /** Validate one verdict from Claude's results file. */

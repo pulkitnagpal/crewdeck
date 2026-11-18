@@ -20,7 +20,7 @@ const read = (...p: string[]) => readFileSync(join(REPO, ...p), 'utf8');
 
 test('presets: each one is a valid search.md + sources.md with known providers and nothing personal', () => {
   assert.deepEqual(readdirSync(join(REPO, 'presets', 'jobs')).sort(), [...PRESETS].sort());
-  const ids = new Set(JSON.parse(read('src', 'jobs', 'data', 'provider-ids.json')) as string[]);
+  const ids = new Set(JSON.parse(read('src', 'jobs', 'data', 'providers.manifest.json')).providers as string[]);
   for (const p of PRESETS) {
     for (const n of ['search', 'sources'] as const) {
       const text = read('presets', 'jobs', p, `${n}.md`);
@@ -78,7 +78,9 @@ test('skills: the four playbooks, each with a name that matches its folder and a
   const daily = read('plugin', 'skills', 'jobs-daily-run', 'SKILL.md');
   assert.match(daily, /batches of 10/);
   assert.match(daily, /light, fast model/);
-  assert.match(daily, /--limit 40/);
+  assert.match(daily, /candidates --budget 40 --batch 10 --need N --start/);
+  assert.match(daily, /run\.done/, 'the skill stops where the budgeted candidates say so');
+  assert.match(daily, /judged 20 of 40; 112 left in the pool/, 'the Find result reports judged and remaining');
   assert.match(read('plugin', 'skills', 'crewdeck-memory', 'SKILL.md'), /refilter --days 14/);
 });
 

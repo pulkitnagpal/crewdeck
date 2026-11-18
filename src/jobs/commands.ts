@@ -109,12 +109,70 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     if (r.restored) say(`${r.restored} role${r.restored > 1 ? 's are' : ' is'} back for judging.`);
   }),
 
-  candidates: (args) => withCtx((ctx) => json(candidates(ctx, intArg(flag(args, 'limit'), 'limit', 40)))),
-
-  judge: (args) => withCtx((ctx) => {
-    const raw = jsonFile(flag(args, 'results-file'), 'usage: crewdeck jobs judge --results-file <f> ([{ role, eligible, score, evidence, reason? }])');
-    json(judge(ctx, (Array.isArray(raw) ? raw : [raw]).map(cleanVerdict)));
+  candidates: (args) => withCtx(async (ctx) => {
+    if (flag(args, 'budget') === undefined) return json(candidates(ctx, intArg(flag(args, 'limit'), 'limit', 40)));
+    // A Find within a budget: the next batch in rank order, and where the run stands (design §2.4 step 3).
+    const { budgetedCandidates } = await import('./pipeline/rank.ts');
+    json(budgetedCandidates(ctx, { budget: intArg(flag(args, 'budget'), 'budget'), batch: intArg(flag(args, 'batch'), 'batch', 10), need: intArg(flag(args, 'need'), 'need', dailyPicks(ctx) || 5), start: args.includes('--start') }));
   }),
+
+  judge: (args) => withCtx(async (ctx) => {
+    const raw = jsonFile(flag(args, 'results-file'), 'usage: crewdeck jobs judge --results-file <f> ([{ role, eligible, score, evidence, reason? }])');
+    const out = judge(ctx, (Array.isArray(raw) ? raw : [raw]).map(cleanVerdict));
+    const { recordJudged } = await import('./pipeline/rank.ts');
+    recordJudged(ctx, out.filter((r) => r.stored).map((r) => r.role));
+    json(out);
+  }),
+
+  source: (args) => withCtx(async (ctx) => {
+    const since = intArg(flag(args, 'since'), 'since', 14);
+    if (since < 1 || since > 90) throw new Error('--since must be from 1 to 90 days');
+    const { runSources } = await import('./sources.ts');
+    const r = await runSources(ctx, { sinceDays: since, trigger: args.includes('--scheduled') ? 'scheduled' : 'command' });
+    if (args.includes('--json')) return json(r);
+    const p = r.providers as any;
+    if (p?.ran) {
+      say(`boards: ${p.fetched} postings, ${p.new} new${p.refused ? `, ${p.refused} refused by the checks` : ''}`);
+      for (const e of p.entries) say(`  ${e.ok ? '✓' : '✗'} ${e.name}${e.provider ? ` (${e.provider})` : ''}: ${e.ok ? `${e.jobs} postings, ${e.new} new` : e.error}`);
+      for (const s of p.skipped) say(`  · ${s.name}: ${s.why}`);
+    } else say(`boards: not run (${p?.why})`);
+    const l = r.linkedin;
+    say(l?.ran ? `LinkedIn: ${l.stored} new of ${l.cards} found${l.stopped ? ` (${l.stopped})` : ''}` : `LinkedIn: not run (${l?.why})`);
+    if (r.details?.tried) say(`descriptions: ${r.details.found} read for the best-ranked roles, ${r.details.closed} closed postings set aside`);
+    say(`after your rules: ${r.prefilter?.kept} waiting to be judged, ${r.prefilter?.dropped} dropped`);
+    if (r.error) { say(`error: ${r.error}`); process.exitCode = 1; }
+  }),
+
+  providers: async (args) => {
+    const [verb] = positional(args);
+    const usage = 'usage: crewdeck jobs providers install | status | verify';
+    const c = loadConfig();
+    const p = await import('./providers.ts');
+    if (verb === 'install') {
+      const r = await p.installProviders(c);
+      say(r.message);
+      if (!r.ready) process.exitCode = 1;
+      return;
+    }
+    if (verb === 'status') {
+      const r = p.providersStatus(c);
+      const m = p.loadManifest();
+      say(r.message);
+      say(`pinned: ${m.repo}@${m.commit} (${m.license.spdx}, ${m.license.copyright})`);
+      say(`excluded: ${Object.entries(m.excluded).filter(([f]) => /^providers\/[^_]/.test(f)).map(([f]) => f.slice(10, -4)).join(', ')}`);
+      if (!r.ready) process.exitCode = 1;
+      return;
+    }
+    if (verb === 'verify') {
+      const r = p.verifyProviders(c);
+      if (r.ok) return say(`all ${r.checked} provider files match the pinned manifest`);
+      for (const b of r.bad.slice(0, 20)) say(`✗ ${b}`);
+      say(`${r.bad.length} problem${r.bad.length > 1 ? 's' : ''}: run crewdeck jobs providers install`);
+      process.exitCode = 1;
+      return;
+    }
+    throw new Error(usage);
+  },
 
   pick: (args) => withCtx((ctx) => {
     const day = flag(args, 'day') ?? todayOf(ctx);
@@ -325,7 +383,10 @@ export const COMMANDS = cmds;
 export const USAGE = `
 tracker and pipeline (text from postings and the user's words only through files or - for stdin):
   prefilter | refilter --days N           drop roles your notes rule out / bring back ones they now allow
+  source [--since N]                      fetch new roles: job-board providers (sandboxed), LinkedIn if on, then your rules
+  providers install | status | verify     the pinned job-board providers (download, check, re-hash)
   candidates [--limit N]                  unjudged roles, best first (JSON)
+  candidates --budget N [--batch 10] [--need N] [--start]   the next batch for a Find within a budget (≤ 40)
   judge --results-file f                  store verdicts [{ role, eligible: yes|no|unclear, score, evidence, reason? }]
   pick [--n N] [--day D] | pick --role <id> [--force]
   add-role --role-file f | role <id> --apply-url-file f | status <role> <status> [--reason-file f]

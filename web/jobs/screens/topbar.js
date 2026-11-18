@@ -1,6 +1,6 @@
 // The top bar: the Jobs screens, what Claude is doing (agent strip), Add link and Find N jobs.
 import { useState } from 'preact/hooks';
-import { html, noop, plural, Icon } from '../lib.js';
+import { html, noop, plural, ago, clock, Icon } from '../lib.js';
 
 export const SCREENS = [['today', 'Today'], ['applications', 'Applications'], ['knowledge', 'What Claude knows'], ['preferences', 'Preferences'], ['settings', 'Settings']];
 
@@ -26,6 +26,26 @@ export function AgentStrip({ agent }) {
   </div>`;
 }
 
+/** "12 new roles since 09:40 · fetched 2 h ago": what scheduled sourcing found, in one line (design §2.4). */
+export function sourcesLine(src, now = Date.now()) {
+  if (!src) return null;
+  if (!src.ready) return { text: 'Job boards not set up', title: 'Run crewdeck jobs providers install (pasted links work without them)', refresh: false };
+  const since = src.since ? `since ${new Date(src.since).toDateString() === new Date(now).toDateString() ? clock(src.since) : new Date(src.since).toLocaleDateString([], { day: 'numeric', month: 'short' })}` : 'waiting';
+  const head = src.running ? 'Fetching roles…' : `${plural(src.new_since ?? 0, 'new role')} ${since}`;
+  const last = src.last?.finished ? ` · fetched ${ago(src.last.finished, now)}${src.last.ok ? '' : ' (with errors)'}` : src.running ? '' : ' · not fetched yet';
+  const title = [src.last?.error, src.next_at && !src.running ? `next fetch ${clock(src.next_at)}` : '', `${plural(src.waiting ?? 0, 'role')} waiting to be judged`].filter(Boolean).join(' · ');
+  return { text: `${head}${last}`, title, refresh: !src.running };
+}
+
+export function SourcesStrip({ sources, onRefresh = noop }) {
+  const l = sourcesLine(sources);
+  if (!l) return null;
+  return html`<div class="sources" role="status" title=${l.title}>
+    <span class="txt">${l.text}</span>
+    ${l.refresh ? html`<button type="button" class="linkbtn" onClick=${onRefresh}>Refresh sources</button>` : null}
+  </div>`;
+}
+
 export function AddLink({ onAdd = noop }) {
   const [v, setV] = useState('');
   const [busy, setBusy] = useState(false);
@@ -45,7 +65,7 @@ export function AddLink({ onAdd = noop }) {
   </form>`;
 }
 
-export function TopBar({ screen, onNav = noop, agent, quota = 5, onFind = noop, onLink = noop, setupNeeded = false }) {
+export function TopBar({ screen, onNav = noop, agent, quota = 5, onFind = noop, onLink = noop, setupNeeded = false, sources = null, onRefresh = noop }) {
   return html`<header class="top">
     <nav class="tabsnav" aria-label="Jobs">
       ${SCREENS.map(([k, label]) => html`<button type="button" aria-current=${screen === k ? 'page' : undefined} onClick=${() => onNav(k)}>${label}</button>`)}
@@ -53,6 +73,7 @@ export function TopBar({ screen, onNav = noop, agent, quota = 5, onFind = noop, 
     <span class="grow"></span>
     <span class="break"></span>
     <${AgentStrip} agent=${agent} />
+    <${SourcesStrip} sources=${sources} onRefresh=${onRefresh} />
     <${AddLink} onAdd=${onLink} />
     <button type="button" class="btn primary find" onClick=${onFind} disabled=${setupNeeded} title=${setupNeeded ? 'Set up Jobs first' : `Claude judges the best candidates and picks ${quota}`}>
       Find ${quota} jobs

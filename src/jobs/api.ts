@@ -8,10 +8,10 @@
 //   risky switch changes.
 // - reads (GET /api/jobs/*): never for another site (no CORS headers; Sec-Fetch-Site other than same-origin/none refused).
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { type FSWatcher, existsSync, readFileSync, realpathSync, watch } from 'node:fs';
 import { basename, join, sep } from 'node:path';
-import { type Config, CONFIG_PATH, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, featureValue, setFeature } from '../config.ts';
+import { type Config, CONFIG_PATH, HOME, REPO, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, featureValue, setFeature } from '../config.ts';
 import { HttpError, SECURITY_HEADERS, fromOwnPage, json, ownRead, readJson, send } from '../http.ts';
 import { type JobKind, type Request, type Requests, RequestError, isOpen } from '../requests.ts';
 import { type Ctx, makeCtx, notesOf, todayOf } from './ctx.ts';
@@ -28,6 +28,9 @@ import { KNOWLEDGE_TABS, type KnowledgeTab, applicationsView, applyMode, canAppr
 import { NEEDS_YOU, applyPanel } from './panel.ts';
 import { FEATURE_INFO, RISK } from './features.ts';
 import { findBrowser, installHint } from './browser.ts';
+import { providersStatus } from './providers.ts';
+import { parseEvery, readSourcesState, writeSourcesState } from './sources.ts';
+import { type SchedulerOptions, createSourceScheduler } from './schedule.ts';
 
 export type JobsApi = {
   handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void>;
@@ -35,6 +38,7 @@ export type JobsApi = {
   contextFor(r: Request): unknown;
   /** Tell open pages to refresh (the server's own writes). */
   emit(topic: string): void;
+  scheduler: import('./schedule.ts').SourceScheduler;
   close(): void;
 };
 export type JobsApiOptions = {
@@ -42,6 +46,8 @@ export type JobsApiOptions = {
   /** Show a file in Finder (tests replace it). */
   reveal?: (file: string) => Promise<void>;
   browser?: () => { name: string; path: string } | null;
+  /** The sourcing timer (tests replace the child run and the delays). */
+  sources?: Partial<Pick<SchedulerOptions, 'run' | 'firstDelayMs' | 'everyMs' | 'ready'>>;
 };
 
 const LANE = 'jobs';
@@ -163,6 +169,58 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   const offQueue = requests.onChange(() => emit('queue'));
   reconcile();
 
+  // ---- scheduled sourcing (design §2.4 step 1): `crewdeck jobs source` in a child, never two at once, no Claude ----
+  let providersReady = { at: 0, ready: false };
+  const sourcingReady = () => {
+    if (Date.now() - providersReady.at > 60_000) providersReady = { at: Date.now(), ready: providersStatus(c).ready };
+    return providersReady.ready || !!ctx.features.linkedin_search;
+  };
+  const canSource = o.sources?.ready ?? sourcingReady;
+  const runSourceChild = (): Promise<{ code: number | null; error?: string }> => new Promise((resolve) => {
+    const startedAt = new Date().toISOString();
+    const child = spawn(process.execPath, [join(REPO, 'src', 'cli.ts'), 'jobs', 'source', '--scheduled'], { env: { ...process.env, CREWDECK_HOME: HOME }, stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (d: string) => { err = (err + d).slice(-2000); });
+    const kill = setTimeout(() => child.kill('SIGKILL'), 30 * 60_000);
+    const done = (code: number | null, error?: string) => {
+      clearTimeout(kill);
+      // A child that died before writing its state still shows up on the page.
+      const st = readSourcesState(c.jobs.home);
+      if (code !== 0 && (!st || (st.finished ?? '') < startedAt)) {
+        try { writeSourcesState(c.jobs.home, { started: startedAt, finished: new Date().toISOString(), ok: false, new: 0, trigger: 'scheduled', error: (error ?? err.trim().split('\n').at(-1) ?? `exit ${code}`).slice(0, 300) }); } catch {}
+      }
+      emit('sources');
+      resolve({ code, error });
+    };
+    child.on('error', (e) => done(null, e.message));
+    child.on('close', (code) => done(code));
+  });
+  const scheduler = createSourceScheduler({
+    everyMs: o.sources?.everyMs ?? parseEvery(c.jobs.fetch_every),
+    run: o.sources?.run ?? runSourceChild,
+    lastFinished: () => readSourcesState(c.jobs.home)?.finished ?? null,
+    ready: canSource,
+    firstDelayMs: o.sources?.firstDelayMs,
+    onChange: () => emit('sources'),
+  });
+
+  /** "N new roles since <time>": waiting for judging, first seen since the last Find (design §2.4). */
+  function sourcesView() {
+    const last = readSourcesState(c.jobs.home);
+    const lastFind = requests.ofLane(LANE, 'find')[0];
+    const since = lastFind?.created ?? null;
+    const waiting = Number((db.prepare(`select count(*) n from roles where status='new' and eligibility is null`).get() as any).n);
+    const fresh = since ? Number((db.prepare(`select count(*) n from roles where status='new' and eligibility is null and first_seen >= ?`).get(since) as any).n) : waiting;
+    const p = last?.providers as any;
+    return {
+      ready: canSource(), providers: providersReady.ready, linkedin: !!ctx.features.linkedin_search, every: c.jobs.fetch_every,
+      ...scheduler.status(), waiting, new_since: fresh, since,
+      last: last ? { started: last.started, finished: last.finished ?? null, ok: last.ok, new: last.new, error: last.error ?? null,
+        failed: Array.isArray(p?.entries) ? p.entries.filter((e: any) => !e.ok).length : 0, entries: Array.isArray(p?.entries) ? p.entries.length : 0 } : null,
+    };
+  }
+
   // ---- views ----
   const notesPage = (file: string | null) => (file ? file.replace(/\.md$/, '') : null);
 
@@ -213,7 +271,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       notesPort: c.silverbullet.port, vault: c.vault, home: c.jobs.home, agent: agentView(), setup: setupView(notes), banners: banners(notes),
       quota: notes.search.data.schedule.daily_picks || 5, reveal: platform === 'darwin', features: ctx.features,
-      browser: browser ? browser.name : null,
+      browser: browser ? browser.name : null, sources: sourcesView(),
     };
   }
 
@@ -289,6 +347,11 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
 
   const actions: Record<string, (b: any) => unknown> = {
     setup: () => queue('setup', undefined, {}),
+    refreshSources: () => {
+      if (!canSource()) throw new HttpError(400, 'Sourcing isn\'t set up: run crewdeck jobs providers install (or switch on LinkedIn search)');
+      const r = scheduler.refresh();
+      return { ok: true, ...r };
+    },
     find: (b) => queue('find', undefined, { count: intIn(b.count ?? (notesOf(ctx).search.data.schedule.daily_picks || 5), 1, 20, 'count') }),
     addLink: (b) => queue('link', undefined, { url: checkLink(b.url, ctx.features), ...(b.force === true ? { force: true } : {}) }),
     approve: (b) => {
@@ -465,8 +528,9 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   }
 
   return {
-    handle, contextFor, emit,
+    handle, contextFor, emit, scheduler,
     close() {
+      scheduler.stop();
       for (const t of timers) clearInterval(t);
       if (flush) clearTimeout(flush);
       for (const w of watchers.values()) { try { w.close(); } catch {} }

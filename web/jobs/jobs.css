@@ -35,6 +35,8 @@ code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background
 @keyframes pulse { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .dot.busy { animation: none; } }
 .actions { display: flex; align-items: center; gap: 8px; }
+.sources { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 360px; font-size: 12.5px; color: var(--soft); }
+.sources .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .addlink { display: flex; align-items: center; gap: 4px; background: var(--chip); border-radius: 10px; padding: 3px 3px 3px 10px; }
 .addlink input { border: 0; background: transparent; outline: none; width: 200px; min-width: 0; font-size: 13px; padding: 4px 0; }
 .content { flex: 1; min-height: 0; overflow: auto; }

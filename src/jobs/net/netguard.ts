@@ -20,7 +20,7 @@ export type FetchOptions = NetOptions & {
   timeoutMs?: number; maxBytes?: number; maxRedirects?: number; redirect?: 'follow' | 'manual';
   headers?: Record<string, string>;
 };
-export type Fetched = { status: number; url: string; headers: http.IncomingHttpHeaders; body: string; redirects: string[] };
+export type Fetched = { status: number; url: string; headers: http.IncomingHttpHeaders; body: string; redirects: string[]; /** the decoded body's bytes (hashes) */ bytes?: Buffer };
 
 export type NetErrorCode = 'blocked' | 'scheme' | 'timeout' | 'too_large' | 'redirects' | 'dns' | 'network';
 export class NetError extends Error {
@@ -139,7 +139,8 @@ function once(u: URL, o: Required<Pick<FetchOptions, 'maxBytes'>> & FetchOptions
       });
       body.on('end', () => {
         agent.destroy();
-        resolve({ status: res.statusCode ?? 0, url: u.toString(), headers: res.headers, body: new TextDecoder(charsetOf(res.headers['content-type'])).decode(Buffer.concat(chunks)), redirects: [] });
+        const bytes = Buffer.concat(chunks);
+        resolve({ status: res.statusCode ?? 0, url: u.toString(), headers: res.headers, body: new TextDecoder(charsetOf(res.headers['content-type'])).decode(bytes), redirects: [], bytes });
       });
       body.on('error', (e) => fail(signal.aborted ? new NetError('timeout', 'timed out') : new NetError('network', `the page could not be read (${e.message})`)));
       res.on('error', (e) => fail(signal.aborted ? new NetError('timeout', 'timed out') : new NetError('network', e.message)));
