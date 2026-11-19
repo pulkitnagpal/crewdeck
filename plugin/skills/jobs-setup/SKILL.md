@@ -97,19 +97,21 @@ with `me set`.
 3. **Where:** cities for on-site or hybrid work (`places.onsite`, "Town, Country" or "Columbus, OH" for small or
    ambiguous places) and how far they'd travel (`places.commute_km`); countries, regions or states they can work
    remotely **from** (`places.remote_from`, `worldwide` for anywhere).
-   - **Moving:** cities they would move to for a job go into `places.onsite` too, and say so in `judge_notes` in their
-     words ("Would move to Cincinnati or Cleveland for the right job").
-   - **Right to work:** `needs_sponsorship` (true or false), and where they may work without sponsorship in
-     `judge_notes`, in their words ("Allowed to work in the US and Canada"), so the judge fails postings that require
-     another country's right to work and won't sponsor.
+   - **Moving:** cities they would move to for a job (`places.relocate_to`, e.g. `[Cincinnati, Cleveland]`): on-site or
+     hybrid roles there pass the rules, and the judge is told they'd move.
+   - **Right to work:** the countries where they may work without sponsorship (`places.authorized_in`, e.g.
+     `[United States]`), and `needs_sponsorship` (true or false) for anywhere else: the judge fails postings that require
+     another country's right to work and say they can't sponsor.
 4. **Workplace:** `remote`, `hybrid`, `onsite` (`workplace`).
-5. **How they want to work:** employment types (`employment_types`: `full-time`, `part-time`, `contract`, `per-diem`,
-   `internship`, `temporary`), and their shifts and hours in their words in `judge_notes` ("Nights only, three 12-hour
-   shifts a week"; "About 24 hours a week, weekends fine"). Never infer a shift or hour limit they didn't say.
-
-Crewdeck will soon have its own fields for shifts and hours, moving (`relocate_to`), where they may work
-(`authorized_in`) and per-role cooldowns; until then `judge_notes` carries them, in the user's words. Don't write fields
-`crewdeck jobs check` doesn't know.
+5. **How they want to work:** employment types (`employment_types`: `full-time`, `part-time`, `contract`, `freelance`,
+   `per-diem`, `internship`, `apprenticeship`, `temporary`, `fixed-term`, `seasonal`; a posting whose source states
+   another type is dropped, so ask before leaving one out), and their work pattern, only what they say:
+   - shifts they can work and can't (`work_pattern.shifts`, `work_pattern.shifts_avoid`: `day`, `evening`, `night`,
+     `weekend`, `rotating`, `on-call`), e.g. `[night, weekend]` for "nights, weekends fine";
+   - hours a week (`work_pattern.hours_per_week`, e.g. `{ min: 20, max: 24 }` for "about 24 hours a week");
+   - term-time only for school jobs (`work_pattern.term_time_only: true`).
+   Never infer a shift or an hours limit they didn't say. Anything else about how they work stays in their words in
+   `judge_notes` ("three 12-hour shifts a week").
 
 ## 5. Where to look (`jobs/sources.md`)
 1. `crewdeck jobs sources suggest --json` scores Crewdeck's catalog from the notes you just wrote (countries, the
@@ -153,18 +155,26 @@ Crewdeck will soon have its own fields for shifts and hours, moving (`relocate_t
 
 ## 7. What they want, part two
 One topic at a time, each written with `pref set` and their words as the because-file:
-- **pay floor:** currency (`pay.currency`), amount (`pay.floor`), period (`pay.period`: `year`, `month` or `hour`; hourly
-  for hourly work), whether the top or the bottom of a range must reach it (`pay.rule`), what to do with postings that
-  show no pay (`pay.unlisted`), their locale for money and dates (`pay.locale`, e.g. `en-US`), and rates for other
-  currencies they'd accept (`pay.fx`);
-- **languages** and level (`basic`, `conversational`, `professional`, `fluent`, `native`);
-- **licences** and certifications, with where they hold them (`licenses`, e.g. `["RN (Ohio)", "CDL Class B (Texas)"]`);
+- **pay floor:** currency (`pay.currency`), amount (`pay.floor`), period (`pay.period`: `year`, `month`, `week`, `day`
+  or `hour`, as they think of their pay: hourly for shift work, a day rate for freelancers, monthly where wages are
+  monthly), the hours and days they work (`pay.hours_per_week`, `pay.days_per_week`: a monthly wage or a day rate is
+  converted with them; without them a 40-hour, 5-day week is assumed, or the most of `work_pattern.hours_per_week`),
+  pay per word, page or project in their words (`pay.per_unit`: the judge's text, never a floor), whether the top or
+  the bottom of a range must reach the floor (`pay.rule`), what to do with postings that show no pay (`pay.unlisted`),
+  their locale for money and dates (`pay.locale`, e.g. `en-US`), and rates for other currencies they'd accept
+  (`pay.fx`);
+- **languages** and level (`basic`, `conversational`, `professional`, `fluent`, `native`, or the CEFR level they know,
+  `A1`–`C2`: "Deutsch C1" is `{ name: German, level: C1 }`);
+- **licences** and certifications, with where they hold them (`licenses`, e.g. `["Forklift", { name: RN, where: Ohio },
+  { name: CDL Class B, where: Texas }]`);
 - **exclusions:** companies, industries, travel (`exclude.travel`: the lowest level that rules a job out);
 - **daily picks** and **time zone** (`schedule.daily_picks`, `schedule.timezone`, e.g. `America/Chicago`);
-- **cooldown** after applying (`schedule.cooldown_days`). Propose by field and let them choose: **14 days** for
-  healthcare, education, retail, hospitality-food and logistics-transport (employers there post many similar roles, and
-  people apply to several units or stores), **60 days** otherwise;
-- anything else for the judging step, in their words (`judge_notes`, added to what step 4 wrote there).
+- **cooldown** after applying (`schedule.cooldown_days`, `schedule.cooldown_scope`). Propose by field and let them
+  choose: **14 days with `cooldown_scope: role`** (only the same title at that employer waits, so another unit or store
+  can still be picked) for healthcare, education, retail, hospitality-food and logistics-transport, where employers post
+  many similar roles; **60 days with `cooldown_scope: company`** otherwise. If they want several roles at one big
+  employer in progress at once, `schedule.per_company` (e.g. 2; 1 by default);
+- anything else for the judging step, in their words (`judge_notes`).
 
 If `jobs/search.md` came from a preset, go through what it seeded and keep only what the user confirms.
 

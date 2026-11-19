@@ -61,6 +61,8 @@ export function writeAtomic(path: string, text: string) {
 
 /** Set a value, keeping the old value's comment and flow/block style. */
 export function setInDoc(doc: Document, path: (string | number)[], value: unknown) {
+  // No value: the key goes (an emptied optional number, e.g. pay.hours_per_week).
+  if (value === undefined) { if (doc.hasIn(path)) doc.deleteIn(path); return; }
   const old = doc.getIn(path, true);
   const node = doc.createNode(value) as any;
   if (isNode(old)) {

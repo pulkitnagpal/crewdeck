@@ -3,14 +3,16 @@
 // Everything subtle (eligibility wording, languages, licences, sponsorship, avoid reasons) goes to the judge, whose
 // brief is built here too. Nothing about any person, country or currency is in this file: it all comes from notes.
 import { compatible, findPlaces, fold, isWorld, lookupPlace, placeName, plain, reducePlaces, within } from './places.ts';
-import { type PaySettings, payCheck, payDrops } from './pay.ts';
+import { type PaySettings, payCheck, payDrops, paySettingsOf } from './pay.ts';
+import { B, E, NOT_ELIGIBLE_KEYWORD, ONLY_KEYWORD, builtInRules, employmentKinds, fillerWords, industryWords, noTravelRe, travelNounRe } from './rule-words.ts';
 import type { JobNotes } from './notes.ts';
-import { RULE_NAMES, type MemoryItem, type Search, type Workplace, WORKPLACES } from './schema.ts';
+import { RULE_NAMES, type MemoryItem, type Search, type Workplace, WORKPLACES, levelWord, licenceText } from './schema.ts';
 import { isActive } from './memory.ts';
 import { type ReadTitle, type TitleMatch, type TitleMatcher, closest, describeMatcher, levelBlock, matchTitle, readTitle, targetsOf, titleMatcher } from './titles.ts';
 
 export type RuleName = (typeof RULE_NAMES)[number];
-export type Posting = { title: string; company?: string; location?: string; description?: string; pay_text?: string | null; /** the posting's language (ISO 639-1), when a source said */ language?: string | null };
+export type Posting = { title: string; company?: string; location?: string; description?: string; pay_text?: string | null; /** the posting's language (ISO 639-1), when a source said */ language?: string | null;
+  /** a structured employment type from JSON-LD or a provider (never read from the text) */ employment_type?: string | null };
 export type Verdict = { keep: true } | { keep: false; rule: string; reason: string };
 
 /** A list of places the user accepts; usable only when every name is known (else location drops are off). */
@@ -29,61 +31,26 @@ export type Compiled = {
   companyRules: { company: string; key: string; id: string; text: string }[];
   avoidWords: { word: string; id: string; text: string }[];
   travelDrop: 'occasional' | 'frequent' | null;
+  /** employment_types (D30): a structured type outside them drops; empty means any. */
+  employment: string[];
+  /** places.relocate_to (D37): on-site there passes; they are in `onsite` too. */
+  relocate: string[];
+  /** schedule (D36), for `rules` to describe; the tracker applies it. */
+  cooldown?: { days: number; scope: 'company' | 'role'; perCompany: number };
   pay: PaySettings | null;
   notes: string[];
 };
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const words = (s: string) => plain(s).trim().split(/[\s\-/]+/).filter(Boolean).map(esc).join('[\\s\\-/]+');
-const B = '(?<![\\p{L}\\p{N}])', E = '(?![\\p{L}\\p{N}])';
 const re = (src: string) => new RegExp(src, 'giud');
 
-// Built-in detectors (all overridable by name in search.md → rules:).
-const BUILT_IN: Partial<Record<RuleName, string[]>> = {
-  remote_words: [`${B}(?:remote|fully remote|remote[- ]first|work from home|wfh|telecommut\\w*|telework\\w*|remoto|remota|teletravail|teletrabajo|100\\s?% remote)${E}`],
-  hybrid_words: [`${B}(?:hybrid|hybride|hibrido|ibrido)${E}`],
-  onsite_words: [`${B}(?:on[- ]?site|in[- ]office|office[- ]based|in[- ]person|vor ort|presencial|sur site|in sede)${E}`],
-  other_only: [
-    // "<places> only", "US-only", "EU residents only"
-    `(?<places>[^.;:!?()\\[\\]\\n]{1,80}?)[\\s-]*(?:based\\s+)?(?:residents|citizens|candidates|applicants|nationals)?\\s*${B}only${E}`,
-    // "must reside in <places>", "must be located in <places>"
-    `${B}(?:must|need to|needs to|required to|have to)\\s+(?:be\\s+)?(?:located|based|residing|reside|live|living|resident)\\s+(?:in|within)\\s+(?<places>[^.;:!?()\\n]{1,80})`,
-    // "only open to candidates in <places>", "open only to residents of <places>", "we only hire in <places>"
-    `${B}(?:only\\s+(?:open|available|hiring|hire|accepting|considering|employ(?:ing)?)|(?:open|available)\\s+only)\\b[^.;:!?()\\n]{0,40}?${B}(?:in|from|of|within)\\s+(?<places>[^.;:!?()\\n]{1,80})`,
-  ],
-  place_excluded: [
-    // "not open to candidates in <places>", "excluding <places>", "cannot hire in <places>"
-    `${B}(?:(?:not|no longer)\\s+(?:open|available|eligible|accepting|considering|hiring)|(?:cannot|can't|can not|unable to|won't|will not|do not|don't|does not|doesn't)\\s+(?:hire|employ|accept|consider|support))\\b[^.;:!?()\\n]{0,30}?${B}(?:in|from|to|for)\\s+(?<places>[^.;:!?()\\n]{1,80})`,
-    `${B}(?:excluding|excludes|except(?:\\s+for)?|other than)\\s+(?<places>[^.;:!?()\\n]{1,80})`,
-    // "<places> (residents) are not eligible"
-    `(?<places>[^.;:!?()\\[\\]\\n]{1,80}?)[\\s-]*(?:based\\s+)?(?:candidates|applicants|residents)?\\s*(?:are|is)?\\s*(?:excluded|not eligible|ineligible|not supported|not accepted|not considered)${E}`,
-  ],
-  travel_frequent: [`${B}(?:frequent|frequently|regular|regularly|extensive|extensively|heavy|significant|constant|weekly|considerable|substantial)\\b[^.;\\n]{0,30}${B}travel|${B}travel(?:l?ing)?\\b[^.;\\n]{0,20}${B}(?:frequently|regularly|extensively|weekly)${E}|${B}(?:road warrior|majority of (?:the )?time on the road)${E}`],
-  travel_occasional: [`${B}(?:occasional|occasionally|some|limited|infrequent|periodic|quarterly|annual|light|minimal|monthly)\\b[^.;\\n]{0,30}${B}travel|${B}travel\\b[^.;\\n]{0,25}${B}(?:required|is required|may be required|expected|as needed)${E}|${B}willing(?:ness)? to travel${E}`],
-};
-const NO_TRAVEL = new RegExp(`${B}no\\s+(?:\\w+\\s+){0,2}travel|${B}travel\\b[^.;\\n]{0,25}${B}(?:not required|not expected|none|0\\s?%)|${B}without (?:any )?travel`, 'iu');
-
-/** Usual words for common industries, so "crypto" also catches "web3"; anything else is matched as written. */
-const INDUSTRY_WORDS: Record<string, string[]> = {
-  crypto: ['crypto', 'cryptocurrency', 'cryptocurrencies', 'web3', 'blockchain', 'defi', 'nft', 'stablecoin', 'token sale'],
-  gambling: ['gambling', 'betting', 'casino', 'igaming', 'sportsbook', 'sports betting', 'lottery'],
-  tobacco: ['tobacco', 'cigarette', 'vaping', 'nicotine'],
-  defense: ['defense', 'defence', 'military', 'weapons', 'munitions', 'armaments'],
-  weapons: ['weapons', 'firearms', 'munitions', 'armaments'],
-  adult: ['adult entertainment', 'adult content', 'pornography'],
-  'oil and gas': ['oil and gas', 'oil & gas', 'fossil fuel', 'petroleum', 'coal mining'],
-  alcohol: ['alcohol', 'brewery', 'distillery'],
-  'payday loans': ['payday loan', 'payday lending'],
-  mlm: ['multi-level marketing', 'network marketing', 'mlm'],
-};
-const INDUSTRY_ALIASES: Record<string, string> = {
-  cryptocurrency: 'crypto', web3: 'crypto', blockchain: 'crypto', betting: 'gambling', igaming: 'gambling', casino: 'gambling',
-  defence: 'defense', military: 'defense', 'fossil fuels': 'oil and gas', 'oil & gas': 'oil and gas', 'adult entertainment': 'adult',
-};
-export function industryWords(name: string): string[] {
-  const k = fold(name);
-  return INDUSTRY_WORDS[k] ?? INDUSTRY_WORDS[INDUSTRY_ALIASES[k] ?? ''] ?? [name];
-}
+// Built-in detectors (all overridable by name in search.md → rules:), from the per-language words in
+// data/rule-words.yaml (D38).
+const BUILT_IN: Partial<Record<RuleName, string[]>> = builtInRules();
+const NO_TRAVEL = noTravelRe();
+const TRAVEL_NOUN = travelNounRe();
+export { industryWords };
 
 const LEGAL = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|gmbh|ag|plc|corp|corporation|co|sa|s\.a|bv|b\.v|srl|sarl|oy|ab|as|aps|pty|pvt|private)\b\.?/g;
 // "Example.com" and "Example" are one company: a trailing web domain is dropped first.
@@ -124,7 +91,8 @@ export function compileRules(notes: Pick<JobNotes, 'search' | 'memory'>): Compil
   }
 
   const accepted = s.workplace.length ? s.workplace : [...WORKPLACES];
-  const onsite = placeSet(s.places.onsite), remote = placeSet(s.places.remote_from);
+  // Cities the user would move to count as on-site places (D37); the brief tells the judge they'd move.
+  const onsite = placeSet([...s.places.onsite, ...s.places.relocate_to.filter((p) => !s.places.onsite.includes(p))]), remote = placeSet(s.places.remote_from);
   for (const [k, p] of [['places.onsite', onsite], ['places.remote_from', remote]] as const) {
     if (p.unknown.length) info.push(`${k}: ${p.unknown.join(', ')} not in the gazetteer: location drops are off for this list`);
   }
@@ -135,8 +103,10 @@ export function compileRules(notes: Pick<JobNotes, 'search' | 'memory'>): Compil
     companies: s.exclude.companies.map((c) => ({ name: c, key: companyKey(c) })),
     companyRules: active.filter((m) => m.kind === 'company_rule' && m.company).map((m) => ({ company: m.company!, key: companyKey(m.company!), id: m.id, text: m.text })),
     avoidWords,
-    travelDrop: s.exclude.travel === 'none' ? null : s.exclude.travel,
-    pay: s.pay && s.pay.currency ? { currency: s.pay.currency, floor: s.pay.floor, period: s.pay.period, rule: s.pay.rule, unlisted: s.pay.unlisted, fx: s.pay.fx, locale: s.pay.locale || undefined } : null,
+    travelDrop: s.exclude.travel === 'off' ? null : s.exclude.travel,
+    employment: s.employment_types, relocate: s.places.relocate_to,
+    cooldown: { days: s.schedule.cooldown_days, scope: s.schedule.cooldown_scope, perCompany: s.schedule.per_company },
+    pay: paySettingsOf(s),
     notes: info,
   };
 }
@@ -159,8 +129,8 @@ function* all(rs: RegExp[] | undefined, text: string) {
 // (the places, at most 80 characters, plus the filler words), leftmost first and never overlapping, which gives the
 // same matches as a scan of the whole text unless the filler holds more than 300 characters of spaces.
 const KEYWORD_AT_END = new Map<string, RegExp>([
-  [re(BUILT_IN.other_only![0]).source, /(?<![\p{L}\p{N}])only(?![\p{L}\p{N}])/giu],
-  [re(BUILT_IN.place_excluded![2]).source, /(?:excluded|not eligible|ineligible|not supported|not accepted|not considered)(?![\p{L}\p{N}])/giu],
+  [re(BUILT_IN.other_only![0]).source, ONLY_KEYWORD()],
+  [re(BUILT_IN.place_excluded![2]).source, NOT_ELIGIBLE_KEYWORD()],
 ]);
 const WINDOW = 380;
 function* nearKeyword(r: RegExp, kw: RegExp, text: string) {
@@ -176,9 +146,8 @@ function* nearKeyword(r: RegExp, kw: RegExp, text: string) {
 }
 
 // Words that may sit between and around place names in a restriction ("US or Canada", "candidates in the EU").
-const FILLER = new Set(['or', 'and', 'the', 'remote', 'remotely', 'based', 'residents', 'resident', 'citizens', 'candidates', 'applicants',
-  'people', 'those', 'located', 'living', 'in', 'from', 'of', 'within', 'nationals', 'area', 'region', 'only', 'currently', 'who', 'are', 'is']);
-const onlyFiller = (s: string) => s.split(/[\s,/&+|·-]+/).filter(Boolean).every((w) => FILLER.has(w.toLowerCase()));
+const FILLER = fillerWords();
+const onlyFiller = (s: string) => s.split(/[\s,/&+|·-]+/).filter(Boolean).every((w) => FILLER.has(fold(w)));
 
 /** The run of places in a restriction's span: from its end for "<places> only", from its start for "in <places>". */
 function placeRun(span: string, fromEnd: boolean): string[][] {
@@ -224,7 +193,7 @@ export function prefilter(post: Posting, c: Compiled): Verdict {
 /** Which group of rules a drop belongs to: what one change to the notes would bring back (the preview's single blockers). */
 export const RULE_GROUP: Record<string, string> = {
   title_gate: 'title', title_exclude: 'title', level: 'title', company_excluded: 'company', company_rule: 'company',
-  workplace_excluded: 'workplace', location_elsewhere: 'place', place_excluded: 'place', other_only: 'place',
+  employment_type: 'employment', workplace_excluded: 'workplace', location_elsewhere: 'place', place_excluded: 'place', other_only: 'place',
   industry: 'industry', travel: 'travel', pay: 'pay', cooldown: 'tracker', active_pick: 'tracker',
 };
 export type Drop = { rule: string; reason: string; group: string };
@@ -265,11 +234,15 @@ function* checks(post: Posting, c: Compiled, every = false): Generator<Drop> {
     else if (rule) yield no('company_rule', `company rule (${rule.id}): ${rule.text}`);
   }
 
+  // A structured employment type (JSON-LD, a provider's field) the user didn't ask for (D30). Words in the title or the
+  // description stay the judge's.
+  if (c.employment.length && post.employment_type) {
+    const kinds_ = employmentKinds(post.employment_type);
+    if (kinds_ && !kinds_.some((k) => c.employment.includes(k))) yield no('employment_type', `employment type "${String(post.employment_type).slice(0, 40)}" (you want ${c.employment.join(', ')})`);
+  }
+
   const where = `${title}\n${location}`;
-  const kinds = new Set<Workplace>();
-  if (first(c.regex.remote_words, where)) kinds.add('remote');
-  if (first(c.regex.hybrid_words, where)) kinds.add('hybrid');
-  if (first(c.regex.onsite_words, where)) kinds.add('onsite');
+  const kinds = workplaceKinds(where, c);
   if (kinds.size && [...kinds].every((k) => c.excludedKinds.includes(k))) {
     yield no('workplace_excluded', `${[...kinds].join('/')} (you want ${c.accepted.join(', ')})`);
     if (!every) return;
@@ -308,6 +281,20 @@ function* checks(post: Posting, c: Compiled, every = false): Generator<Drop> {
   }
 }
 
+/**
+ * The workplace kinds a title and location state. A hybrid word inside a remote phrase ("100% Homeoffice") is remote
+ * only.
+ */
+export function workplaceKinds(where: string, c: Pick<Compiled, 'regex'>): Set<Workplace> {
+  const kinds = new Set<Workplace>();
+  const spans = (rs: RegExp[] | undefined) => [...all(rs, where)].map((m) => [m.index!, m.index! + m[0].length] as const);
+  const remote = spans(c.regex.remote_words);
+  if (remote.length) kinds.add('remote');
+  if (spans(c.regex.hybrid_words).some(([a, b]) => !remote.some(([x, y]) => x <= a && b <= y))) kinds.add('hybrid');
+  if (first(c.regex.onsite_words, where)) kinds.add('onsite');
+  return kinds;
+}
+
 /** A title drop that says what was close: "Full Stack Engineer" is not one of your titles (close to engineer: Backend engineer). */
 function titleMiss(m: TitleMatcher, post: Posting, read: ReadTitle): string {
   const near = closest(m, read, post.language);
@@ -324,10 +311,12 @@ export function titleMatchOf(c: Compiled, post: Pick<Posting, 'title' | 'languag
 export function travelLevel(description: string, c: Pick<Compiled, 'regex'>): 'none' | 'occasional' | 'frequent' {
   let level: 'none' | 'occasional' | 'frequent' = 'none';
   for (const sentence of plain(description).split(/[.!?;\n]+/)) {
-    if (!/travel/i.test(sentence) || NO_TRAVEL.test(sentence)) continue;
+    TRAVEL_NOUN.lastIndex = 0;
+    if (!TRAVEL_NOUN.test(sentence) || NO_TRAVEL.test(sentence)) continue;
     // Only a percentage next to the word travel is the travel share ("Travel up to 30%", "60% travel"), not "100% of
     // your health insurance" further along the sentence.
-    const pct = Math.max(-1, ...[...sentence.matchAll(/travel\w*/gi)].flatMap((t) => [...sentence.slice(Math.max(0, t.index! - 25), t.index! + t[0].length + 25).matchAll(/(\d{1,3})\s?%/g)]).map((m) => Number(m[1])));
+    TRAVEL_NOUN.lastIndex = 0;
+    const pct = Math.max(-1, ...[...sentence.matchAll(TRAVEL_NOUN)].flatMap((t) => [...sentence.slice(Math.max(0, t.index! - 25), t.index! + t[0].length + 25).matchAll(/(\d{1,3})\s?%/g)]).map((m) => Number(m[1])));
     if (first(c.regex.travel_frequent, sentence) || pct >= 50) return 'frequent';
     if (first(c.regex.travel_occasional, sentence) || pct > 0) level = 'occasional';
   }
@@ -344,16 +333,18 @@ export function describeRules(c: Compiled): string {
   row('title_exclude', c.regex.title_exclude ? `title must not contain: /${pat('title_exclude')}/` : 'off', c.source.title_exclude);
   row('company_excluded', c.companies.length ? c.companies.map((x) => x.name).join(', ') : 'off', 'exclude.companies');
   row('company_rule', c.companyRules.length ? c.companyRules.map((x) => `${x.company} (${x.id})`).join(', ') : 'none', 'memory company_rule');
+  row('employment_type', c.employment.length ? `a structured employment type (from the source, never the text) that is none of: ${c.employment.join(', ')}` : 'off (any employment type)', 'employment_types');
   row('workplace_excluded', c.excludedKinds.length ? `${c.excludedKinds.join(', ')} stated in title/location` : 'off (all kinds accepted)', 'workplace');
   const ps = (p: PlaceSet) => (p.labels.length ? `${p.labels.join(', ')}${p.world ? ' (anywhere)' : ''}${p.unknown.length ? ` (unknown: ${p.unknown.join(', ')}: off)` : ''}` : '(none)');
-  row('places', `on-site/hybrid: ${ps(c.onsite)}; remote from: ${ps(c.remote)}; commute ${c.commuteKm} km`, 'places');
+  row('places', `on-site/hybrid: ${ps(c.onsite)}${c.relocate.length ? ` (would move to ${c.relocate.join(', ')})` : ''}; remote from: ${ps(c.remote)}; commute ${c.commuteKm} km`, 'places');
   row('location_elsewhere', 'location names only places outside those', 'gazetteer');
   row('place_excluded', `"not open to / excluding <place>" covering all your places: /${pat('place_excluded')}/`, c.source.place_excluded);
   row('other_only', `"<place> only / must reside in <place>" outside your places: /${pat('other_only')}/`, c.source.other_only);
   row('industry', c.regex.industry ? `in the company name or title: /${pat('industry')}/ (descriptions go to the judge)` : 'off', c.source.industry);
-  row('travel', c.travelDrop ? `${c.travelDrop}${c.travelDrop === 'occasional' ? ' or more' : ''} travel (≥ 50 % is frequent)` : 'off (exclude.travel: none)', 'exclude.travel');
-  row('pay', c.pay ? (c.pay.floor > 0 ? `below ${c.pay.floor} ${c.pay.currency}/${c.pay.period} by ${c.pay.rule.replace(/_/g, ' ')}; unlisted: ${c.pay.unlisted}; fx: ${Object.entries(c.pay.fx).map(([k, v]) => `${k} ${v}`).join(', ') || '(none)'}` : `no floor; unlisted: ${c.pay.unlisted}`) : 'off (no pay.currency)', 'pay');
-  lines.push('  cooldown / active_pick  a company in its cooldown, or with a role already picked (checked by crewdeck jobs prefilter)');
+  row('travel', c.travelDrop ? `${c.travelDrop}${c.travelDrop === 'occasional' ? ' or more' : ''} travel (≥ 50 % is frequent)` : 'off (exclude.travel: off)', 'exclude.travel');
+  const hours = c.pay ? `${c.pay.hoursPerWeek ?? 40} h a week over ${c.pay.daysPerWeek ?? 5} days` : '';
+  row('pay', c.pay ? (c.pay.floor > 0 ? `below ${c.pay.floor} ${c.pay.currency}/${c.pay.period} by ${c.pay.rule.replace(/_/g, ' ')} (periods converted at ${hours}); unlisted: ${c.pay.unlisted}; per word/page/project: kept for the judge; fx: ${Object.entries(c.pay.fx).map(([k, v]) => `${k} ${v}`).join(', ') || '(none)'}` : `no floor; unlisted: ${c.pay.unlisted}`) : 'off (no pay.currency)', 'pay');
+  lines.push(`  cooldown / active_pick  ${c.cooldown ? `${c.cooldown.scope === 'role' ? 'the same title at a company' : 'a company'} in its ${c.cooldown.days}-day cooldown after applying, or a company with ${c.cooldown.perCompany === 1 ? 'a role' : `${c.cooldown.perCompany} roles`} already picked` : 'a company in its cooldown, or with a role already picked'} (checked by crewdeck jobs prefilter)`);
   for (const n of c.notes) lines.push(`Note: ${n}`);
   return lines.join('\n');
 }
@@ -374,18 +365,30 @@ export function judgeBrief(notes: Pick<JobNotes, 'search' | 'memory' | 'career' 
   const wp = s.workplace.length ? s.workplace : [...WORKPLACES];
   L.push(`- Workplace: ${list(wp)}.${wp.length < 3 ? ` Not ${WORKPLACES.filter((w) => !wp.includes(w)).join(' or ')}.` : ''}`);
   if (wp.some((w) => w !== 'remote')) L.push(`- On-site or hybrid only in or within commuting distance (about ${s.places.commute_km} km) of: ${s.places.onsite.length ? list(s.places.onsite) : '(not set)'}.`);
+  if (s.places.relocate_to.length) L.push(`- The user would move to ${list(s.places.relocate_to)} for a job: on-site or hybrid roles there fit (don't fail them for the commute).`);
   if (wp.includes('remote')) {
     const anywhere = s.places.remote_from.some((p) => lookupPlace(p)?.some(isWorld));
     L.push(`- Remote only if the user may work from ${anywhere ? 'anywhere' : s.places.remote_from.length ? list(s.places.remote_from) : '(not set)'}. Fail remote roles restricted to other countries, states or regions${anywhere ? '' : ', or that require living elsewhere'}.`);
   }
-  if (s.languages.length) L.push(`- Languages the user speaks: ${list(s.languages.map((l) => `${l.name}${l.level ? ` (${l.level})` : ''}`))}. Fail postings that require another language, or a higher level than listed.`);
+  if (s.languages.length) L.push(`- Languages the user speaks: ${list(s.languages.map((l) => `${l.name}${l.level ? ` (${l.level}${levelWord(l.level) !== l.level ? `, ${levelWord(l.level)}` : ''})` : ''}`))}. Fail postings that require another language, or a higher level than listed (CEFR: A1–A2 basic, B1 conversational, B2 professional, C1 fluent, C2 native-like).`);
   if (s.employment_types.length) L.push(`- Employment types the user wants: ${list(s.employment_types)}. Fail other types.`);
-  if (s.licenses.length) L.push(`- Licences the user holds: ${list(s.licenses)}. Fail postings that require a licence or certification the user doesn't hold (including one for another state or country).`);
+  const w = s.work_pattern, hrs = w.hours_per_week;
+  if (w.shifts.length) L.push(`- Shifts the user can work: ${list(w.shifts)}. Fail postings whose hours are only shifts outside these.`);
+  if (w.shifts_avoid.length) L.push(`- Shifts the user can't work: ${list(w.shifts_avoid)}. Fail postings that require them.`);
+  if (hrs.min !== null || hrs.max !== null) L.push(`- Hours a week the user wants: ${hrs.min !== null && hrs.max !== null ? `${hrs.min}–${hrs.max}` : hrs.max !== null ? `up to ${hrs.max}` : `at least ${hrs.min}`}. Fail postings whose fixed hours are clearly outside this.`);
+  if (w.shifts.length || w.shifts_avoid.length || hrs.min !== null || hrs.max !== null) L.push('  Judge only what the user listed: never infer a shift or hours limit they didn\'t give.');
+  if (w.term_time_only) L.push('- Term-time only: the user wants contracts that follow the school year. Fail postings that are clearly all year round (52 weeks).');
+  if (s.roles.level !== 'any') {
+    const years = notes.profile.data.standard_answers.years_experience;
+    L.push(`- Level: ${s.roles.level}.${years ? ` The user has ${years} years of experience: fail postings that require clearly more.` : ''}${s.roles.level === 'entry' ? ' Fail senior, lead or manager roles and ones that ask for several years of experience.' : ''}`);
+  } else if (notes.profile.data.standard_answers.years_experience) L.push(`- The user has ${notes.profile.data.standard_answers.years_experience} years of experience: fail postings that require clearly more.`);
+  if (s.licences.length) L.push(`- Licences the user holds: ${list(s.licences.map(licenceText))}. A licence valid only in a named state, country or board covers that place only. Fail postings that require a licence or certification the user doesn't hold (including one for another state or country).`);
   else L.push('- The user lists no licences: fail postings that require a professional licence.');
-  if (s.needs_sponsorship === true) L.push('- The user needs visa sponsorship: fail postings that say they can\'t sponsor or require existing work authorisation the user lacks.');
-  if (s.needs_sponsorship === false) L.push('- The user does not need visa sponsorship.');
+  if (s.places.authorized_in.length) L.push(`- The user may work without sponsorship in: ${list(s.places.authorized_in)}. Fail postings that require the right to work in a country outside these and say they can't sponsor.`);
+  if (s.needs_sponsorship === true) L.push(`- The user needs visa sponsorship${s.places.authorized_in.length ? ' outside those countries' : ''}: fail postings that say they can't sponsor or require existing work authorisation the user lacks.`);
+  if (s.needs_sponsorship === false) L.push(`- The user does not need visa sponsorship${s.places.authorized_in.length ? ' in those countries' : ''}.`);
   if (s.exclude.companies.length || s.exclude.industries.length) L.push(`- Excluded: ${[s.exclude.companies.length ? `companies ${list(s.exclude.companies)}` : '', s.exclude.industries.length ? `industries ${list(s.exclude.industries)}` : ''].filter(Boolean).join('; ')}.`);
-  if (s.exclude.travel !== 'none') L.push(`- Travel: fail ${s.exclude.travel}${s.exclude.travel === 'occasional' ? ' or frequent' : ''} travel.`);
+  if (s.exclude.travel !== 'off') L.push(`- Travel: fail ${s.exclude.travel}${s.exclude.travel === 'occasional' ? ' or frequent' : ''} travel.`);
   const avoid = kinds('avoid');
   if (avoid.length) {
     L.push('- Not interested, in the user\'s words (newest first; apply each one):');
@@ -399,10 +402,12 @@ export function judgeBrief(notes: Pick<JobNotes, 'search' | 'memory' | 'career' 
   L.push(`- Title fit: ${targets.length ? targets.map((t) => `${t.legacy ? '' : `${t.name}: `}${list(t.titles)}`).join('; ') : '(any title)'}.${s.roles.level !== 'any' ? ` Level: ${s.roles.level}.` : ''}${s.roles.seniority_prefer.length ? ` Prefer seniority: ${list(s.roles.seniority_prefer)} (an ordering, not a filter).` : ''}`);
   const skills = notes.career.data.skills.slice(0, 40);
   if (skills.length) L.push(`- Skills overlap with the user's skills: ${list(skills)}.`);
-  if (s.pay) L.push(`- Pay: ${s.pay.floor > 0 ? `floor ${s.pay.floor} ${s.pay.currency} per ${s.pay.period}, judged on the ${s.pay.rule === 'top_of_range' ? 'top' : 'bottom'} of the range` : `in ${s.pay.currency}, no floor`}; postings without pay are ${s.pay.unlisted === 'keep' ? 'kept' : 'dropped'}. Higher pay scores higher.`);
+  if (s.pay) L.push(`- Pay: ${s.pay.floor > 0 ? `floor ${s.pay.floor} ${s.pay.currency} per ${s.pay.period}, judged on the ${s.pay.rule === 'top_of_range' ? 'top' : 'bottom'} of the range` : `in ${s.pay.currency}, no floor`}${s.pay.hours_per_week || s.work_pattern.hours_per_week.max ? ` (the user works about ${s.pay.hours_per_week ?? s.work_pattern.hours_per_week.max} hours a week${s.pay.days_per_week ? ` over ${s.pay.days_per_week} days` : ''})` : ''}; postings without pay are ${s.pay.unlisted === 'keep' ? 'kept' : 'dropped'}. Higher pay scores higher.`);
+  if (s.pay?.per_unit) L.push(`- Pay per unit, in the user's words: "${s.pay.per_unit}". Compare postings that pay per word, page or project with it; it is never a floor for time.`);
   const prefs = kinds('preference');
   if (prefs.length) { L.push('- Preferences, in the user\'s words:'); for (const m of prefs) L.push(`  - "${m.text}" (${m.id})`); }
   if (s.judge_notes.trim()) L.push(`- The user's own notes for you: "${s.judge_notes.trim()}"`);
-  L.push('', '## Answer', 'For each posting: verdict (pass | fail | unclear), score (0-100 when pass), and one short reason that names the setting it rests on.');
+  L.push('', '## Answer', 'For each posting: verdict (pass | fail | unclear), score (0-100 when pass), and one short reason that names the setting it rests on.',
+    'Postings come in any language: judge them in theirs, and quote the evidence in the posting\'s own words.');
   return L.join('\n') + '\n';
 }

@@ -10,6 +10,7 @@ import { type Search, normalise } from './schema.ts';
 import { abbreviationsFor, closest, matchTitle, readTitle, wordHit } from './titles.ts';
 import { findPlaces, placeName, reducePlaces } from './places.ts';
 import { payCheck } from './pay.ts';
+import { trackerCheck, trackerRules } from './pipeline/tracker.ts';
 
 export const POOL_MAX = 5000;
 export const BUDGET_MS = 1000;
@@ -17,13 +18,13 @@ export const BUDGET_MS = 1000;
 /** How a drop reason reads to the user (by rule), and a group's name. */
 export const REASON_LABEL: Record<string, string> = {
   title_gate: 'title', title_exclude: 'title words you excluded', level: 'level', company_excluded: 'company you excluded',
-  company_rule: 'company rule', workplace_excluded: 'workplace', location_elsewhere: 'place', place_excluded: 'place excluded',
+  company_rule: 'company rule', employment_type: 'employment type', workplace_excluded: 'workplace', location_elsewhere: 'place', place_excluded: 'place excluded',
   other_only: 'only for other places', industry: 'industry', travel: 'travel', pay: 'pay', cooldown: 'cooldown', active_pick: 'company already picked',
 };
-export const GROUP_LABEL: Record<string, string> = { title: 'title', company: 'company', workplace: 'workplace', place: 'place', industry: 'industry', travel: 'travel', pay: 'pay', tracker: 'cooldown or a pick at that company' };
+export const GROUP_LABEL: Record<string, string> = { title: 'title', company: 'company', employment: 'employment type', workplace: 'workplace', place: 'place', industry: 'industry', travel: 'travel', pay: 'pay', tracker: 'cooldown or a pick at that company' };
 export const fmt = (n: number) => n.toLocaleString('en-US');
 
-export type PoolRow = { id: string; title: string; company: string; company_id: number; location: string; description: string; pay_text: string | null; language: string | null; source: string; source_key: string | null; status: string };
+export type PoolRow = { id: string; title: string; company: string; company_id: number; location: string; description: string; pay_text: string | null; language: string | null; employment_type?: string | null; source: string; source_key: string | null; status: string };
 /** A change to preview: a form value (`raw`, typed by the schema) or a typed value (from a YAML search file). */
 export type PreviewChange = { segs: (string | number)[]; raw: string } | { segs: (string | number)[]; value: unknown };
 export type Suggestion = {
@@ -56,34 +57,23 @@ export function previewPool(ctx: Ctx, days: number, source?: string): { rows: Po
   const since = new Date(ctx.clock().getTime() - days * 86_400_000).toISOString();
   const rows = (source
     ? ctx.db.prepare(`select r.id, r.title, c.name company, r.company_id, coalesce(r.location,'') location, coalesce(r.description,'') description, r.pay_text,
-        r.language, r.source, r.source_key, r.status from roles r join companies c on c.id=r.company_id
+        r.language, r.employment_type, r.source, r.source_key, r.status from roles r join companies c on c.id=r.company_id
         where r.first_seen >= ? and r.status <> 'applied' and r.source_key = ? order by r.first_seen desc, r.id limit ?`).all(since, source, POOL_MAX + 1)
     : ctx.db.prepare(`select r.id, r.title, c.name company, r.company_id, coalesce(r.location,'') location, coalesce(r.description,'') description, r.pay_text,
-        r.language, r.source, r.source_key, r.status from roles r join companies c on c.id=r.company_id
+        r.language, r.employment_type, r.source, r.source_key, r.status from roles r join companies c on c.id=r.company_id
         where r.first_seen >= ? and r.status <> 'applied' order by r.first_seen desc, r.id limit ?`).all(since, POOL_MAX + 1)) as PoolRow[];
   return { rows: rows.slice(0, POOL_MAX), capped: rows.length > POOL_MAX };
 }
 
 /** The tracker's own drops (cooldown, a role already picked at the company), read once for the whole pool. */
-export function trackerDrops(ctx: Ctx, rows: PoolRow[]): Map<string, Drop> {
-  const at = nowIso(ctx);
-  const cool = new Map((ctx.db.prepare('select id, cooldown_until from companies where cooldown_until > ?').all(at) as any[]).map((r) => [Number(r.id), String(r.cooldown_until)]));
-  const busy = new Map<number, { id: string; title: string }[]>();
-  for (const r of ctx.db.prepare(`select id, company_id, title from roles where status in ('picked','prepared')`).all() as any[]) {
-    const k = Number(r.company_id);
-    busy.set(k, [...(busy.get(k) ?? []), { id: r.id, title: r.title }]);
-  }
+export function trackerDrops(ctx: Ctx, rows: PoolRow[], search: Search = notesOf(ctx).search.data): Map<string, Drop> {
+  const t = trackerCheck(ctx.db, trackerRules(search), nowIso(ctx));
   const out = new Map<string, Drop>();
-  for (const r of rows) {
-    const until = cool.get(Number(r.company_id));
-    const other = busy.get(Number(r.company_id))?.find((x) => x.id !== r.id);
-    if (until) out.set(r.id, { rule: 'cooldown', reason: `company in its cooldown until ${until.slice(0, 10)}`, group: 'tracker' });
-    else if (other) out.set(r.id, { rule: 'active_pick', reason: `company already has "${other.title}" picked or in progress`, group: 'tracker' });
-  }
+  for (const r of rows) { const d = t.check(r); if (d) out.set(r.id, { ...d, group: 'tracker' }); }
   return out;
 }
 
-const post = (r: PoolRow) => ({ title: r.title, company: r.company, location: r.location, description: r.description, pay_text: r.pay_text, language: r.language });
+const post = (r: PoolRow) => ({ title: r.title, company: r.company, location: r.location, description: r.description, pay_text: r.pay_text, language: r.language, employment_type: r.employment_type });
 /** Every group that drops each role (rules, then the tracker). */
 export function evaluate(rows: PoolRow[], c: Compiled, tracker: Map<string, Drop>): Drop[][] {
   return rows.map((r) => { const d = allDrops(post(r), c); const t = tracker.get(r.id); return t ? [...d, t] : d; });
@@ -107,7 +97,7 @@ export function runPreview(ctx: Ctx, o: { days?: number; source?: string; change
   const search = overlaySearch(ctx, o.changes ?? []);
   const c = rulesFor(notes, search);
   const { rows, capped } = previewPool(ctx, days, o.source);
-  const tracker = trackerDrops(ctx, rows);
+  const tracker = trackerDrops(ctx, rows, search);
   const drops = evaluate(rows, c, tracker);
   const pass = drops.filter((d) => !d.length).length;
   const was = o.changes?.length ? evaluate(rows, compileRules(notes), tracker).filter((d) => !d.length).length : null;

@@ -19,7 +19,7 @@ import { type JobKind, type Request, type Requests, RequestError, isOpen } from 
 import { type Ctx, makeCtx, notesOf, todayOf } from './ctx.ts';
 import { type Db, ROLE_ID, getRole, openJobsDb } from './db.ts';
 import { NOTES, NOTE_NAMES, type JobNotes } from './notes.ts';
-import { EMPLOYMENT, LEVELS, TRAVEL, WORKPLACES } from './schema.ts';
+import { COOLDOWN_SCOPES, EMPLOYMENT, LANGUAGE_LEVELS, PAY_PERIODS, SHIFTS, TRAVEL, WORKPLACES } from './schema.ts';
 import { setFields } from './edit.ts';
 import { LEVELS_WANTED, MATCH_MODES, targetsOf } from './titles.ts';
 import { runPreview } from './preview.ts';
@@ -79,13 +79,18 @@ const MAX_CLIENTS = 20;
 const SET_ON_PAGE = '(set on the Jobs page)';
 
 /** jobs/search.md fields the Preferences form edits, and the shape of each value. */
-export const PREF_FIELDS: Record<string, 'list' | 'num' | 'str' | 'bool' | 'langs' | 'targets'> = {
+export const PREF_FIELDS: Record<string, 'list' | 'num' | 'optnum' | 'str' | 'bool' | 'langs' | 'targets' | 'licences'> = {
   'roles.targets': 'targets', 'roles.match': 'str', 'roles.level': 'str', 'roles.titles': 'list', 'roles.seniority_prefer': 'list', 'roles.exclude_title_words': 'list',
   workplace: 'list', 'places.onsite': 'list', 'places.remote_from': 'list', 'places.commute_km': 'num',
-  languages: 'langs', employment_types: 'list', licenses: 'list', needs_sponsorship: 'bool',
+  // P9g (D37): moving, and where the user may work without sponsorship.
+  'places.relocate_to': 'list', 'places.authorized_in': 'list',
+  languages: 'langs', employment_types: 'list', licenses: 'licences', needs_sponsorship: 'bool',
+  // P9g (D30): how the user can work.
+  'work_pattern.hours_per_week.min': 'optnum', 'work_pattern.hours_per_week.max': 'optnum', 'work_pattern.shifts': 'list', 'work_pattern.shifts_avoid': 'list', 'work_pattern.term_time_only': 'bool',
   'exclude.companies': 'list', 'exclude.industries': 'list', 'exclude.travel': 'str',
-  'pay.currency': 'str', 'pay.floor': 'num', 'pay.period': 'str', 'pay.rule': 'str', 'pay.unlisted': 'str', 'pay.locale': 'str',
-  'schedule.timezone': 'str', 'schedule.daily_picks': 'num', 'schedule.cooldown_days': 'num', judge_notes: 'str',
+  'pay.currency': 'str', 'pay.floor': 'num', 'pay.period': 'str', 'pay.hours_per_week': 'optnum', 'pay.days_per_week': 'optnum', 'pay.per_unit': 'str',
+  'pay.rule': 'str', 'pay.unlisted': 'str', 'pay.locale': 'str',
+  'schedule.timezone': 'str', 'schedule.daily_picks': 'num', 'schedule.cooldown_days': 'num', 'schedule.cooldown_scope': 'str', 'schedule.per_company': 'num', judge_notes: 'str',
 };
 
 const isBusy = (e: any) => e?.errcode === 5 || e?.errcode === 6 || /database is (locked|busy)|SQLITE_BUSY/i.test(String(e?.message ?? ''));
@@ -154,6 +159,16 @@ function prefRaw(path: string, v: unknown): string {
     }));
   }
   if (kind === 'num') { if (typeof v !== 'number' || !Number.isFinite(v)) throw new HttpError(400, `${path}: give a number`); return String(v); }
+  // An optional number: null clears it (the key is removed and its default applies).
+  if (kind === 'optnum') { if (v === null) return ''; if (typeof v !== 'number' || !Number.isFinite(v)) throw new HttpError(400, `${path}: give a number or leave it empty`); return String(v); }
+  if (kind === 'licences') {
+    // "RN (Ohio)" or { name, where } (D31): the form sends back an entry it loaded as it was.
+    if (!Array.isArray(v)) throw new HttpError(400, `${path}: give a list`);
+    if (v.length > 50) throw new HttpError(400, `${path}: at most 50 entries`);
+    return JSON.stringify(v.map((x: any) => (typeof x === 'string' ? str(x, 200, path) : x && typeof x === 'object' && !Array.isArray(x)
+      ? { name: str(x.name, 120, `${path} name`), ...(x.where ? { where: str(x.where, 120, `${path} where`) } : {}) }
+      : (() => { throw new HttpError(400, `${path}: give a licence`); })())).filter((x: any) => (typeof x === 'string' ? x : x.name)));
+  }
   if (kind === 'bool') { if (typeof v !== 'boolean') throw new HttpError(400, `${path}: use yes or no`); return String(v); }
   return str(v, kind === 'str' && path === 'judge_notes' ? 2000 : 200, path);
 }
@@ -435,6 +450,8 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const notes = notesOf(ctx);
     const s = notes.search;
     const values: Record<string, any> = Object.fromEntries(Object.keys(PREF_FIELDS).map((k) => [k, getIn(s.data, k) ?? null]));
+    // Licences as written (text, or { name, where }); the form shows each on one line.
+    values.licenses = s.data.licences.map((l) => (l.where ? { name: l.name, where: l.where } : l.name));
     // Each target's place in the note (only when the note itself is read: the last-valid copy's places may differ).
     const rawTargets = (s.raw as any)?.roles?.targets;
     if (s.source === 'note' && Array.isArray(rawTargets) && Array.isArray(values['roles.targets'])) {
@@ -444,7 +461,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       exists: s.exists, source: s.source, file: NOTES.search, page: notesPage(NOTES.search), values,
       issues: s.issues.map((i) => ({ level: i.level, path: i.path, message: i.message, fix: i.fix ?? null })),
-      options: { workplace: WORKPLACES, employment_types: EMPLOYMENT, levels: LEVELS, travel: TRAVEL, period: ['year', 'month', 'hour'], rule: ['top_of_range', 'bottom_of_range'], unlisted: ['keep', 'drop'], match: MATCH_MODES, level: LEVELS_WANTED },
+      options: { workplace: WORKPLACES, employment_types: EMPLOYMENT, levels: LANGUAGE_LEVELS, travel: TRAVEL, period: PAY_PERIODS, rule: ['top_of_range', 'bottom_of_range'], unlisted: ['keep', 'drop'], match: MATCH_MODES, level: LEVELS_WANTED, shifts: SHIFTS, cooldown_scope: COOLDOWN_SCOPES },
     };
   }
 

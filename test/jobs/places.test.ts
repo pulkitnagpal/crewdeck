@@ -6,7 +6,14 @@ const named = (s: string) => reducePlaces(findPlaces(s));
 
 test('aliases and other names resolve to the same place', () => {
   for (const n of ['USA', 'US', 'United States', 'U.S.', 'United States of America']) assert.deepEqual(lookupPlace(n), ['us'], n);
-  for (const n of ['UK', 'United Kingdom', 'Great Britain', 'England']) assert.deepEqual(lookupPlace(n), ['gb'], n);
+  for (const n of ['UK', 'United Kingdom', 'Great Britain', 'Reino Unido']) assert.deepEqual(lookupPlace(n), ['gb'], n);
+  // D38: England, Scotland and Wales are nations inside the UK (QTS in England is not a licence for Scotland).
+  assert.deepEqual(lookupPlace('England'), ['gb-eng']);
+  assert.ok(within('gb/london', 'gb-eng') && within('gb-eng', 'gb') && !within('gb/edinburgh', 'gb-eng'));
+  // New states and regions, and countries in their own languages.
+  assert.deepEqual(lookupPlace('Bayern'), ['de-by']);
+  assert.ok(within('de/munich', 'de-by') && within('in/pune', 'in-mh') && within('es/barcelona', 'es-ct') && within('ph/makati', 'ph-ncr'));
+  for (const [n, id] of [['Deutschland', 'de'], ['Spanien', 'es'], ['Estados Unidos', 'us'], ['Unión Europea', 'european-union'], ['weltweit', 'world']]) assert.deepEqual(lookupPlace(n), [id], n);
   assert.deepEqual(lookupPlace('München'), ['de/munich']);
   assert.deepEqual(lookupPlace('Bangalore'), ['in/bengaluru']);
   assert.deepEqual(lookupPlace('worldwide'), ['world']);

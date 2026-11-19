@@ -16,6 +16,7 @@ import { clip, plainText } from '../text.ts';
 import { hostOf, isLinkedinHost, isXHost } from '../fields.ts';
 import type { NetOptions } from '../net/netguard.ts';
 import { type Funnel, findFunnel } from '../funnel.ts';
+import { trackerCheck, trackerRules } from './tracker.ts';
 
 export type Ranked = { id: string; company: string; company_id: number; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string; posted_at: string | null; first_seen: string };
 export type Candidate = { id: string; company: string; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string };
@@ -165,11 +166,9 @@ export function refreshFunnel(ctx: Ctx): Funnel | null {
 
 /** Companies with an eligible role `pick` could take now (the same filter as pick's pool). */
 export function pickableCompanies(ctx: Ctx): number {
-  const row = ctx.db.prepare(`select count(distinct r.company_id) n from roles r join companies c on c.id=r.company_id
-      where r.eligibility='yes' and r.status in ('new','bench')
-        and (c.cooldown_until is null or c.cooldown_until <= ?)
-        and not exists (select 1 from roles o where o.company_id=r.company_id and o.status in ('picked','prepared'))`).get(nowIso(ctx)) as any;
-  return Number(row?.n ?? 0);
+  const tracker = trackerCheck(ctx.db, trackerRules(notesOf(ctx).search.data), nowIso(ctx));
+  const rows = ctx.db.prepare(`select r.id, r.company_id, r.title from roles r where r.eligibility='yes' and r.status in ('new','bench')`).all() as any[];
+  return new Set(rows.filter((r) => !tracker.check(r)).map((r) => Number(r.company_id))).size;
 }
 
 export type Budgeted = {

@@ -1321,6 +1321,12 @@ placeable first, the preview shows the near misses, and Find returns N or explai
   career-ops; any provider is added only through the reviewed re-pin (§15), after checking the site's terms.
 
 ## Changelog
+- **P9g built (2026-11-20):** pay periods year/month/week/day/hour converted at the user's hours and days, `pay.per_unit`
+  as the judge's text (per-word postings kept as unclear); `work_pattern` (shifts, hours, term-time); freelance,
+  fixed-term, seasonal and apprenticeship, with a structured employment type a hard drop; CEFR levels; licences with
+  where; `relocate_to` and `authorized_in`; cooldown scope by company or role and `per_company` (DB v3 `applied_at`);
+  rule words and industries per language in `rule-words.yaml`; new states and local place names; the brief's new lines;
+  `exclude.travel: off`; the Preferences screen's new fields. Details: [impl/09g-work-pay-rules.md](impl/09g-work-pay-rules.md).
 - **P9f built (2026-11-20):** `jobs-setup` v2 in the design's order (resume or no resume; starting out, changing field,
   a break; targets with variants checked on postings; where to look with the coverage line; one fetch; the preview loop;
   the cooldown proposed by field), the setup card, `jobs-daily-run` (priority, the funnel close line), `crewdeck-memory`

@@ -21,7 +21,9 @@ export type Schema =
   | { t: 'regex' }
   | { t: 'list'; of: Schema }
   | { t: 'obj'; keys: Record<string, Schema>; required?: string[]; open?: boolean }
-  | { t: 'map'; of: Schema; key?: RegExp; keyHint?: string };
+  | { t: 'map'; of: Schema; key?: RegExp; keyHint?: string }
+  /** One of several shapes, chosen by the value's kind (text or a map: a licence is "RN" or { name: RN, where: Ohio }). */
+  | { t: 'alt'; of: Schema[]; hint: string };
 
 const str = (o: Omit<Extract<Schema, { t: 'str' }>, 't'> = {}): Schema => ({ t: 'str', ...o });
 const num = (o: Omit<Extract<Schema, { t: 'num' }>, 't'> = {}): Schema => ({ t: 'num', ...o });
@@ -30,11 +32,20 @@ const oneOf = (of: readonly string[]): Schema => ({ t: 'oneOf', of });
 const list = (of: Schema): Schema => ({ t: 'list', of });
 const obj = (keys: Record<string, Schema>, o: { required?: string[]; open?: boolean } = {}): Schema => ({ t: 'obj', keys, ...o });
 const map = (of: Schema, key?: RegExp, keyHint?: string): Schema => ({ t: 'map', of, key, keyHint });
+const alt = (hint: string, ...of: Schema[]): Schema => ({ t: 'alt', of, hint });
 
 export const WORKPLACES = ['remote', 'hybrid', 'onsite'] as const;
 export const LEVELS = ['basic', 'conversational', 'professional', 'fluent', 'native'] as const;
-export const EMPLOYMENT = ['full-time', 'part-time', 'contract', 'per-diem', 'internship', 'temporary'] as const;
-export const TRAVEL = ['none', 'occasional', 'frequent'] as const;
+/** CEFR levels (D31), accepted next to the words; compared through CEFR_LEVEL. */
+export const CEFR = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const;
+export const CEFR_LEVEL: Record<(typeof CEFR)[number], (typeof LEVELS)[number]> = { A1: 'basic', A2: 'basic', B1: 'conversational', B2: 'professional', C1: 'fluent', C2: 'native' };
+export const LANGUAGE_LEVELS = [...LEVELS, ...CEFR] as const;
+export const EMPLOYMENT = ['full-time', 'part-time', 'contract', 'freelance', 'per-diem', 'internship', 'apprenticeship', 'temporary', 'fixed-term', 'seasonal'] as const;
+/** The lowest travel that rules a job out; off (written none before v0.4, still read) rules none out. */
+export const TRAVEL = ['off', 'occasional', 'frequent'] as const;
+export const SHIFTS = ['day', 'evening', 'night', 'weekend', 'rotating', 'on-call'] as const;
+export const PAY_PERIODS = ['year', 'month', 'week', 'day', 'hour'] as const;
+export const COOLDOWN_SCOPES = ['company', 'role'] as const;
 export const SECTION_KINDS = ['summary', 'experience', 'list', 'skills', 'education'] as const;
 export const MEMORY_KINDS = ['answer', 'fact', 'preference', 'style', 'avoid', 'company_rule'] as const;
 export const RULE_NAMES = ['title_gate', 'title_exclude', 'remote_words', 'hybrid_words', 'onsite_words', 'place_excluded',
@@ -95,21 +106,38 @@ export const SCHEMAS: Record<string, Schema> = {
       match: oneOf(MATCH_MODES), level: oneOf(LEVELS_WANTED),
     }),
     workplace: list(oneOf(WORKPLACES)),
-    places: obj({ onsite: list(str({ required: true })), remote_from: list(str({ required: true })), commute_km: num({ min: 0, max: 500 }) }),
-    languages: list(obj({ name: str({ required: true }), level: oneOf(LEVELS) }, { required: ['name'] })),
+    places: obj({
+      onsite: list(str({ required: true })), remote_from: list(str({ required: true })), commute_km: num({ min: 0, max: 500 }),
+      // D37: cities the user would move to (on-site or hybrid there passes the rules), and the countries where they may
+      // work without sponsorship (the judge fails postings that need another country's right to work and won't sponsor).
+      relocate_to: list(str({ required: true })), authorized_in: list(str({ required: true })),
+    }),
+    languages: list(obj({ name: str({ required: true }), level: oneOf(LANGUAGE_LEVELS) }, { required: ['name'] })),
     employment_types: list(oneOf(EMPLOYMENT)),
-    licenses: list(str()),
+    // D31: "RN (Ohio)", or { name: RN, where: Ohio }; the judge checks what postings require.
+    licenses: list(alt('a licence name, or { name: …, where: … }', str({ required: true }), obj({ name: str({ required: true }), where: str() }, { required: ['name'] }))),
     needs_sponsorship: bool(),
-    exclude: obj({ companies: list(str()), industries: list(str()), travel: oneOf(TRAVEL) }),
+    // D30: how the user can work, for the judge and availability questions. Only what the user said: never inferred.
+    work_pattern: obj({
+      hours_per_week: obj({ min: num({ min: 0, max: 100 }), max: num({ min: 1, max: 100 }) }),
+      shifts: list(oneOf(SHIFTS)), shifts_avoid: list(oneOf(SHIFTS)), term_time_only: bool(),
+    }),
+    exclude: obj({ companies: list(str()), industries: list(str()), travel: oneOf([...TRAVEL, 'none']) }),
     pay: obj({
-      currency: str({ check: currencyCheck }), floor: num({ min: 0 }), period: oneOf(['year', 'month', 'hour']),
+      currency: str({ check: currencyCheck }), floor: num({ min: 0 }), period: oneOf(PAY_PERIODS),
+      // D29: the hours and days that convert between periods (a day rate, a monthly wage for part-time hours).
+      hours_per_week: num({ min: 1, max: 100 }), days_per_week: num({ min: 1, max: 7 }),
+      // D29: per word, per project …: the judge's text, never a floor.
+      per_unit: str(),
       rule: oneOf(['top_of_range', 'bottom_of_range']), unlisted: oneOf(['keep', 'drop']), locale: str({ check: localeCheck }),
       fx: map(num({ min: 0 }), /^[A-Z]{3}$/, 'a three-letter currency code (USD)'), fx_updated: { t: 'date' },
     }),
-    schedule: obj({ timezone: str({ check: tzCheck }), daily_picks: num({ int: true, min: 0, max: 50 }), cooldown_days: num({ int: true, min: 0, max: 365 }) }),
-    // P9g (§24.8) adds work_pattern, places.relocate_to, places.authorized_in, schedule.cooldown_scope and per_company
-    // here. Until then setup (jobs-setup §4) writes shifts, hours, moving and right to work into judge_notes, in the
-    // user's words, and moving cities into places.onsite.
+    schedule: obj({
+      timezone: str({ check: tzCheck }), daily_picks: num({ int: true, min: 0, max: 50 }), cooldown_days: num({ int: true, min: 0, max: 365 }),
+      // D36: company (no role at that company) or role (the same title at that company) during the cooldown; and how
+      // many roles of one company may be picked or in progress at once.
+      cooldown_scope: oneOf(COOLDOWN_SCOPES), per_company: num({ int: true, min: 1, max: 10 }),
+    }),
     judge_notes: str(),
     rules: map({ t: 'regex' }),
   }),
@@ -216,7 +244,19 @@ function walk(s: Schema, v: unknown, path: string, add: (level: Issue['level'], 
         if (s.key && !s.key.test(k)) add('error', join(path, k), `key "${k}" has the wrong form`, `use ${s.keyHint ?? s.key.source}`);
         walk(s.of, x, join(path, k), add);
       }
+      return;
+    case 'alt': {
+      const pick = altFor(s, v);
+      if (!pick) return add('error', path, `should be ${s.hint}, not ${show(v)}`, `write ${s.hint}`);
+      return walk(pick, v, path, add);
+    }
   }
+}
+
+/** The shape of an alt that fits a value's kind (text, number, true/false, list, map), or undefined. */
+function altFor(s: Extract<Schema, { t: 'alt' }>, v: unknown): Schema | undefined {
+  const kind = typeof v === 'string' ? ['str', 'oneOf', 'date', 'scalar', 'regex'] : typeof v === 'number' ? ['num', 'scalar'] : typeof v === 'boolean' ? ['bool', 'scalar'] : Array.isArray(v) ? ['list'] : isObj(v) ? ['obj', 'map'] : [];
+  return s.of.find((x) => kind.includes(x.t));
 }
 
 /** Why a rule override can't be used, or null. */
@@ -274,9 +314,14 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
     if (!workplace.length) add('warning', 'workplace', 'no workplace kinds: remote, hybrid and on-site all pass', 'add e.g. [remote] or [onsite, hybrid]');
     if ((workplace.includes('onsite') || workplace.includes('hybrid')) && !arr(places.onsite).length) add('warning', 'places.onsite', 'on-site/hybrid wanted but no cities: location rules are off for those', 'add the cities you can work in');
     if (workplace.includes('remote') && !arr(places.remote_from).length) add('warning', 'places.remote_from', 'remote wanted but no places to work from: location rules are off for remote', 'add countries/regions/states, or worldwide');
-    for (const k of ['onsite', 'remote_from']) arr(places[k]).forEach((p, i) => {
+    for (const k of ['onsite', 'remote_from', 'relocate_to', 'authorized_in']) arr(places[k]).forEach((p, i) => {
       if (typeof p === 'string' && p && !lookupPlace(p)) add('warning', `places.${k}[${i}]`, `"${p}" is not in Crewdeck's gazetteer: location rules are off for this list`, 'use a known name, or "Town, Country" (e.g. "Potsdam, Germany")');
     });
+    const wp = o(d.work_pattern), hours = o(wp.hours_per_week);
+    if (typeof hours.min === 'number' && typeof hours.max === 'number' && hours.min > hours.max) add('error', 'work_pattern.hours_per_week', `min ${hours.min} is more than max ${hours.max}`, 'swap them');
+    const both = arr(wp.shifts).filter((x) => arr(wp.shifts_avoid).includes(x));
+    if (both.length) add('warning', 'work_pattern.shifts_avoid', `${both.join(', ')} is both a shift you can work and one you avoid`, 'keep it in one list');
+    if (typeof pay.hours_per_week === 'number' && typeof pay.days_per_week === 'number' && pay.hours_per_week / pay.days_per_week > 24) add('error', 'pay.hours_per_week', `${pay.hours_per_week} hours over ${pay.days_per_week} days is more than 24 hours a day`, 'check both numbers');
     if (typeof pay.floor === 'number' && pay.floor > 0 && !pay.currency) add('error', 'pay.currency', 'is missing (a floor needs a currency)', 'add currency: EUR (your currency code)');
     if (typeof pay.currency === 'string' && /^[A-Z]{3}$/.test(pay.currency) && !(CURRENCIES as readonly string[]).includes(pay.currency)) add('warning', 'pay.currency', `${pay.currency} is not recognised in postings`, `pay rules only read ${CURRENCIES.slice(0, 8).join(', ')}, …`);
     for (const k of Object.keys(o(pay.fx))) {
@@ -357,15 +402,24 @@ export type Profile = {
 };
 export type Section = { id: string; kind: (typeof SECTION_KINDS)[number]; title?: string; org?: string; where?: string; dates?: string; max_bullets?: number; required?: boolean; break?: boolean };
 export type Career = { resume: { file_name: string; paper: 'A4' | 'Letter'; max_pages: number }; sections: Section[]; facts: { id: string; text: string; tags: string[] }[]; skills: string[]; terms: { extra: string[] } };
+export type Licence = { name: string; where?: string };
+export type Shift = (typeof SHIFTS)[number];
 export type Search = {
   roles: { titles: string[]; seniority_prefer: string[]; exclude_title_words: string[]; targets: { name: string; titles: string[]; families: string[]; skills: string[] }[]; match: MatchMode; level: LevelWanted };
   workplace: Workplace[];
-  places: { onsite: string[]; remote_from: string[]; commute_km: number };
-  languages: { name: string; level?: (typeof LEVELS)[number] }[];
-  employment_types: string[]; licenses: string[]; needs_sponsorship: boolean | null;
+  places: { onsite: string[]; remote_from: string[]; commute_km: number; relocate_to: string[]; authorized_in: string[] };
+  languages: { name: string; level?: (typeof LANGUAGE_LEVELS)[number] }[];
+  employment_types: string[];
+  /** Each licence as text ("RN (Ohio)"), for briefs and matching. */ licenses: string[];
+  /** Each licence as written: a name and, when given, where it holds. */ licences: Licence[];
+  needs_sponsorship: boolean | null;
+  work_pattern: { hours_per_week: { min: number | null; max: number | null }; shifts: Shift[]; shifts_avoid: Shift[]; term_time_only: boolean };
   exclude: { companies: string[]; industries: string[]; travel: (typeof TRAVEL)[number] };
-  pay: { currency: string; floor: number; period: 'year' | 'month' | 'hour'; rule: 'top_of_range' | 'bottom_of_range'; unlisted: 'keep' | 'drop'; locale: string; fx: Record<string, number>; fx_updated: string } | null;
-  schedule: { timezone: string; daily_picks: number; cooldown_days: number };
+  pay: {
+    currency: string; floor: number; period: (typeof PAY_PERIODS)[number]; hours_per_week: number | null; days_per_week: number | null; per_unit: string;
+    rule: 'top_of_range' | 'bottom_of_range'; unlisted: 'keep' | 'drop'; locale: string; fx: Record<string, number>; fx_updated: string;
+  } | null;
+  schedule: { timezone: string; daily_picks: number; cooldown_days: number; cooldown_scope: (typeof COOLDOWN_SCOPES)[number]; per_company: number };
   judge_notes: string;
   rules: Record<string, string[]>;
 };
@@ -383,6 +437,10 @@ export type SourceItem = {
 };
 export type Sources = { items: SourceItem[]; version: 1 | 2 };
 
+/** A licence as one line: "RN (Ohio)". */
+export const licenceText = (l: Licence) => (l.where ? `${l.name} (${l.where})` : l.name);
+/** A language level in the words the rules compare ("C1" → fluent). */
+export const levelWord = (l: string | undefined) => (l && (CEFR as readonly string[]).includes(l) ? CEFR_LEVEL[l as (typeof CEFR)[number]] : l);
 const strs = (v: unknown) => arr(v).filter((x) => typeof x === 'string' && x.trim()).map((x: string) => x.trim());
 const s_ = (v: unknown, d = '') => (typeof v === 'string' ? v : d);
 
@@ -407,9 +465,13 @@ export const normalise = {
     };
   },
   search(d: unknown): Search {
-    const x = o(d), roles = o(x.roles), places = o(x.places), ex = o(x.exclude), pay = o(x.pay), sch = o(x.schedule);
+    const x = o(d), roles = o(x.roles), places = o(x.places), ex = o(x.exclude), pay = o(x.pay), sch = o(x.schedule), wp = o(x.work_pattern), hrs = o(wp.hours_per_week);
+    const n_ = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+    const shifts = (v: unknown) => strs(v).filter((z): z is Shift => (SHIFTS as readonly string[]).includes(z));
+    const licences: Licence[] = arr(x.licenses).flatMap((l): Licence[] => (typeof l === 'string' && l.trim() ? [{ name: l.trim() }] : isObj(l) && typeof l.name === 'string' && l.name.trim() ? [{ name: l.name.trim(), ...(typeof l.where === 'string' && l.where.trim() ? { where: l.where.trim() } : {}) }] : []));
     const p = pay.currency && typeof pay.currency === 'string' ? {
-      currency: pay.currency, floor: typeof pay.floor === 'number' ? pay.floor : 0, period: (['year', 'month', 'hour'].includes(pay.period) ? pay.period : 'year') as 'year',
+      currency: pay.currency, floor: typeof pay.floor === 'number' ? pay.floor : 0, period: ((PAY_PERIODS as readonly string[]).includes(pay.period) ? pay.period : 'year') as 'year',
+      hours_per_week: n_(pay.hours_per_week), days_per_week: n_(pay.days_per_week), per_unit: s_(pay.per_unit).trim(),
       rule: (pay.rule === 'bottom_of_range' ? 'bottom_of_range' : 'top_of_range') as 'top_of_range', unlisted: (pay.unlisted === 'drop' ? 'drop' : 'keep') as 'keep',
       locale: s_(pay.locale), fx: Object.fromEntries(Object.entries(o(pay.fx)).filter(([, v]) => typeof v === 'number' && v > 0)) as Record<string, number>, fx_updated: s_(pay.fx_updated),
     } : null;
@@ -420,13 +482,21 @@ export const normalise = {
         match: (MATCH_MODES as readonly string[]).includes(roles.match) ? roles.match : 'words', level: (LEVELS_WANTED as readonly string[]).includes(roles.level) ? roles.level : 'any',
       },
       workplace: strs(x.workplace).filter((w): w is Workplace => (WORKPLACES as readonly string[]).includes(w)),
-      places: { onsite: strs(places.onsite), remote_from: strs(places.remote_from), commute_km: typeof places.commute_km === 'number' ? places.commute_km : 50 },
+      places: {
+        onsite: strs(places.onsite), remote_from: strs(places.remote_from), commute_km: typeof places.commute_km === 'number' ? places.commute_km : 50,
+        relocate_to: strs(places.relocate_to), authorized_in: strs(places.authorized_in),
+      },
       languages: arr(x.languages).filter((l) => isObj(l) && typeof l.name === 'string' && l.name) as Search['languages'],
-      employment_types: strs(x.employment_types), licenses: strs(x.licenses),
+      employment_types: strs(x.employment_types), licenses: licences.map(licenceText), licences,
       needs_sponsorship: typeof x.needs_sponsorship === 'boolean' ? x.needs_sponsorship : null,
-      exclude: { companies: strs(ex.companies), industries: strs(ex.industries), travel: (TRAVEL as readonly string[]).includes(ex.travel) ? ex.travel : 'none' },
+      work_pattern: { hours_per_week: { min: n_(hrs.min), max: n_(hrs.max) }, shifts: shifts(wp.shifts), shifts_avoid: shifts(wp.shifts_avoid), term_time_only: wp.term_time_only === true },
+      // v1's travel: none meant "no travel rules a job out": off.
+      exclude: { companies: strs(ex.companies), industries: strs(ex.industries), travel: (TRAVEL as readonly string[]).includes(ex.travel) ? ex.travel : 'off' },
       pay: p,
-      schedule: { timezone: s_(sch.timezone), daily_picks: typeof sch.daily_picks === 'number' ? sch.daily_picks : 5, cooldown_days: typeof sch.cooldown_days === 'number' ? sch.cooldown_days : 60 },
+      schedule: {
+        timezone: s_(sch.timezone), daily_picks: typeof sch.daily_picks === 'number' ? sch.daily_picks : 5, cooldown_days: typeof sch.cooldown_days === 'number' ? sch.cooldown_days : 60,
+        cooldown_scope: sch.cooldown_scope === 'role' ? 'role' : 'company', per_company: typeof sch.per_company === 'number' && sch.per_company >= 1 ? Math.floor(sch.per_company) : 1,
+      },
       judge_notes: s_(x.judge_notes),
       rules: Object.fromEntries(Object.entries(o(x.rules)).map(([k, v]) => [k, typeof v === 'string' ? [v] : strs(v)])),
     };
@@ -443,6 +513,9 @@ export const normalise = {
 export function schemaAt(name: string, path: (string | number)[]): Schema | null {
   let s: Schema | undefined = SCHEMAS[name];
   for (const k of path) {
+    if (!s) return null;
+    // Inside an alt, a key path is into its map shape.
+    if (s.t === 'alt') s = s.of.find((x) => x.t === 'obj' || x.t === 'map');
     if (!s) return null;
     if (s.t === 'obj') s = typeof k === 'string' ? s.keys[k] : undefined;
     else if (s.t === 'list') s = typeof k === 'number' ? s.of : undefined;

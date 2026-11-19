@@ -11,6 +11,7 @@ import { parse } from 'yaml';
 import { REPO, jobs } from './helpers.ts';
 import { MANAGED, PRESETS } from '../../src/jobs/setup.ts';
 import { checkSchema } from './schema-check.ts';
+import { SCHEMA_VERSION } from '../../src/jobs/migrations.ts';
 
 const TMP = realpathSync(tmpdir());
 const mode = (p: string) => statSync(p).mode & 0o777;
@@ -56,7 +57,7 @@ test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the 
   assert.equal(parse(cfg).jobs.enabled, true);
   assert.equal(mode(s.jobsHome), 0o700);
   assert.equal(mode(join(s.jobsHome, 'jobs.db')), 0o600);
-  assert.match(r.out, /jobs\.db \(schema v2\)/);
+  assert.match(r.out, new RegExp(`jobs\\.db \\(schema v${SCHEMA_VERSION}\\)`));
   for (const n of NOTE_FILES) assert.ok(existsSync(join(s.vault, n)), n);
   for (const n of ['jobs/search.md', 'jobs/memory.md', 'jobs/sources.md', 'me/career.md']) {
     assert.equal(mode(join(s.vault, n)), 0o600, `${n} is created private`);
@@ -228,7 +229,7 @@ test('doctor: a Jobs section (off, then on with every check), never reaching a r
   const on = crewdeck(s.home, ['doctor']);
   assert.equal(on.code, 0, on.err);
   assert.match(on.out, /✓ jobs home .* \(0700\)/);
-  assert.match(on.out, /✓ tracker jobs\.db \(schema v2, 0600\)/);
+  assert.match(on.out, new RegExp(`✓ tracker jobs\\.db \\(schema v${SCHEMA_VERSION}, 0600\\)`));
   assert.match(on.out, /✓ me\/profile\.md/);
   assert.match(on.out, /✓ jobs\/search\.md \(\d warnings?\)/);
   assert.match(on.out, /(✓ browser for Jobs|✗ no Chromium-based browser)/);

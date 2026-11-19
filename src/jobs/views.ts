@@ -189,12 +189,14 @@ function searchItems(n: JobNotes): Item[] {
   const items = [
     row('roles.titles', 'titles', targetsOf(s).map((t) => `${t.legacy ? '' : `${t.name}: `}${t.titles.join(', ')}`).join('; ')),
     row('workplace', 'workplace', s.workplace.join(', ') || 'any'),
-    row('places', 'places', [s.places.onsite.length ? `on-site/hybrid: ${s.places.onsite.join(', ')}` : '', s.places.remote_from.length ? `remote from: ${s.places.remote_from.join(', ')}` : ''].filter(Boolean).join('; ')),
+    row('places', 'places', [s.places.onsite.length ? `on-site/hybrid: ${s.places.onsite.join(', ')}` : '', s.places.remote_from.length ? `remote from: ${s.places.remote_from.join(', ')}` : '', s.places.relocate_to.length ? `would move to: ${s.places.relocate_to.join(', ')}` : '', s.places.authorized_in.length ? `may work without sponsorship in: ${s.places.authorized_in.join(', ')}` : ''].filter(Boolean).join('; ')),
     row('pay', 'pay', s.pay ? `${s.pay.floor > 0 ? `floor ${money(s.pay.floor, s.pay.currency, s.pay.locale || undefined)} ${PERIOD[s.pay.period]}` : `in ${s.pay.currency}, no floor`}` : ''),
     row('languages', 'languages', s.languages.map((l) => `${l.name}${l.level ? ` (${l.level})` : ''}`).join(', ')),
     row('employment_types', 'employment', s.employment_types.join(', ')),
+    row('work_pattern', 'how you work', [s.work_pattern.shifts.length ? `shifts: ${s.work_pattern.shifts.join(', ')}` : '', s.work_pattern.shifts_avoid.length ? `not: ${s.work_pattern.shifts_avoid.join(', ')}` : '', s.work_pattern.hours_per_week.min !== null || s.work_pattern.hours_per_week.max !== null ? `${s.work_pattern.hours_per_week.min ?? 0}–${s.work_pattern.hours_per_week.max ?? 'any'} hours a week` : '', s.work_pattern.term_time_only ? 'term-time only' : ''].filter(Boolean).join('; ')),
+    row('licenses', 'licences', s.licenses.join(', ')),
     row('exclude', 'excluded', [s.roles.exclude_title_words.length ? `title words: ${s.roles.exclude_title_words.join(', ')}` : '', s.exclude.companies.length ? `companies: ${s.exclude.companies.join(', ')}` : '', s.exclude.industries.length ? `industries: ${s.exclude.industries.join(', ')}` : ''].filter(Boolean).join('; ')),
-    row('schedule', 'daily', `${s.schedule.daily_picks} picks a day; ${s.schedule.cooldown_days}-day cooldown after applying; time zone ${s.schedule.timezone || 'system'}`),
+    row('schedule', 'daily', `${s.schedule.daily_picks} picks a day; ${s.schedule.cooldown_days}-day cooldown after applying${s.schedule.cooldown_scope === 'role' ? ' (the same title only)' : ''}${s.schedule.per_company > 1 ? `; up to ${s.schedule.per_company} roles per company` : ''}; time zone ${s.schedule.timezone || 'system'}`),
   ];
   if (s.judge_notes.trim()) items.push(row('judge_notes', 'notes for the judge', s.judge_notes.trim()));
   return items;

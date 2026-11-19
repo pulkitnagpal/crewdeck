@@ -163,3 +163,45 @@ test('the setup card a new user sees first: no text under 14 px and AA contrast,
     }
   } finally { await fresh.close(); }
 });
+
+test('Preferences (P9g): the new fields with the keyboard only, saved to the note; no text under 14 px and AA contrast, light and dark', { skip: noBrowser, timeout: 90_000 }, async () => {
+  for (const scheme of ['light', 'dark'] as const) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: scheme });
+    await page.goto(`http://localhost:${s.port}/jobs/#preferences`);
+    await page.locator('.prefs h2', { hasText: 'How you work' }).waitFor({ timeout: 15_000 });
+    const items = await audit(page, '.prefs');
+    assert.ok(items.length > 100, `${items.length} texts`);
+    assert.deepEqual(items.filter((x) => x.size < 14), [], 'nothing under 14 px');
+    assert.deepEqual(items.filter((x) => x.ratio < 4.5), [], 'AA (4.5:1) for every text');
+    const unlabelled = await page.evaluate(() => [...document.querySelectorAll('.prefs button, .prefs input, .prefs select, .prefs textarea')]
+      .filter((e) => !(e.getAttribute('aria-label') || e.textContent?.trim() || (e.id && document.querySelector(`label[for="${e.id}"]`)) || e.closest('label'))).length);
+    assert.equal(unlabelled, 0);
+    if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await page.locator('.prefs h2', { hasText: 'How you work' }).scrollIntoViewIfNeeded(); await page.screenshot({ path: join(SHOTS, `preferences-${scheme}.png`) }); }
+    await page.close();
+  }
+  // Keyboard only: tick Nights (shifts you can work), type 36 hours, pick a day rate, Save with Enter.
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await page.goto(`http://localhost:${s.port}/jobs/#preferences`);
+  await page.locator('.prefs h2', { hasText: 'How you work' }).waitFor({ timeout: 15_000 });
+  const focusedText = () => page.evaluate(() => (document.activeElement?.closest('label')?.textContent ?? document.activeElement?.id ?? '').trim());
+  let tabs = 0;
+  while ((await focusedText()) !== 'Nights' && tabs++ < 200) await page.keyboard.press('Tab');
+  assert.equal(await focusedText(), 'Nights', 'reachable by Tab');
+  await page.keyboard.press('Space');
+  tabs = 0;
+  while ((await focusedText()) !== 'p-pay.period' && tabs++ < 80) await page.keyboard.press('Tab');
+  // Reached by Tab; a closed <select> answers arrow keys differently per platform, so the choice is made on it directly.
+  await page.locator('[id="p-pay.period"]').selectOption('day');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('36');
+  await page.locator('.savebar', { hasText: 'not saved yet' }).waitFor();
+  await page.getByRole('button', { name: 'Save', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await page.locator('.savebar', { hasText: 'Everything saved' }).waitFor({ timeout: 10_000 });
+  const note = readFileSync(join(s.w.vault, 'jobs', 'search.md'), 'utf8');
+  assert.match(note, /work_pattern:[\s\S]*shifts:[\s\S]*night/);
+  assert.match(note, /period: day/);
+  assert.match(note, /hours_per_week: 36/);
+  assert.match(note, /- \d{4}-\d{2}-\d{2}: work_pattern\.shifts: \(none\) → night\. "\(set on the Jobs page\)"/);
+  await page.close();
+});

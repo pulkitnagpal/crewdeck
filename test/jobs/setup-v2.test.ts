@@ -109,7 +109,7 @@ test('E: backend engineer in India, remote, from a resume: targets checked on po
   assert.ok(pv.dropped.some((d: any) => d.company === 'Placeholder Inc') || pv.drops.some((d: any) => /place|remote/.test(d.label)), 'the US-only posting still drops');
 });
 
-test('N: registered nurse in Columbus, Ohio, nights, hourly: no nursing board (said plainly), hospitals as employers, nights in her words, 14-day cooldown', () => {
+test('N: registered nurse in Columbus, Ohio, nights, hourly: no nursing board (said plainly), hospitals as employers, nights as her work pattern, 14-day role-scoped cooldown', () => {
   const p = start();
   me(p, 'identity.first_name', 'Nora'); me(p, 'identity.last_name', 'Example'); me(p, 'identity.email', 'nora@example.com');
   me(p, 'identity.city', 'Columbus'); me(p, 'identity.region', 'Ohio'); me(p, 'identity.country', 'United States');
@@ -121,8 +121,13 @@ test('N: registered nurse in Columbus, Ohio, nights, hourly: no nursing board (s
   pref(p, 'places.onsite', '[Columbus, OH]', 'Columbus');
   pref(p, 'places.commute_km', '40', 'about 25 miles');
   pref(p, 'employment_types', '[full-time, part-time, per-diem]', 'any of those');
-  pref(p, 'licenses', '["RN (Ohio)"]', 'Ohio RN');
-  pref(p, 'judge_notes', 'Nights only, three 12-hour shifts a week. Allowed to work in the US.', 'nights only, three twelves');
+  pref(p, 'licenses', '[{ name: RN, where: Ohio }]', 'Ohio RN');
+  // P9g: moving, right to work and the work pattern in their own fields; the rest stays in her words.
+  pref(p, 'places.relocate_to', '[Cincinnati, Cleveland]', 'I would move to Cincinnati or Cleveland');
+  pref(p, 'places.authorized_in', '[United States]', 'allowed to work in the US');
+  pref(p, 'work_pattern.shifts', '[night]', 'nights only');
+  pref(p, 'work_pattern.hours_per_week', '{ max: 36 }', 'three twelves');
+  pref(p, 'judge_notes', 'Three 12-hour shifts a week.', 'nights only, three twelves');
   // Where to look: the catalog has no nursing board in the US, and says so with what still works.
   const sg = JSON.parse(ok(p, ['sources', 'suggest', '--json']));
   assert.deepEqual(sg.sources, []);
@@ -145,11 +150,18 @@ test('N: registered nurse in Columbus, Ohio, nights, hourly: no nursing board (s
   ]) posting(p, x);
   pref(p, 'pay.currency', 'USD', 'dollars'); pref(p, 'pay.floor', '38', 'at least 38 an hour'); pref(p, 'pay.period', 'hour', 'hourly');
   pref(p, 'pay.rule', 'bottom_of_range', 'the bottom must reach it');
+  pref(p, 'pay.hours_per_week', '36', 'three twelves'); pref(p, 'pay.days_per_week', '3', 'three shifts');
   pref(p, 'schedule.cooldown_days', '14', 'two weeks: hospitals post many units');
+  pref(p, 'schedule.cooldown_scope', 'role', 'other units at the same hospital are fine');
   pref(p, 'schedule.timezone', 'America/New_York', 'Ohio time');
   const pv = finish(p, ['Nurse']);
   assert.equal(pv.pass, 2, 'the night RN roles pass; "Nursery Assistant" and Toronto drop');
-  assert.equal(search(p).schedule.cooldown_days, 14);
+  assert.deepEqual(search(p).schedule, { daily_picks: 5, cooldown_days: 14, cooldown_scope: 'role', per_company: 1, timezone: 'America/New_York' });
+  assert.deepEqual(search(p).work_pattern.shifts, ['night']);
+  const brief = ok(p, ['judge-brief']);
+  assert.match(brief, /Shifts the user can work: night/);
+  assert.match(brief, /may work without sponsorship in: United States/);
+  assert.match(brief, /would move to Cincinnati, Cleveland/);
   assert.match(sources(p), /key: example-health, name: Example Health, careers_url: "?https:\/\/example-health\.wd1\.myworkdayjobs\.example\.test\/External"?, employer: true/);
 });
 
@@ -172,7 +184,8 @@ test('W: warehouse and delivery work in Texas without a resume: facts from his a
   pref(p, 'places.onsite', '[Houston, TX]', 'Houston');
   pref(p, 'employment_types', '[part-time, full-time, temporary]', 'part-time preferred');
   pref(p, 'licenses', '["CDL Class B (Texas)", "Forklift certification"]', 'my CDL B and forklift card');
-  pref(p, 'judge_notes', 'About 24 hours a week; weekends are fine.', 'about 24 hours, weekends ok');
+  pref(p, 'work_pattern.hours_per_week', '{ min: 20, max: 24 }', 'about 24 hours');
+  pref(p, 'work_pattern.shifts', '[day, evening, weekend]', 'weekends ok');
   const sg = JSON.parse(ok(p, ['sources', 'suggest', '--json']));
   assert.match(sg.coverage.line, /^Crewdeck has no job board that fits .*for logistics-transport\./);
   fetchOnce(p);
@@ -184,6 +197,7 @@ test('W: warehouse and delivery work in Texas without a resume: facts from his a
   ]) posting(p, x);
   pref(p, 'pay.currency', 'USD', 'dollars'); pref(p, 'pay.floor', '17', 'seventeen an hour at least'); pref(p, 'pay.period', 'hour', 'hourly');
   pref(p, 'schedule.cooldown_days', '14', 'two weeks');
+  pref(p, 'schedule.cooldown_scope', 'role', 'other stores are fine');
   pref(p, 'schedule.timezone', 'America/Chicago', 'Texas time');
   const pv = finish(p, ['Warehouse', 'Driving']);
   assert.equal(pv.pass, 3);

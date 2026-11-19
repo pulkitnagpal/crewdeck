@@ -11,7 +11,7 @@ import { sourceItems, validate } from '../../src/jobs/schema.ts';
 import { type Plan, cleanJob, onlyNewSources, readSourcesState, runSources, sandboxSupport, sourcePlan, writeSourcesState } from '../../src/jobs/sources.ts';
 import { changeSources, keysInUse, listSources, newKey } from '../../src/jobs/sources-note.ts';
 import { loadManifest } from '../../src/jobs/providers.ts';
-import { MIGRATIONS, migrate } from '../../src/jobs/migrations.ts';
+import { MIGRATIONS, SCHEMA_VERSION, migrate } from '../../src/jobs/migrations.ts';
 import { priorityBonus, rankRoles } from '../../src/jobs/pipeline/rank.ts';
 import { runPrefilter } from '../../src/jobs/pipeline/prefilter.ts';
 import { installedFixture } from './provider-helpers.ts';
@@ -178,10 +178,10 @@ test('DB migration v2: a v1 tracker gains source_key, language, visa_text and em
   db.exec(MIGRATIONS[0].sql);
   db.exec(`insert into companies(id, name, key) values (1, 'Example Co', 'example co');
     insert into roles(id, company_id, title, url, source, first_seen, updated_at) values ('aaaaaaaaaaaa', 1, 'Analyst', 'https://jobs.example.com/1', 'board', '2026-11-01', '2026-11-01')`);
-  assert.equal(migrate(db), 2);
+  assert.equal(migrate(db), SCHEMA_VERSION);
   const r = db.prepare('select title, source, source_key, language, visa_text, employment_type from roles').get() as any;
   assert.deepEqual({ ...r }, { title: 'Analyst', source: 'board', source_key: null, language: null, visa_text: null, employment_type: null });
-  assert.equal(migrate(db), 2, 'safe to run again');
+  assert.equal(migrate(db), SCHEMA_VERSION, 'safe to run again');
 });
 
 test('a provider\'s language, visa line and employment type are kept, bounded, and stored with the source key', () => {

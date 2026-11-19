@@ -76,8 +76,18 @@ create index roles_source_key on roles(source_key);
 PRAGMA user_version = 2;
 `;
 
+// v3 (D36, P9g): when the user marked a role applied, so a cooldown can be about the same title at a company (scope:
+// role) rather than the whole company. Roles applied before v3 take the time of their "applied" status event.
+const V3 = `
+alter table roles add column applied_at text;
+update roles set applied_at = coalesce(
+  (select max(e.at) from events e where e.role_id = roles.id and e.kind = 'status' and e.detail like 'applied%'), roles.updated_at)
+  where status = 'applied';
+PRAGMA user_version = 3;
+`;
+
 /** Every schema step, in order; step N leaves user_version = N. */
-export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }, { version: 2, sql: V2 }];
+export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }, { version: 2, sql: V2 }, { version: 3, sql: V3 }];
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
 const version = (db: DatabaseSync) => Number((db.prepare('PRAGMA user_version').get() as any).user_version);

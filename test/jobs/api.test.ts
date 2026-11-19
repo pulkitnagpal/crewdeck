@@ -279,6 +279,46 @@ test('preferences: saved to jobs/search.md with a Changes line; invalid values s
   } finally { await s.close(); }
 });
 
+test('preferences (P9g): pay period, hours, work pattern, moving and right to work; a licence map stays a map; empty clears; other keys kept', async () => {
+  const s = await jobsServer();
+  try {
+    const file = join(s.w.vault, 'jobs', 'search.md');
+    // The user's own frontmatter (a licence with where, an unknown key, a comment) is kept around the form's changes.
+    writeFileSync(file, readFileSync(file, 'utf8').replace('licenses: []', 'licenses: [{ name: RN, where: Ohio }]\nmy_own_key: keep me # mine').replace('pay: { currency: EUR, floor: 4500, period: month,', 'pay: { currency: EUR, floor: 4500, period: month, hours_per_week: 30,'));
+    const p = (await s.get('preferences')).json;
+    assert.deepEqual(p.values.licenses, [{ name: 'RN', where: 'Ohio' }]);
+    assert.equal(p.values['pay.hours_per_week'], 30);
+    assert.deepEqual(p.options.period, ['year', 'month', 'week', 'day', 'hour']);
+    assert.deepEqual(p.options.shifts, ['day', 'evening', 'night', 'weekend', 'rotating', 'on-call']);
+    assert.ok(p.options.levels.includes('C1') && p.options.employment_types.includes('seasonal') && p.options.travel.includes('off'));
+    const ok = await s.action('prefs', { changes: {
+      'pay.period': 'day', 'pay.floor': 200, 'pay.hours_per_week': null, 'pay.days_per_week': 4, 'pay.per_unit': '€0.08 a word',
+      'work_pattern.shifts': ['night', 'weekend'], 'work_pattern.hours_per_week.max': 24, 'work_pattern.term_time_only': true,
+      'places.relocate_to': ['Porto'], 'places.authorized_in': ['Portugal'], 'schedule.cooldown_scope': 'role', 'schedule.per_company': 2,
+      licenses: [{ name: 'RN', where: 'Ohio' }, 'CDL Class B (Texas)'], employment_types: ['freelance', 'fixed-term'],
+    } });
+    assert.equal(ok.json.ok, true, JSON.stringify(ok.json));
+    const text = readFileSync(file, 'utf8');
+    const front = parse(splitNote(text).front!);
+    assert.equal(front.my_own_key, 'keep me');
+    assert.match(text, /my_own_key: keep me # mine/);
+    assert.deepEqual(front.licenses, [{ name: 'RN', where: 'Ohio' }, 'CDL Class B (Texas)']);
+    assert.equal(front.pay.hours_per_week, undefined, 'emptied: the key is gone');
+    assert.deepEqual([front.pay.period, front.pay.floor, front.pay.days_per_week, front.pay.per_unit], ['day', 200, 4, '€0.08 a word']);
+    assert.deepEqual(front.work_pattern, { shifts: ['night', 'weekend'], hours_per_week: { max: 24 }, term_time_only: true });
+    assert.deepEqual([front.places.relocate_to, front.places.authorized_in], [['Porto'], ['Portugal']]);
+    assert.deepEqual([front.schedule.cooldown_scope, front.schedule.per_company], ['role', 2]);
+    const s2 = notesOf(s.w.ctx).search.data;
+    assert.equal(s2.pay!.hours_per_week, null);
+    assert.equal(s2.work_pattern.hours_per_week.max, 24);
+    // Bad values save nothing and name the field.
+    const bad = await s.action('prefs', { changes: { 'work_pattern.shifts': ['nights'], 'schedule.cooldown_scope': 'team' } });
+    assert.equal(bad.json.ok, false);
+    assert.deepEqual(bad.json.issues.map((i: any) => i.path).sort(), ['schedule.cooldown_scope', 'work_pattern.shifts.0']);
+    assert.equal((await s.action('prefs', { changes: { 'pay.days_per_week': 'four' } })).status, 400);
+  } finally { await s.close(); }
+});
+
 test('busy: while a CLI holds the write lock the page gets "busy, retry" instead of a stalled shell', async () => {
   const s = await jobsServer();
   try {

@@ -18,8 +18,8 @@ test('every fictional person, the example and the templates validate with no err
 test('messages name the note, the field path and the fix', () => {
   const [e] = errors('search', { pay: { currency: 'EUR', floor: 50000, period: 'annual' } });
   assert.deepEqual({ note: e.note, path: e.path }, { note: 'jobs/search.md', path: 'pay.period' });
-  assert.match(e.message, /"annual" is not one of: year, month, hour/);
-  assert.match(e.fix!, /use one of year \| month \| hour|did you mean/);
+  assert.match(e.message, /"annual" is not one of: year, month, week, day, hour/);
+  assert.match(e.fix!, /use one of year \| month \| week \| day \| hour|did you mean/);
   const [lang] = errors('search', { languages: [{ name: 'German', level: 'fluant' }] });
   assert.equal(lang.path, 'languages[0].level');
   assert.match(lang.fix!, /did you mean "fluent"/);
@@ -95,7 +95,11 @@ test('places outside the gazetteer warn; "Town, Country" is fine', () => {
 test('normalise fills defaults', () => {
   const s = normalise.search({});
   assert.equal(s.places.commute_km, 50);
-  assert.equal(s.exclude.travel, 'none');
+  // v1's "none" (no travel rules a job out) reads as off (D29–D31: exclude.travel: off).
+  assert.equal(s.exclude.travel, 'off');
+  assert.equal(normalise.search({ exclude: { travel: 'none' } }).exclude.travel, 'off');
+  assert.deepEqual(s.schedule, { timezone: '', daily_picks: 5, cooldown_days: 60, cooldown_scope: 'company', per_company: 1 });
+  assert.deepEqual(s.work_pattern, { hours_per_week: { min: null, max: null }, shifts: [], shifts_avoid: [], term_time_only: false });
   assert.equal(s.pay, null);
   assert.equal(normalise.career({}).resume.paper, 'A4');
 });

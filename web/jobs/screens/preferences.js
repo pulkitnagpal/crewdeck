@@ -4,11 +4,17 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { html, noop, cls, plural } from '../lib.js';
 
-const LIST = new Set(['roles.titles', 'roles.seniority_prefer', 'roles.exclude_title_words', 'places.onsite', 'places.remote_from', 'licenses', 'exclude.companies', 'exclude.industries']);
-const CHECKS = new Set(['workplace', 'employment_types']);
-const NUM = new Set(['places.commute_km', 'pay.floor', 'schedule.daily_picks', 'schedule.cooldown_days']);
-const WORDS = { words: 'every word of a title, any order', broad: 'also a shared head word (more to judge)', off: 'off: every title goes to the judge', entry: 'entry level', experienced: 'experienced', senior: 'senior', any: 'any level', remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site', top_of_range: 'the top of the range reaches it', bottom_of_range: 'the bottom of the range reaches it', keep: 'keep them', drop: 'drop them', none: 'nothing', occasional: 'occasional or more', frequent: 'frequent travel', year: 'a year', month: 'a month', hour: 'an hour' };
-const word = (v) => WORDS[v] ?? v;
+const LIST = new Set(['roles.titles', 'roles.seniority_prefer', 'roles.exclude_title_words', 'places.onsite', 'places.remote_from', 'places.relocate_to', 'places.authorized_in', 'exclude.companies', 'exclude.industries']);
+const CHECKS = new Set(['workplace', 'employment_types', 'work_pattern.shifts', 'work_pattern.shifts_avoid']);
+const NUM = new Set(['places.commute_km', 'pay.floor', 'schedule.daily_picks', 'schedule.cooldown_days', 'schedule.per_company']);
+/** Numbers the user may leave empty (their defaults apply): saved as "no value". */
+const OPTNUM = new Set(['pay.hours_per_week', 'pay.days_per_week', 'work_pattern.hours_per_week.min', 'work_pattern.hours_per_week.max']);
+const BOOL = new Set(['work_pattern.term_time_only']);
+const WORDS = { words: 'every word of a title, any order', broad: 'also a shared head word (more to judge)', entry: 'entry level', experienced: 'experienced', senior: 'senior', any: 'any level', remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site', top_of_range: 'the top of the range reaches it', bottom_of_range: 'the bottom of the range reaches it', keep: 'keep them', drop: 'drop them', occasional: 'occasional or more', frequent: 'frequent travel', year: 'a year', month: 'a month', week: 'a week', day: 'a day', hour: 'an hour', company: 'any role at that company', role: 'the same title at that company only' };
+const word = (v, k) => (k === 'roles.match' && v === 'off' ? 'off: every title goes to the judge' : k === 'exclude.travel' && v === 'off' ? 'nothing (off)' : WORDS[v] ?? v);
+const SHIFT_WORDS = { day: 'Days', evening: 'Evenings', night: 'Nights', weekend: 'Weekends', rotating: 'Rotating', 'on-call': 'On call' };
+/** A licence on one line: "RN (Ohio)" for { name: RN, where: Ohio }. */
+const licenceLine = (l) => (typeof l === 'string' ? l : l?.where ? `${l.name} (${l.where})` : l?.name ?? '');
 const norm = (p) => String(p ?? '').replace(/\[(\d+)\]/g, '.$1');
 
 /**
@@ -20,7 +26,9 @@ function toForm(values, ref = null) {
   const out = {};
   for (const [k, v] of Object.entries(values)) {
     if (LIST.has(k)) out[k] = (v ?? []).join('\n');
-    else if (NUM.has(k)) out[k] = v === null || v === undefined ? '' : String(v);
+    else if (k === 'licenses') out[k] = (v ?? []).map(licenceLine).join('\n');
+    else if (NUM.has(k) || OPTNUM.has(k)) out[k] = v === null || v === undefined ? '' : String(v);
+    else if (BOOL.has(k)) out[k] = v === true;
     else if (k === 'languages') out[k] = (v ?? []).map((l) => ({ name: l.name ?? '', level: l.level ?? '' }));
     else if (k === 'needs_sponsorship') out[k] = v === true ? 'yes' : v === false ? 'no' : '';
     else if (k === 'roles.targets') {
@@ -36,9 +44,13 @@ function toForm(values, ref = null) {
 }
 
 /** The value the server takes for one field. */
-function fromForm(k, v) {
+function fromForm(k, v, loaded = null) {
   if (LIST.has(k)) return v.split('\n').map((x) => x.trim()).filter(Boolean);
+  // A line that is a licence as loaded goes back as written ({ name, where } stays a map); a new line is text.
+  if (k === 'licenses') return v.split('\n').map((x) => x.trim()).filter(Boolean).map((line) => (loaded ?? []).find((l) => typeof l === 'object' && licenceLine(l) === line) ?? line);
   if (NUM.has(k)) return v.trim() === '' ? NaN : Number(v);
+  if (OPTNUM.has(k)) return v.trim() === '' ? null : Number(v);
+  if (BOOL.has(k)) return v === true;
   if (k === 'languages') return v.filter((l) => l.name.trim()).map((l) => ({ name: l.name.trim(), ...(l.level ? { level: l.level } : {}) }));
   if (k === 'needs_sponsorship') return v === 'yes';
   if (k === 'roles.targets') {
@@ -78,7 +90,9 @@ export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = n
   const [pvBusy, setPvBusy] = useState(false);
   const seq = useRef(0);
   const changed = Object.keys(vals).filter((k) => JSON.stringify(vals[k]) !== JSON.stringify(init[k]));
-  const changesNow = () => Object.fromEntries(changed.filter((k) => !(NUM.has(k) && !Number.isFinite(fromForm(k, vals[k])))).map((k) => [k, fromForm(k, vals[k])]));
+  const from = (k) => fromForm(k, vals[k], data.values[k]);
+  const bad = (k, v) => (NUM.has(k) && !Number.isFinite(v)) || (OPTNUM.has(k) && v !== null && !Number.isFinite(v));
+  const changesNow = () => Object.fromEntries(changed.map((k) => [k, from(k)]).filter(([k, v]) => !bad(k, v)));
   const key = JSON.stringify(changesNow());
   // Debounced: the preview follows the form as the user types; only the latest answer is shown.
   useEffect(() => {
@@ -92,7 +106,7 @@ export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = n
     return () => clearTimeout(t);
   }, [key]);
   if (!data.exists) {
-    return html`<div class="page narrow"><div class="card section"><h1>Preferences</h1><p class="soft">jobs/search.md is missing. Set up Jobs first (Today → Set up with Claude), or copy it from vault-template.</p></div></div>`;
+    return html`<div class="page narrow prefs"><div class="card section"><h1>Preferences</h1><p class="soft">jobs/search.md is missing. Set up Jobs first (Today → Set up with Claude), or copy it from vault-template.</p></div></div>`;
   }
   const noteIssues = data.issues.filter((i) => i.level === 'error');
   const errFor = (k) => [...errors, ...noteIssues].filter((e) => norm(e.path) === k || norm(e.path).startsWith(`${k}.`)).map((e) => e.message);
@@ -109,19 +123,24 @@ export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = n
   };
   const lines = (k, label, help, rows = 3) => wrap(k, label, help, html`<textarea id=${`p-${k}`} class="field" rows=${rows} value=${vals[k]} onInput=${(e) => set(k, e.currentTarget.value)}></textarea>`);
   const text = (k, label, help) => wrap(k, label, help, html`<input id=${`p-${k}`} class="field" value=${vals[k]} onInput=${(e) => set(k, e.currentTarget.value)} />`);
-  const num = (k, label, help) => wrap(k, label, help, html`<input id=${`p-${k}`} class="field" type="number" inputmode="numeric" min="0" value=${vals[k]} onInput=${(e) => set(k, e.currentTarget.value)} />`);
-  const pick = (k, label, opts, help) => wrap(k, label, help, html`<select id=${`p-${k}`} class="field" value=${vals[k]} onChange=${(e) => set(k, e.currentTarget.value)}>${opts.map((o) => html`<option value=${o}>${word(o)}</option>`)}</select>`);
-  const checks = (k, label, opts, help) => {
+  const num = (k, label, help) => wrap(k, label, help, html`<input id=${`p-${k}`} class="field" type="number" inputmode="decimal" min="0" value=${vals[k]} onInput=${(e) => set(k, e.currentTarget.value)} />`);
+  const pick = (k, label, opts, help) => wrap(k, label, help, html`<select id=${`p-${k}`} class="field" value=${vals[k]} onChange=${(e) => set(k, e.currentTarget.value)}>${opts.map((o) => html`<option value=${o}>${word(o, k)}</option>`)}</select>`);
+  const checks = (k, label, opts, help, words = null) => {
     const errs = errFor(k);
     return html`<fieldset class=${cls('f', errs.length && 'bad')}><legend class="lab">${label}</legend><div class="checks">${opts.map((o) => html`<label class="check"><input type="checkbox" checked=${vals[k].includes(o)}
-      onChange=${(e) => set(k, e.currentTarget.checked ? [...vals[k], o] : vals[k].filter((x) => x !== o))} />${word(o)}</label>`)}</div>
+      onChange=${(e) => set(k, e.currentTarget.checked ? [...vals[k], o] : vals[k].filter((x) => x !== o))} />${words?.[o] ?? word(o, k)}</label>`)}</div>
       ${errs.map((m, i) => html`<span class="err" key=${i}>${m}</span>`)}${help ? html`<span class="help">${help}</span>` : null}</fieldset>`;
+  };
+  const tick = (k, label, help) => {
+    const errs = errFor(k);
+    return html`<div class=${cls('f', errs.length && 'bad')}><label class="check"><input id=${`p-${k}`} type="checkbox" checked=${vals[k]} onChange=${(e) => set(k, e.currentTarget.checked)} />${label}</label>
+      ${errs.map((m, i) => html`<span class="err" key=${i}>${m}</span>`)}${help ? html`<span class="help">${help}</span>` : null}</div>`;
   };
 
   const save = async () => {
-    const changes = Object.fromEntries(changed.map((k) => [k, fromForm(k, vals[k])]));
-    const bad = Object.entries(changes).filter(([k, v]) => NUM.has(k) && !Number.isFinite(v)).map(([k]) => ({ path: k, message: 'give a number' }));
-    if (bad.length) { setErrors(bad); return; }
+    const changes = Object.fromEntries(changed.map((k) => [k, from(k)]));
+    const wrong = Object.entries(changes).filter(([k, v]) => bad(k, v)).map(([k]) => ({ path: k, message: OPTNUM.has(k) ? 'give a number, or leave it empty' : 'give a number' }));
+    if (wrong.length) { setErrors(wrong); return; }
     setBusy(true);
     const r = await onSave(changes, pending?.from);
     setBusy(false);
@@ -129,7 +148,7 @@ export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = n
     else setErrors([]);
   };
 
-  return html`<div class="page narrow">
+  return html`<div class="page narrow prefs">
     <div class="page-head">
       <div><h1>Preferences</h1><p class="sub">What you want, as Jobs reads it from <code>jobs/search.md</code>. Saving here logs each change under Changes in that note, like telling Claude.</p></div>
       <button type="button" class="btn small" onClick=${() => onNotes(data.page)}>Open in Notes</button>
@@ -153,15 +172,22 @@ export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = n
         <div class="grid2">${lines('roles.titles', 'More job titles', 'One per line, e.g. data analyst (read as one more kind of job)', 3)}${lines('roles.exclude_title_words', 'Never titles with', 'Whole words, one per line, e.g. intern', 3)}</div>
         <div class="grid2">${pick('roles.match', 'Title matching', data.options.match ?? ['words', 'broad', 'off'])}${pick('roles.level', 'Level', data.options.level ?? ['any', 'entry', 'experienced', 'senior'], 'Drops titles with a seniority word outside it')}</div>
         ${lines('roles.seniority_prefer', 'Seniority you prefer', 'Ordering only, not a filter (one per line)', 2)}
-        ${checks('employment_types', 'Employment types', data.options.employment_types)}
       </section>
       <section class="card section"><header><h2>Where</h2><span class="hint">On-site and hybrid roles are checked against your cities; remote ones against where you can work from.</span></header>
         ${checks('workplace', 'Workplace', data.options.workplace, 'None ticked means any')}
         <div class="grid2">${lines('places.onsite', 'Cities for on-site or hybrid', 'One per line ("Town, Country" for small towns)')}${lines('places.remote_from', 'Remote from', 'Countries, regions or states, one per line; "worldwide" accepts anywhere')}</div>
         <div class="grid3">${num('places.commute_km', 'Commute distance (km)')}</div>
+        <div class="grid2">${lines('places.relocate_to', 'Cities you would move to', 'One per line: on-site or hybrid roles there pass, and the judge is told you\'d move', 2)}${lines('places.authorized_in', 'Where you may work without sponsorship', 'Countries, one per line, e.g. United States', 2)}</div>
+      </section>
+      <section class="card section"><header><h2>How you work</h2><span class="hint">Only what you say: the judging step never guesses a shift or an hours limit for you.</span></header>
+        ${checks('employment_types', 'Employment types', data.options.employment_types, 'None ticked means any. A posting whose source states another type is dropped; words in a description are judged.')}
+        <div class="grid2">${checks('work_pattern.shifts', 'Shifts you can work', data.options.shifts ?? [], null, SHIFT_WORDS)}${checks('work_pattern.shifts_avoid', 'Shifts you can\'t work', data.options.shifts ?? [], null, SHIFT_WORDS)}</div>
+        <div class="grid3">${num('work_pattern.hours_per_week.min', 'Hours a week, at least', 'Empty = no minimum')}${num('work_pattern.hours_per_week.max', 'Hours a week, at most', 'Empty = no maximum')}</div>
+        ${tick('work_pattern.term_time_only', 'Term-time only (school-year contracts)')}
       </section>
       <section class="card section"><header><h2>Pay</h2><span class="hint">Postings below your floor are dropped; any currency is converted with your rates in the note.</span></header>
         <div class="grid3">${text('pay.currency', 'Currency', 'Three letters, e.g. EUR')}${num('pay.floor', 'Floor', '0 = no floor')}${pick('pay.period', 'Per', data.options.period)}</div>
+        <div class="grid3">${num('pay.hours_per_week', 'Hours you work a week', 'Converts a month or a year into your period; empty = your most hours above, else 40')}${num('pay.days_per_week', 'Days a week', 'For a day rate; empty = 5')}${text('pay.per_unit', 'Pay per word, page or project', 'In your words, e.g. €0.08 a word; for the judge, never a floor')}</div>
         <div class="grid3">${pick('pay.rule', 'Keep a range when', data.options.rule)}${pick('pay.unlisted', 'Postings with no pay', data.options.unlisted)}${text('pay.locale', 'Number format', 'e.g. de-DE, en-US')}</div>
       </section>
       <section class="card section"><header><h2>You</h2></header>
@@ -174,7 +200,7 @@ export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = n
           ${errFor('languages').map((m, i) => html`<span class="err" key=${i}>${m}</span>`)}
           <div><button type="button" class="btn small" onClick=${() => set('languages', [...vals.languages, { name: '', level: '' }])}>Add a language</button></div>
         </div>
-        <div class="grid2">${lines('licenses', 'Licences', 'e.g. RN (Texas), one per line', 2)}${pick('needs_sponsorship', 'Need visa sponsorship', ['no', 'yes'])}</div>
+        <div class="grid2">${lines('licenses', 'Licences', 'One per line, with where they hold: e.g. RN (Ohio), QTS (England)', 2)}${pick('needs_sponsorship', 'Need visa sponsorship', ['no', 'yes'])}</div>
       </section>
       <section class="card section"><header><h2>Never</h2></header>
         <div class="grid2">${lines('exclude.companies', 'Companies', 'One per line')}${lines('exclude.industries', 'Industries', 'One per line, e.g. gambling')}</div>
@@ -182,6 +208,7 @@ export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = n
       </section>
       <section class="card section"><header><h2>Daily</h2></header>
         <div class="grid3">${num('schedule.daily_picks', 'Picks a day')}${num('schedule.cooldown_days', 'Cooldown after applying (days)')}${text('schedule.timezone', 'Time zone', 'e.g. Europe/Berlin; empty = this computer\'s')}</div>
+        <div class="grid3">${pick('schedule.cooldown_scope', 'The cooldown holds back', data.options.cooldown_scope ?? ['company', 'role'], 'Same title only suits hospitals, schools and chains with many similar openings')}${num('schedule.per_company', 'Roles in progress per company', 'At most this many picked or prepared at once')}</div>
         ${lines('judge_notes', 'Anything else, for the judging step', 'In your words, e.g. "prefer product companies over agencies"', 3)}
       </section>
       ${onPreview || pv ? html`<${PreviewPanel} pv=${pv} busy=${pvBusy} dirty=${changed.length > 0} onApply=${(change) => setVals({ ...vals, ...toForm(change, init) })} />` : null}

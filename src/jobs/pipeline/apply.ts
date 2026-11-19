@@ -26,13 +26,18 @@ export function markApplied(ctx: Ctx, roleId: string) {
   const at = nowIso(ctx);
   const until = new Date(ctx.clock().getTime() + notes.search.data.schedule.cooldown_days * 86_400_000).toISOString();
   tx(ctx.db, () => {
-    if (r.status !== 'applied') setStatus(ctx.db, roleId, 'applied', '', at);
+    if (r.status !== 'applied') {
+      setStatus(ctx.db, roleId, 'applied', '', at);
+      ctx.db.prepare('update roles set applied_at=? where id=?').run(at, roleId);
+    }
     ctx.db.prepare(`update companies set cooldown_until=max(coalesce(cooldown_until,''), ?) where id=?`).run(until, r.company_id);
   });
   const day = todayOf(ctx, notes);
   const journal = appendJournal(ctx.vault, day, `Applied: ${r.company} — ${r.title}`);
-  const cooldown = (ctx.db.prepare('select cooldown_until from companies where id=?').get(r.company_id) as any).cooldown_until as string;
-  return { role: roleId, company: r.company, title: r.title, cooldown_until: cooldown, journal: journal ? `journal/${day}.md` : null, already: r.status === 'applied' };
+  // The company's cooldown is always kept (the user may switch scope later); with scope role, only this title waits.
+  const role = notes.search.data.schedule.cooldown_scope === 'role';
+  const cooldown = role ? until : (ctx.db.prepare('select cooldown_until from companies where id=?').get(r.company_id) as any).cooldown_until as string;
+  return { role: roleId, company: r.company, title: r.title, cooldown_until: cooldown, cooldown_scope: role ? 'role' as const : 'company' as const, journal: journal ? `journal/${day}.md` : null, already: r.status === 'applied' };
 }
 
 const WORD = /^[\p{L}\p{N}][\p{L}\p{N} +#./&'-]{0,39}$/u;

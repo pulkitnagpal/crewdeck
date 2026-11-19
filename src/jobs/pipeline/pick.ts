@@ -6,6 +6,7 @@ import { type Ctx, notesOf, nowIso, todayOf } from '../ctx.ts';
 import { addEvent, getRole, setStatus, tx } from '../db.ts';
 import { compileRules, prefilter } from '../rules.ts';
 import { type Candidate, rankRoles, toCandidate } from './rank.ts';
+import { trackerCheck, trackerRules } from './tracker.ts';
 
 export type { Candidate } from './rank.ts';
 export type Verdict = { role: string; eligible: 'yes' | 'no' | 'unclear'; score: number; evidence: string; reason?: string };
@@ -50,7 +51,10 @@ function nowExcluded(ctx: Ctx) {
   };
 }
 
-/** Pick up to n roles for `day` (YYYY-MM-DD, the user's day): best score first, one per company. Idempotent per day. */
+/**
+ * Pick up to n roles for `day` (YYYY-MM-DD, the user's day): best score first, one per company (or up to
+ * schedule.per_company, counting roles already in progress there). Idempotent per day.
+ */
 export function pick(ctx: Ctx, n: number, day = todayOf(ctx)): string[] {
   if (!Number.isInteger(n) || n < 0 || n > 50) throw new Error('--n must be from 0 to 50');
   const at = nowIso(ctx);
@@ -58,18 +62,20 @@ export function pick(ctx: Ctx, n: number, day = todayOf(ctx)): string[] {
     const already = (ctx.db.prepare(`select id from roles where picked_on=? and source<>'pasted' and status in ('picked','prepared','applied') order by score desc, id`).all(day) as any[]).map((r) => r.id as string);
     if (already.length >= n) return already.slice(0, n);
     const excluded = nowExcluded(ctx);
+    const rules = trackerRules(notesOf(ctx).search.data);
+    const tracker = trackerCheck(ctx.db, rules, at);
     const pool = (ctx.db.prepare(`select r.id, r.company_id, r.title, c.name company from roles r join companies c on c.id=r.company_id
         where r.eligibility='yes' and r.status in ('new','bench')
-          and (c.cooldown_until is null or c.cooldown_until <= ?)
-          and not exists (select 1 from roles o where o.company_id=r.company_id and o.status in ('picked','prepared'))
-        order by r.score desc, r.first_seen, r.id`).all(at) as any[])
+        order by r.score desc, r.first_seen, r.id`).all() as any[])
+      .filter((r) => !tracker.check(r))
       .filter((r) => { const why = excluded(r); if (why) setStatus(ctx.db, r.id, 'skipped', why, at); return !why; });
     const chosen = [...already];
-    const used = new Set<number>();
+    const used = new Map<number, number>();
     for (const r of pool) {
       if (chosen.length >= n) break;
-      if (used.has(r.company_id)) continue;
-      used.add(r.company_id);
+      const k = Number(r.company_id), have = used.get(k) ?? tracker.active(k).length;
+      if (have >= rules.perCompany) continue;
+      used.set(k, have + 1);
       chosen.push(r.id);
       ctx.db.prepare('update roles set picked_on=? where id=?').run(day, r.id);
       setStatus(ctx.db, r.id, 'picked', '', at);
@@ -89,9 +95,13 @@ export function pickPasted(ctx: Ctx, id: string, day = todayOf(ctx), force = fal
     const r = getRole(ctx.db, id);
     const warnings: string[] = [];
     if (r.status === 'applied') warnings.push('you already applied to this role');
-    if (r.cooldown_until && r.cooldown_until > at) warnings.push(`${r.company} is in its cooldown until ${String(r.cooldown_until).slice(0, 10)} (applied recently)`);
-    const busy = ctx.db.prepare(`select title from roles where company_id=? and id<>? and status in ('picked','prepared')`).get(r.company_id, id) as any;
-    if (busy) warnings.push(`${r.company} already has "${busy.title}" in progress`);
+    const rules = trackerRules(notesOf(ctx).search.data);
+    const t = trackerCheck(ctx.db, rules, at).check(r);
+    if (t?.rule === 'cooldown') warnings.push(rules.scope === 'role' ? `${r.company}: ${t.reason}` : `${r.company} is in its cooldown until ${String(r.cooldown_until).slice(0, 10)} (applied recently)`);
+    if (t?.rule === 'active_pick') {
+      const busy = trackerCheck(ctx.db, rules, at).active(Number(r.company_id), id);
+      warnings.push(busy.length === 1 ? `${r.company} already has "${busy[0].title}" in progress` : `${r.company} already has ${busy.length} roles in progress`);
+    }
     if (warnings.length && !force) return warnings;
     if (r.status === 'picked' || r.status === 'prepared') return [];
     ctx.db.prepare(`update roles set eligibility='yes', evidence='chosen by the user', score=100, picked_on=? where id=?`).run(day, id);

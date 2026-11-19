@@ -126,6 +126,17 @@ test('applications, what Claude knows, preferences, settings', async () => {
   assert.match(text(pref), /Remote.*Hybrid.*On-site/);
   assert.match(pref, /<label for="p-pay\.floor">Floor<\/label>/);
   assert.match(text(render(html`<${Preferences} data=${{ ...p, exists: false }} />`)), /jobs\/search\.md is missing/);
+  // P9g: how you work (shifts, hours, term-time), pay period and hours, moving and right to work, the cooldown's scope;
+  // a licence written as a map shows on one line.
+  const p9g = { ...p, values: { ...p.values, licenses: [{ name: 'RN', where: 'Ohio' }, 'Forklift'], 'work_pattern.shifts': ['night'], 'pay.period': 'day', 'pay.hours_per_week': 36 } };
+  const g = render(html`<${Preferences} data=${p9g} />`);
+  assert.match(g, /<textarea id="p-licenses"[^>]*>RN \(Ohio\)\nForklift<\/textarea>/);
+  for (const label of ['How you work', 'Shifts you can work', 'Shifts you can\'t work', 'Hours a week, at least', 'Term-time only', 'Hours you work a week', 'Days a week', 'Pay per word, page or project', 'Cities you would move to', 'Where you may work without sponsorship', 'The cooldown holds back', 'Roles in progress per company']) assert.ok(text(g).includes(label), label);
+  assert.match(g, /<option[^>]*value="day">a day<\/option>/);
+  assert.match(g, /<option[^>]*value="role">the same title at that company only<\/option>/);
+  assert.match(g, /<option[^>]*value="off">nothing \(off\)<\/option>/);
+  assert.match(g, /<input id="p-pay\.hours_per_week"[^>]*value="36"/);
+  assert.match(text(g), /Nights/);
   // P9d: kinds of job (targets), matching and level, and the preview beside Save with a fix opened from Find's card.
   const target = { name: 'Product design', titles: ['product designer', 'UX designer'], skills: ['Figma'], families: ['design-creative'] };
   const pv = { ok: true, days: 14, pool: 120, pass: 9, was: 3, drops: [{ rule: 'title_gate', label: 'title', n: 100 }], single: [{ group: 'title', label: 'title', n: 40 }],

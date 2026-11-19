@@ -309,3 +309,14 @@ fieldset.f legend { padding: 0; margin-bottom: 5px; font-size: 12.5px; font-weig
   .crow .ctl { max-width: none; justify-content: flex-start; }
   .srcs .filters { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---- Preferences to the D41 baseline (P9g): rem type, nothing under 14 px, secondary text in --soft (AA in both
+   themes). ---- */
+.prefs { font-size: 0.875rem; }
+.prefs h1 { font-size: 1.375rem; }
+.prefs h2 { font-size: 1.0625rem; }
+.prefs .page-head .sub { font-size: 0.9375rem; }
+.prefs .small, .prefs .hint, .prefs .f .help, .prefs .f .err, .prefs .err, .prefs .f > label, .prefs .f > .lab, .prefs .lab,
+.prefs fieldset.f legend, .prefs .field, .prefs .check, .prefs .btn, .prefs .btn.small, .prefs code, .prefs .banner,
+.prefs .banner .fix, .prefs .chip { font-size: 0.875rem; }
+.prefs .soft, .prefs .hint, .prefs .f .help { color: var(--soft); }

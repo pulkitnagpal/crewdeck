@@ -83,7 +83,12 @@ test('skills: the four playbooks, each with a name that matches its folder and a
   const setup = read('plugin', 'skills', 'jobs-setup', 'SKILL.md');
   for (const re of [/Resume, or no resume/, /Starting out/, /Changing field/, /Coming back after a break/, /break: true/, /roles\.level/,
     /sources suggest --json/, /coverage line/, /sources resolve <key>/, /source --only-new-sources/, /preview --search-file <T>\/change\.yaml --json/,
-    /by_target/, /\*\*14 days\*\* for\s+healthcare, education, retail, hospitality-food and logistics-transport/, /\*\*60 days\*\* otherwise/, /Never switch it\s+on/]) assert.match(setup, re);
+    /by_target/, /\*\*14 days with `cooldown_scope: role`\*\*[\s\S]{0,200}for healthcare, education, retail, hospitality-food and logistics-transport/,
+    /\*\*60 days with `cooldown_scope: company`\*\* otherwise/, /Never switch it\s+on/,
+    // P9g: the real fields, no judge_notes stand-ins.
+    /places\.relocate_to/, /places\.authorized_in/, /work_pattern\.shifts/, /work_pattern\.hours_per_week/, /work_pattern\.term_time_only/, /pay\.hours_per_week/,
+    /pay\.per_unit/, /`A1`–`C2`/, /\{ name: RN, where: Ohio \}/, /schedule\.per_company/]) assert.match(setup, re);
+  assert.doesNotMatch(setup, /Crewdeck will soon have its own fields|until then `judge_notes` carries them/);
   const order = ['## 1. Resume', '## 2. Who they are', '## 3. Their career', '## 4. What they want, part one', '## 5. Where to look', '## 6. Fetch once', '## 7. What they want, part two', '## 8. Check'];
   assert.deepEqual(order.map((h) => setup.indexOf(h)).every((x, i, a) => x >= 0 && (i === 0 || x > a[i - 1])), true, 'the design\'s order');
   assert.match(daily, /run\.funnel\.sources\.empty/);

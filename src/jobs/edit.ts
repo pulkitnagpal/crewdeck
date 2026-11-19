@@ -38,6 +38,7 @@ export function coerce(s: Schema, raw: string, path: string): unknown {
       if (s.of.t === 'obj') throw new Error(`${path}: give the list as YAML, e.g. [{ name: …, level: … }]`);
       return t.split(',').map((x) => x.trim()).filter(Boolean).map((x) => coerce(s.of, x, path));
     case 'num': {
+      if (t === '') return undefined; // cleared: the key is removed (its default applies)
       const n = Number(t.replace(/[_,\s]/g, ''));
       if (t === '' || !Number.isFinite(n)) throw new Error(`${path}: "${t}" is not a number`);
       return n;

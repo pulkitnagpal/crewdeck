@@ -3,20 +3,49 @@
 // pay is below the floor; anything unclear is kept for the judge. Pay read from the description (not the posting's pay
 // field) is shown and ranked but never drops a posting on its own: it may be a differential, a bonus or another role's.
 import { plain } from './places.ts';
+import type { Search } from './schema.ts';
 
 export type Period = 'year' | 'month' | 'week' | 'day' | 'hour';
-export type UserPeriod = 'year' | 'month' | 'hour';
+export const PERIODS_ = ['year', 'month', 'week', 'day', 'hour'] as const;
 export type PaySettings = {
-  currency: string; floor: number; period: UserPeriod; rule: 'top_of_range' | 'bottom_of_range';
+  currency: string; floor: number; period: Period; rule: 'top_of_range' | 'bottom_of_range';
   unlisted: 'keep' | 'drop'; fx: Record<string, number>; locale?: string;
+  /** D29: the user's hours a week and days a week convert between periods (40 and 5 when not set). */
+  hoursPerWeek?: number; daysPerWeek?: number;
+  /** D29: what the user charges per unit ("€0.08/word minimum"): text for the judge, never a floor. */
+  perUnit?: string;
 };
 /** Pay as written: amounts in the posting's currency (one or more readings when the symbol is ambiguous). */
 export type ParsedPay = { currencies: string[]; min: number | null; max: number | null; period: Period | null; text: string };
 export type PayStatus = 'ok' | 'below_floor' | 'unlisted' | 'unclear' | 'no_rate';
 export type PayResult = { status: PayStatus; reason: string; min?: number | null; max?: number | null; currency?: string; text?: string; /** where the text came from */ from?: 'pay_text' | 'description' };
 
-/** Hours in each period (40 h weeks, 52 weeks, 260 working days). */
-export const HOURS: Record<Period, number> = { year: 2080, month: 2080 / 12, week: 40, day: 8, hour: 1 };
+/** Hours in each period for a week of `week` hours over `days` days (40 h and 5 days: 2080 a year, 8 a day). */
+export function hoursIn(week = 40, days = 5): Record<Period, number> {
+  return { year: week * 52, month: (week * 52) / 12, week, day: week / days, hour: 1 };
+}
+export const HOURS: Record<Period, number> = hoursIn();
+
+/**
+ * The pay rules' settings from jobs/search.md, or null without a currency. Hours: pay.hours_per_week, else the most of
+ * work_pattern.hours_per_week, else 40; days: pay.days_per_week, else 5.
+ */
+export function paySettingsOf(s: Search): PaySettings | null {
+  if (!s.pay || !s.pay.currency) return null;
+  const week = s.pay.hours_per_week ?? s.work_pattern.hours_per_week.max ?? undefined;
+  return {
+    currency: s.pay.currency, floor: s.pay.floor, period: s.pay.period, rule: s.pay.rule, unlisted: s.pay.unlisted, fx: s.pay.fx,
+    locale: s.pay.locale || undefined, hoursPerWeek: week, daysPerWeek: s.pay.days_per_week ?? undefined, perUnit: s.pay.per_unit || undefined,
+  };
+}
+
+// Pay per piece of work, not per time: per word, page, line, project, article, delivery … Kept for the judge (D29).
+const PER_UNIT = /(?:\bper\s+|\/\s*|\bpro\s+|\bpor\s+|\bpar\s+|\ba\s+|\bal\s+)(word|words|page|pages|line|lines|project|article|minute of audio|audio minute|delivery|drop|piece|task|visit|session|wort|seite|zeile|projekt|palabra|pagina|proyecto|mot|projet|palavra|projeto|parola|pagina|progetto)\b/i;
+/** The unit a pay text is paid by ("word", "palabra"), or null when it's pay for time. */
+export function perUnitOf(text: string | null | undefined): string | null {
+  const m = PER_UNIT.exec(plain(String(text ?? '')).toLowerCase());
+  return m ? m[1] : null;
+}
 
 /** ISO codes recognised in postings. */
 export const CURRENCIES = [
@@ -103,8 +132,10 @@ export function parsePay(text: string | null | undefined, userCurrency?: string)
   const dollar = ['USD', ...(userCurrency && userCurrency !== 'USD' && DOLLARS.has(userCurrency) ? [userCurrency] : [])];
   for (const m of t.matchAll(MONEY)) {
     const s = m[0];
-    const cur = currenciesIn(s, dollar);
+    let cur = currenciesIn(s, dollar);
     if (!cur) continue;
+    // An ambiguous symbol that can be the user's own currency is read as theirs ("Rs." for someone paid in INR).
+    if (cur.length > 1 && userCurrency && cur.includes(userCurrency) && !(m[0].includes('$') && cur.includes('USD'))) cur = [userCurrency];
     const inr = cur.includes('INR');
     const nums = [...s.matchAll(new RegExp(`(${NUM})(?:\\s?(${UNIT}))?`, 'g'))].map((x) => ({ n: numberOf(x[1]), u: x[2] }));
     if (!nums.length || nums.some((x) => !Number.isFinite(x.n))) continue;
@@ -146,10 +177,10 @@ export function findPayText(description: string | null | undefined): string | un
 }
 
 /** Convert an amount between currencies and periods with the user's fx table (1 unit of X = fx[X] of theirs). */
-export function convertAmount(n: number, from: { currency: string; period: Period }, to: { currency: string; period: Period }, fx: Record<string, number>): number | null {
+export function convertAmount(n: number, from: { currency: string; period: Period }, to: { currency: string; period: Period }, fx: Record<string, number>, hours: Record<Period, number> = HOURS): number | null {
   const rate = from.currency === to.currency ? 1 : fx[from.currency];
   if (!rate) return null;
-  return (n * rate * HOURS[to.period]) / HOURS[from.period];
+  return (n * rate * hours[to.period]) / hours[from.period];
 }
 
 const money = (n: number, s: PaySettings) => {
@@ -166,12 +197,16 @@ export function payCheck(payText: string | null | undefined, description: string
   const p = parsePay(text, s.currency);
   const unit = `${s.currency}/${s.period}`;
   if (!p) return { status: 'unlisted', reason: 'no pay listed' };
+  // Paid per word, page or project: never compared with a floor for time; the judge reads it with pay.per_unit.
+  const piece = perUnitOf(p.text) ?? perUnitOf(text);
+  if (piece) return { status: 'unclear', reason: `pay "${p.text}" is per ${piece}: for the judge${s.perUnit ? ` (your rate: ${s.perUnit})` : ''}`, text: p.text, from };
+  const hours = hoursIn(s.hoursPerWeek ?? 40, s.daysPerWeek ?? 5);
   // No period: small numbers may be hourly, daily or weekly (unclear); a salary-sized one is read both as a year and
   // as a month, and only a drop under both readings counts.
   const periods: Period[] = p.period ? [p.period] : (p.max ?? p.min ?? 0) >= 10_000 ? ['year', 'month'] : [];
   if (!periods.length) return { status: 'unclear', reason: `pay "${p.text}" has no period`, text: p.text, from };
   const readings = p.currencies.flatMap((c) => periods.map((period) => {
-    const conv = (n: number | null) => (n == null ? null : convertAmount(n, { currency: c, period }, { currency: s.currency, period: s.period }, s.fx));
+    const conv = (n: number | null) => (n == null ? null : convertAmount(n, { currency: c, period }, { currency: s.currency, period: s.period }, s.fx, hours));
     return { c, min: conv(p.min), max: conv(p.max), ok: c === s.currency || !!s.fx[c] };
   }));
   if (readings.some((r) => !r.ok)) {
