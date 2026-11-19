@@ -216,7 +216,7 @@ This folder is the user's **jobs workspace**. A Claude session opened here owns 
 clicks on the Jobs page (Set up with Claude, Find jobs, Add link, Apply, Ask Claude on an answer) arrive here as requests
 through the \`crewdeck\` plugin. Work them with the plugin's skills:
 
-- **jobs-workspace**: every request from the Jobs page (\`setup\`, \`find\`, \`link\`, \`apply\`, \`improve\`). Start here.
+- **jobs-workspace**: every request from the Jobs page (\`setup\`, \`find\`, \`link\`, \`apply\`, \`improve\`, \`source\`). Start here.
 - **jobs-setup**: the first-run interview (resume → career facts, then the search).
 - **jobs-daily-run**: Find N jobs and the daily run (judge in rank order within the budget, pick, prepare).
 - **crewdeck-memory**: whenever the user says "remember…", changes a preference or tells you a fact about themselves.

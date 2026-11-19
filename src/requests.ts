@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFil
 import { dirname, join, resolve, sep } from 'node:path';
 import { HOME, type Config } from './config.ts';
 
-export const JOB_KINDS = ['setup', 'find', 'link', 'apply', 'improve'] as const;
+export const JOB_KINDS = ['setup', 'find', 'link', 'apply', 'improve', 'source'] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 export type Progress = { at: string; text: string };
 

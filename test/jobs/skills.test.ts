@@ -66,7 +66,7 @@ test('skills: the four playbooks, each with a name that matches its folder and a
     assert.doesNotMatch(text, /\/Users\/|\/home\//, `${name}: no home paths`);
   }
   const ws = read('plugin', 'skills', 'jobs-workspace', 'SKILL.md');
-  for (const kind of ['setup', 'find', 'link', 'apply', 'improve']) assert.match(ws, new RegExp(`^## ${kind}\\b`, 'm'), `jobs-workspace works ${kind}`);
+  for (const kind of ['setup', 'find', 'link', 'apply', 'improve', 'source']) assert.match(ws, new RegExp(`^## ${kind}\\b`, 'm'), `jobs-workspace works ${kind}`);
   assert.match(ws, /never click/i);
   assert.match(ws, /needs you: /);
   assert.match(ws, /submitted: /);

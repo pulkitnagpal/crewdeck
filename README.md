@@ -196,9 +196,15 @@ the notes; `crewdeck jobs rules` prints the drops your notes compile to.
 crewdeck jobs sources suggest                 # sources that fit your notes, and what isn't covered
 crewdeck jobs sources add --provider remotive # a board from the catalog
 crewdeck jobs sources add --careers-url-file url.txt --name-file name.txt --employer   # an employer's careers page
+crewdeck jobs sources resolve example-health  # which system reads that careers page, with a one-page test
 crewdeck jobs sources move remotive first     # or up | down | last | --to N
 crewdeck jobs sources list                    # your list in order, with each source's last fetch
 ```
+
+**Employers.** Add the employers you'd like to work for by their careers page. `resolve` checks it at once, in the
+provider sandbox: "Example Health: Workday, 34 roles on a one-page test", or "isn't readable by Crewdeck", in which case
+the page stays on your list as "paste its postings" and you can ask Claude to find the real jobs page (it opens the page in
+a background tab, follows it to the list of open jobs and checks that address).
 
 Boards that search by keyword or country (the Bundesagentur für Arbeit, Built In, OCC, Welcome to the Jungle, JobStreet,
 Glints …) get their keywords from your job titles and their country from your places at fetch time; values you set in

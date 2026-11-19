@@ -33,6 +33,7 @@ import { type Confirm, codeFile, issueCode, nativeConfirm } from './confirm.ts';
 import { findBrowser, installHint } from './browser.ts';
 import { providersStatus } from './providers.ts';
 import { parseEvery, readSourcesState, writeSourcesState } from './sources.ts';
+import { type SourceOp, changeSources, isKey, listSources } from './sources-note.ts';
 import { type SchedulerOptions, createSourceScheduler } from './schedule.ts';
 
 export type JobsApi = {
@@ -60,7 +61,7 @@ export type JobsApiOptions = {
 };
 
 const LANE = 'jobs';
-const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer' };
+const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page' };
 const MAX_CLIENTS = 20;
 const SET_ON_PAGE = '(set on the Jobs page)';
 
@@ -86,6 +87,17 @@ const intIn = (v: unknown, lo: number, hi: number, what: string) => {
   if (!Number.isInteger(n) || n < lo || n > hi) throw new HttpError(400, `${what} must be a whole number from ${lo} to ${hi}`);
   return n;
 };
+
+const sourceKey = (v: unknown) => { if (!isKey(v)) throw new HttpError(400, 'unknown source'); return v; };
+/** A careers page or job board address from the page: http(s) only, no X, no LinkedIn (it has its own row). */
+function pageUrl(raw: unknown): string {
+  const t = str(raw, 2000, 'the address');
+  let u: URL;
+  try { u = new URL(t); } catch { throw new HttpError(400, 'Give a web address (https://…)'); }
+  if (!/^https?:$/.test(u.protocol) || /\s/.test(t)) throw new HttpError(400, 'Give a web address (https://…)');
+  if (isXHost(u.hostname) || isLinkedinHost(u.hostname)) throw new HttpError(400, 'X and LinkedIn pages are not job sources here (LinkedIn has its own row)');
+  return u.href;
+}
 
 /** A pasted job link, checked before it becomes a request: http(s), no X, LinkedIn only as a posting and only when on. */
 export function checkLink(raw: unknown, features: Pick<JobsFeatures, 'linkedin_links'>): string {
@@ -487,6 +499,50 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       const r = requests.cancel(id, LANE);
       return { ok: true, request: r.id, status: r.status };
     },
+    /**
+     * D24: Claude finds the real jobs page of a source Crewdeck couldn't read (a careers page or web address in the
+     * user's list); the request names the source by its key only.
+     */
+    findJobsPage: (b) => {
+      const key = sourceKey(b.key);
+      const it = notesOf(ctx).sources.data.items.find((x) => x.key === key);
+      if (!it) throw new HttpError(404, 'no such source');
+      if (it.linkedin || (!it.careers_url && !it.url)) throw new HttpError(400, 'only an employer\'s page or a web address can be looked up');
+      return queue('source', key, { key });
+    },
+    /**
+     * D23: the user's list, changed from the page with the same validated operations as `crewdeck jobs sources …` (so the
+     * note's bytes are the same). LinkedIn's switch is never changed here: the feature action does that.
+     */
+    sources: (b) => {
+      const op = String(b.op ?? '');
+      const at = b.at === undefined ? undefined : intIn(b.at, 1, 200, 'the position') - 1;
+      let change: SourceOp;
+      if (op === 'add') {
+        if (b.linkedin === true) change = { op: 'add', source: { linkedin: true }, at };
+        else {
+          const name = b.name === undefined ? undefined : str(b.name, 200, 'the name');
+          if (name !== undefined && /[\r\n]/.test(name)) throw new HttpError(400, 'the name must be one line');
+          const provider = b.provider === undefined ? undefined : str(b.provider, 60, 'the provider');
+          if (provider !== undefined && !/^[a-z0-9][a-z0-9-]*$/.test(provider)) throw new HttpError(400, 'unknown provider');
+          const careers_url = b.careers_url === undefined ? undefined : pageUrl(b.careers_url);
+          const url = b.url === undefined ? undefined : pageUrl(b.url);
+          if ((careers_url || url) && !name) throw new HttpError(400, 'give the name too');
+          change = { op: 'add', source: { name, provider, careers_url, url, employer: b.employer === true }, at };
+        }
+      } else if (op === 'remove' || op === 'enable' || op === 'disable') change = { op, key: sourceKey(b.key) };
+      else if (op === 'move') change = { op: 'move', key: sourceKey(b.key), to: intIn(b.to, 1, 200, 'the position') - 1 };
+      else if (op === 'set_url') {
+        const key = sourceKey(b.key), url = pageUrl(b.url);
+        const it = notesOf(ctx).sources.data.items.find((x) => x.key === key);
+        if (!it || it.linkedin || (!it.careers_url && !it.url)) throw new HttpError(400, 'only an employer\'s page or a web address has an address to change');
+        change = { op: 'set', key, fields: { careers_url: url, url: null, provider: null, fetch: null, why: null }, line: `new jobs page for ${it.name}: ${url}` };
+      } else throw new HttpError(400, 'op must be add, remove, move, enable, disable or set_url');
+      try {
+        const r = changeSources(ctx, change);
+        return { ok: true, changed: r.changed, key: r.key, line: r.line };
+      } catch (e: any) { throw new HttpError(400, String(e.message).slice(0, 500)); }
+    },
     reveal: async (b) => {
       if (platform !== 'darwin') throw new HttpError(404, 'Show in Finder is only on macOS');
       const r = roleArg(b.role);
@@ -573,6 +629,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     if (r.lane !== LANE || !r.kind) return undefined;
     refreshFeatures();
     if (r.kind === 'find') return { daily_picks: notesOf(ctx).search.data.schedule.daily_picks };
+    if (r.kind === 'source') return { source: listSources(ctx).find((x) => x.key === r.payload?.key) ?? null };
     if ((r.kind !== 'apply' && r.kind !== 'improve') || !r.ref || !ROLE_ID.test(r.ref)) return {};
     let role;
     try { role = getRole(db, r.ref); } catch { return { role: null }; }

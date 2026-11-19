@@ -86,7 +86,11 @@ If `jobs/search.md` came from a preset, go through what it seeded and keep only 
    `crewdeck jobs sources add --provider <id>`. LinkedIn goes in the list with `crewdeck jobs sources add --linkedin`
    at the position the user wants; switching it on stays theirs alone (Jobs → Settings).
 3. Employers they'd like to work for: write the name to `<T>/name.txt` and the careers page to `<T>/url.txt` with the
-   Write tool, then `crewdeck jobs sources add --careers-url-file <T>/url.txt --name-file <T>/name.txt --employer`.
+   Write tool, then `crewdeck jobs sources add --careers-url-file <T>/url.txt --name-file <T>/name.txt --employer` (it
+   prints the key) and `crewdeck jobs sources resolve <key>`. Tell the user what it found: "Example Health: Workday, 34
+   roles" or "Example Stores' careers page isn't readable by Crewdeck: paste its postings when you see them". If the
+   page they gave is a landing page, find the jobs list in a background pane tab and use
+   `crewdeck jobs sources set-url <key> --url-file <T>/url.txt`, then resolve again.
 4. Reorder with `crewdeck jobs sources move <key> up|down|first|last`; `crewdeck jobs sources list` shows the list.
 
 ## 6. Check and finish

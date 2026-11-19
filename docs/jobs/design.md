@@ -1321,6 +1321,11 @@ placeable first, the preview shows the near misses, and Find returns N or explai
   career-ops; any provider is added only through the reviewed re-pin (§15), after checking the site's terms.
 
 ## Changelog
+- **P9b built (2026-11-20):** employers: `crewdeck jobs sources resolve <key>` (detectors in the sandbox, a one-page test
+  fetch ≤ 30 s, the answer written to the note at once: the provider, or `fetch: none` with the reason), `sources
+  set-url` (plain or `--request`), the `source` request kind with the page action `findJobsPage` and the workspace
+  skill's `source` section, and the page-only `sources` action sharing the CLI's validated writer. Details:
+  [impl/09b-employers.md](impl/09b-employers.md).
 - **P9a built (2026-11-20):** the source catalog settled against the pinned providers' code (65 high / 77 medium / 3 low;
   `detect` follows the code; `fill` rules; `blocked`), `jobs/sources.md` v2 (ordered `sources:` with keys, LinkedIn
   mirror, v1 read and merged on first write), `crewdeck jobs sources list|suggest|add|remove|move|enable|disable`, DB v2

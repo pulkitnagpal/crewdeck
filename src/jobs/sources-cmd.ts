@@ -4,6 +4,7 @@ import { loadConfig } from '../config.ts';
 import { type Ctx, notesOf, openCtx } from './ctx.ts';
 import { flag, positional, textFrom } from './cli.ts';
 import { catalogEntry } from './catalog.ts';
+import { isLinkedinHost, isXHost } from './fields.ts';
 import { suggestSources } from './suggest.ts';
 import { type SourceOp, changeSources, listSources } from './sources-note.ts';
 
@@ -15,10 +16,12 @@ export const SOURCES_USAGE = `usage: crewdeck jobs sources <verb>
   suggest [--json]                         sources that fit your notes, and what isn't covered
   add --provider <id> [--name-file f] [--at N]
   add --careers-url-file f --name-file f [--employer] [--at N]   an employer's careers page
-  add --url-file f --name-file f [--at N]  any other job page (kept as "paste its postings" until a provider reads it)
+  add --url-file f --name-file f [--at N]  any other job page (resolve it next; unread pages stay as "paste its postings")
   add --linkedin [--at N]                  place LinkedIn in the list (switching it on stays in Jobs → Settings)
   remove <key> | enable <key> | disable <key>
-  move <key> up|down|first|last | move <key> --to N`;
+  move <key> up|down|first|last | move <key> --to N
+  resolve <key> [--json]                   which provider reads a careers page, with a one-page test fetch (≤ 30 s)
+  set-url <key> --url-file f | set-url --request <id> --url-file f   the real jobs page found for a source`;
 
 /** One line of text from a file: trimmed, no line breaks, at most `max` characters. */
 function oneLine(path: string | undefined, what: string, max: number): string {
@@ -35,6 +38,7 @@ export function urlFrom(path: string | undefined, what: string): string {
   let p: URL;
   try { p = new URL(u); } catch { throw new Error(`${what}: not a web address (https://…)`); }
   if (!/^https?:$/.test(p.protocol) || /\s/.test(u)) throw new Error(`${what}: not a web address (https://…)`);
+  if (isXHost(p.hostname) || isLinkedinHost(p.hostname)) throw new Error(`${what}: X and LinkedIn pages are not job sources here (LinkedIn has its own row: add --linkedin)`);
   return p.href;
 }
 
@@ -106,6 +110,10 @@ export async function sourcesCmd(args: string[]) {
     say('');
     say(r.coverage.line);
   });
+  if (verb === 'resolve' || verb === 'set-url') {
+    const m = await import('./resolve.ts');
+    return verb === 'resolve' ? m.resolveCmd(key, args) : m.setUrlCmd(key, args);
+  }
   return withCtx((ctx) => {
     let op: SourceOp;
     if (verb === 'add') op = addOp(args);
