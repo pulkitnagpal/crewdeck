@@ -3,6 +3,7 @@
 // frontmatter; normalise() gives typed values with defaults.
 import { lookupPlace } from './places.ts';
 import { CURRENCIES } from './pay.ts';
+import { LEVELS_WANTED, MATCH_MODES, type LevelWanted, type MatchMode } from './titles.ts';
 import { readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { join as pathJoin } from 'node:path';
@@ -87,8 +88,9 @@ export const SCHEMAS: Record<string, Schema> = {
   search: obj({
     roles: obj({
       titles: list(str({ required: true })), seniority_prefer: list(str()), exclude_title_words: list(str({ required: true })),
-      // v0.4 (§24.5): one target per kind of job. P9a reads titles and families (sources); P9c adds the matching.
-      targets: list(obj({ name: str(), titles: list(str({ required: true })), families: list(str({ check: familyCheck })) }, { open: true })),
+      // v0.4 (§24.5, D26): one target per kind of job: its titles (with variants), fields and skills; matched word by word.
+      targets: list(obj({ name: str(), titles: list(str({ required: true })), families: list(str({ check: familyCheck })), skills: list(str({ required: true })) }, { open: true })),
+      match: oneOf(MATCH_MODES), level: oneOf(LEVELS_WANTED),
     }),
     workplace: list(oneOf(WORKPLACES)),
     places: obj({ onsite: list(str({ required: true })), remote_from: list(str({ required: true })), commute_km: num({ min: 0, max: 500 }) }),
@@ -351,7 +353,7 @@ export type Profile = {
 export type Section = { id: string; kind: (typeof SECTION_KINDS)[number]; title?: string; org?: string; where?: string; dates?: string; max_bullets?: number; required?: boolean };
 export type Career = { resume: { file_name: string; paper: 'A4' | 'Letter'; max_pages: number }; sections: Section[]; facts: { id: string; text: string; tags: string[] }[]; skills: string[]; terms: { extra: string[] } };
 export type Search = {
-  roles: { titles: string[]; seniority_prefer: string[]; exclude_title_words: string[]; targets: { name: string; titles: string[]; families: string[] }[] };
+  roles: { titles: string[]; seniority_prefer: string[]; exclude_title_words: string[]; targets: { name: string; titles: string[]; families: string[]; skills: string[] }[]; match: MatchMode; level: LevelWanted };
   workplace: Workplace[];
   places: { onsite: string[]; remote_from: string[]; commute_km: number };
   languages: { name: string; level?: (typeof LEVELS)[number] }[];
@@ -409,7 +411,8 @@ export const normalise = {
     return {
       roles: {
         titles: strs(roles.titles), seniority_prefer: strs(roles.seniority_prefer), exclude_title_words: strs(roles.exclude_title_words),
-        targets: arr(roles.targets).filter(isObj).map((t) => ({ name: s_(t.name), titles: strs(t.titles), families: strs(t.families) })),
+        targets: arr(roles.targets).filter(isObj).map((t) => ({ name: s_(t.name), titles: strs(t.titles), families: strs(t.families), skills: strs(t.skills) })),
+        match: (MATCH_MODES as readonly string[]).includes(roles.match) ? roles.match : 'words', level: (LEVELS_WANTED as readonly string[]).includes(roles.level) ? roles.level : 'any',
       },
       workplace: strs(x.workplace).filter((w): w is Workplace => (WORKPLACES as readonly string[]).includes(w)),
       places: { onsite: strs(places.onsite), remote_from: strs(places.remote_from), commute_km: typeof places.commute_km === 'number' ? places.commute_km : 50 },

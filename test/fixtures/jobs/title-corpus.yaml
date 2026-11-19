@@ -1,0 +1,576 @@
+# The title corpus (design §24.5, §24.12, P9c): nine fictional people from the audit (docs/jobs/impl/09-generic-audit.md),
+# each with the targets and variants setup would propose, and posting titles from fictional companies with the
+# expected outcome of the title rules (title gate, excluded words, level). `audit` is the audit's simulation row: every
+# title there must pass with these targets. `v1` is what the person had in roles.titles before v0.4 (the old phrase
+# gate): with those as roles.titles, the new matcher must pass everything the old gate passed (tested over the corpus).
+# A `fail` entry may name the rule it must fail on ("title | rule").
+
+E:
+  who: Senior backend/AI engineer, India, remote
+  search:
+    roles:
+      targets:
+        - name: Backend engineer
+          titles: [backend engineer, software engineer, platform engineer, site reliability engineer, SRE, full stack engineer, tech lead, backend developer, SDE, senior engineer, staff engineer]
+          families: [engineering-it]
+          skills: [Python, Go, Kubernetes]
+        - name: AI engineer
+          titles: [ai engineer, ml engineer, machine learning engineer, llm engineer]
+          families: [engineering-it, data]
+          skills: [LLM, PyTorch]
+      seniority_prefer: [senior, staff, lead]
+      exclude_title_words: [intern, sales]
+      level: experienced
+    languages: [{ name: English, level: fluent }, { name: Hindi, level: native }]
+  v1: [backend engineer, ai engineer]
+  audit:
+    passes: [Senior Backend Engineer]
+    dropped: ["Software Engineer, Backend", Full Stack Engineer, Tech Lead, Senior Engineer, SRE, Staff Engineer - AI Platform, Backend Developer, ML Engineer, "Engineer II, Backend Services"]
+  pass:
+    - Backend Engineer
+    - Backend Engineer (Remote, India)
+    - Sr. Backend Engineer - Payments
+    - Senior Software Engineer, Backend (Remote)
+    - Software Engineer II
+    - Software Engineers - Platform Team
+    - Staff Software Engineer
+    - Principal Software Engineer - Data Platform
+    - Lead Backend Engineer
+    - Backend-Engineer (Go)
+    - Platform Engineer, Infrastructure
+    - Senior Platform Engineer
+    - Site Reliability Engineer (SRE)
+    - SRE - APAC
+    - Senior SRE
+    - Full-Stack Engineer
+    - Full Stack Engineer (Node/React)
+    - Tech Lead - Backend
+    - Engineering Tech Lead
+    - Backend Developer (Python)
+    - Senior Backend Developer - Remote
+    - SDE II
+    - SDE-3, Backend
+    - AI Engineer
+    - Senior AI Engineer - LLM Apps
+    - Applied AI Engineer
+    - Machine Learning Engineer
+    - ML Engineer II
+    - Senior Machine Learning Engineer (Search)
+    - LLM Engineer
+    - Engineer, Machine Learning
+    - Senior Engineer - Infrastructure
+    - Staff Engineer
+    - Software Engineer (Backend) - Example Pay
+    - Senior Mechanical Engineer   # accepted cost of "senior engineer": the judge decides
+  fail:
+    - Product Designer
+    - Data Analyst
+    - Account Executive
+    - Sales Engineer
+    - Senior Sales Engineer | title_exclude
+    - Backend Engineer Intern | title_exclude
+    - Software Engineering Intern | title_exclude
+    - Mechanical Engineer
+    - Civil Engineer
+    - Hardware Engineer
+    - Frontend Developer
+    - QA Engineer
+    - Support Engineer
+    - Data Engineer
+    - DevOps Engineer
+    - Engineering Manager
+    - Solutions Architect
+    - Technical Writer
+    - Customer Success Manager
+    - Recruiter - Engineering
+    - Product Manager, Platform
+    - Developer Advocate
+    - Mobile Developer (iOS)
+    - Backend Engineering Trainee | level
+
+N:
+  who: Registered nurse, Columbus, Ohio, nights
+  search:
+    roles:
+      targets:
+        - name: Registered nurse
+          titles: [registered nurse, RN, staff nurse]
+          families: [healthcare]
+      exclude_title_words: [travel]
+    languages: [{ name: English, level: native }]
+  v1: [registered nurse]
+  audit:
+    passes: [Registered Nurse (RN) ICU]
+    dropped: [RN - Night Shift, Staff Nurse - Med/Surg, "Nurse, Registered - Nights", RN Case Manager]
+  pass:
+    - Registered Nurse
+    - Registered Nurse - Night Shift
+    - Registered Nurses - ICU
+    - Registered Nurse Supervisor
+    - Registered Nurse, Emergency Department
+    - Registered Nurse (Nights) - Example Medical Center
+    - RN
+    - RN, Labor & Delivery
+    - RN - Med/Surg - 7p-7a
+    - Pediatric RN
+    - Staff RN - Oncology
+    - Staff Nurse
+    - Staff Nurse, Telemetry
+    - Staff Nurse (Nights)
+    - RN Charge Nurse
+    - RNs - Night Shift Differential
+    - RN - Per Diem
+    - Psychiatric Registered Nurse
+    - Registered Nurse Case Manager
+    - Home Health RN
+    - RN (Registered Nurse) - Dialysis
+    - Registered Nurse - PRN
+    - New Grad Registered Nurse
+    - Registered Nurse I
+    - Registered Nurse II - Cardiac
+    - Staff Nurses - Surgical Unit
+    - "Nurse, Registered (Nights)"
+    - ICU RN - Example Health
+  fail:
+    - Nursery Assistant
+    - Nursery Staff
+    - Nursing Assistant
+    - Certified Nursing Assistant (CNA)
+    - Licensed Practical Nurse (LPN)
+    - Nurse Practitioner
+    - Nurse Manager
+    - Charge Nurse
+    - Medical Assistant
+    - Patient Care Technician
+    - Pharmacy Technician
+    - Registered Dietitian
+    - Registered Respiratory Therapist
+    - Travel Registered Nurse | title_exclude
+    - Travel RN - ICU | title_exclude
+    - Home Health Aide
+    - Unit Secretary
+    - Phlebotomist
+    - Caregiver
+    - Nurse Educator
+    - Surgical Technologist
+    - Nursing Home Administrator
+
+A:
+  who: Accountant, Berlin, hybrid, German C1
+  search:
+    roles:
+      targets:
+        - name: Buchhaltung
+          titles: [Buchhalter, Finanzbuchhalter, Bilanzbuchhalter, accountant, Mitarbeiter Rechnungswesen, accounting specialist]
+          families: [finance-accounting]
+      exclude_title_words: [Werkstudent, Praktikum, Ausbildung]
+    languages: [{ name: German, level: professional }, { name: English, level: fluent }]
+  v1: [accountant, buchhalter]
+  audit:
+    passes: [Buchhalterin (m/w/d), Senior Accountant]
+    dropped: [Finanzbuchhalter (m/w/d), Bilanzbuchhalter*in, Accounting Specialist, Mitarbeiter Rechnungswesen (m/w/d)]
+  pass:
+    - Buchhalter (m/w/d)
+    - Buchhalter/in in Teilzeit
+    - Buchhalter:in
+    - Buchhalterinnen und Buchhalter
+    - Finanzbuchhalterin (w/m/d)
+    - Finanzbuchhalter (m/w/d) in Teilzeit
+    - Finanzbuchhalter*in mit DATEV
+    - Bilanzbuchhalter (m/w/d)
+    - Bilanzbuchhalterin
+    - Kreditorenbuchhalter (m/w/d)
+    - Debitorenbuchhalterin (w/m/d)
+    - Lohnbuchhalter (m/w/d)
+    - Hauptbuchhalter*in
+    - Anlagenbuchhalter (m/f/d)
+    - Senior Finanzbuchhalter (m/w/d)
+    - Accountant (m/f/d)
+    - Accountant (all genders)
+    - Junior Accountant
+    - Accountants Payable Team (m/w/d)
+    - Senior Accountant - Hybrid Berlin
+    - General Ledger Accountant
+    - Mitarbeiterin Rechnungswesen
+    - Mitarbeiter (m/w/d) Rechnungswesen
+    - Rechnungswesen Mitarbeiter*in
+    - Mitarbeiter/-in Rechnungswesen
+    - Accounting Specialist (m/f/x)
+    - Accounting Specialists - Accounts Payable
+    - Specialist Accounting (m/w/d)
+    - Buchhalter / Accountant (m/w/d)
+  fail:
+    - Sachbearbeiter Buchhaltung (m/w/d)
+    - Leiter Buchhaltung (m/w/d)
+    - Steuerfachangestellte (m/w/d)
+    - Steuerberater (m/w/d)
+    - Controller (m/w/d)
+    - Accounting Manager
+    - Buchbinder (m/w/d)
+    - Lagermitarbeiter (m/w/d)
+    - Fachkraft Rechnungswesen
+    - Sachbearbeiter Rechnungswesen (m/w/d)
+    - Werkstudent Buchhaltung (m/w/d)
+    - Werkstudent*in Finanzbuchhaltung
+    - Werkstudent Finanzbuchhalter (m/w/d) | title_exclude
+    - Praktikum Rechnungswesen
+    - Ausbildung zum Steuerfachangestellten
+    - Kaufmännischer Mitarbeiter (m/w/d)
+    - Wirtschaftsprüfer (m/w/d)
+    - Financial Analyst
+    - Payroll Specialist
+    - Halterungsmonteur (m/w/d)
+    - Einkäufer (m/w/d)
+
+R:
+  who: Retail store manager, Pune
+  search:
+    roles:
+      targets:
+        - name: Store manager
+          titles: [store manager, retail store manager, assistant store manager, ASM, shop manager, outlet manager]
+          families: [retail]
+      level: experienced
+    languages: [{ name: Hindi, level: native }, { name: Marathi, level: native }, { name: English, level: professional }]
+  v1: [store manager]
+  audit:
+    passes: []
+    dropped: []
+  pass:
+    - Store Manager
+    - Store Manager - Pune
+    - Store Manager (Apparel)
+    - Retail Store Manager
+    - Retail Store Manager - Example Mart
+    - Assistant Store Manager
+    - Assistant Store Manager - Hinjewadi
+    - ASM - Retail
+    - ASM (Assistant Store Manager)
+    - Shop Manager
+    - Outlet Manager
+    - Outlet Manager - QSR
+    - Store Managers Wanted
+    - Senior Store Manager
+    - Manager, Store Operations
+    - Store Manager cum Visual Merchandiser
+    - Store Manager - Electronics
+    - Cluster Store Manager
+    - Deputy Store Manager
+    - Store Manager (Grocery) - Example Fresh
+  fail:
+    - Store Keeper
+    - Storekeeper
+    - Sales Associate
+    - Cashier
+    - Area Sales Manager
+    - Warehouse Manager
+    - Store Operations Executive
+    - Visual Merchandiser
+    - Retail Sales Executive
+    - Store Manager Intern | level
+    - Store Manager Trainee | level
+    - Department Manager
+    - Floor Manager
+    - Customer Care Executive
+    - Branch Manager - Banking
+    - Restaurant Manager
+    - Inventory Executive
+    - Category Manager
+    - Store Assistant
+    - Billing Executive
+
+T:
+  who: Secondary maths teacher, Manchester
+  search:
+    roles:
+      targets:
+        - name: Maths teacher
+          titles: [maths teacher, mathematics teacher, math teacher]
+          families: [education]
+    languages: [{ name: English, level: native }]
+  v1: [maths teacher]
+  audit:
+    passes: [Maths Teacher (MPS)]
+    dropped: [Teacher of Mathematics, Mathematics Teacher, Teacher of Maths - Maternity Cover]
+  pass:
+    - Maths Teacher
+    - Teacher of Maths
+    - Teacher of Maths and Computing
+    - Teacher of Mathematics (MPS/UPS)
+    - Maths Teachers x2
+    - Maths Teacher - ECT Welcome
+    - Mathematics Teacher (Maternity Cover) - Example Academy
+    - Teacher of Mathematics - Fixed Term
+    - Second Teacher of Maths
+    - Math Teacher
+    - Teacher of Maths (Part Time)
+    - Lead Teacher of Mathematics
+    - Teacher of Maths with TLR
+    - Mathematics Teacher - September Start
+    - KS3 Maths Teacher
+    - Teacher of Maths & Further Maths
+    - Maths Teacher (ECT/Experienced)
+    - Teacher of Mathematics (0.6 FTE)
+    - Experienced Maths Teacher
+    - Teacher - Mathematics
+  fail:
+    - Head of Maths
+    - Head of Mathematics
+    - Teaching Assistant
+    - Science Teacher
+    - Maths Tutor
+    - Teacher of English
+    - Cover Supervisor
+    - Second in Maths
+    - Lecturer in Mathematics
+    - Primary Teacher
+    - Teachers' Pension Administrator
+    - Maths Intervention Assistant
+    - Learning Support Assistant
+    - Exams Officer
+    - Teacher of Physics
+    - Mathematician
+    - Mathematics Technician
+    - Head of Year 8
+    - English Teacher
+    - Music Teacher
+
+G:
+  who: New marketing graduate, Manila, entry level
+  search:
+    roles:
+      targets:
+        - name: Marketing
+          titles: [marketing associate, marketing assistant, marketing coordinator, digital marketing specialist, social media specialist, marketing officer, marketing manager]
+          families: [marketing-media]
+      level: entry
+    languages: [{ name: Filipino, level: native }, { name: English, level: fluent }]
+  v1: [marketing associate]
+  audit:
+    passes: []
+    dropped: []
+  pass:
+    - Marketing Associate (Fresh Grad)
+    - Marketing Associate
+    - Junior Marketing Associate
+    - Marketing Assistant
+    - Marketing Assistant - Makati
+    - Marketing Coordinator - Entry Level
+    - Marketing Coordinator
+    - Digital Marketing Specialist
+    - Digital Marketing Specialist (Fresh Graduates Welcome)
+    - Social Media Specialist
+    - Social Media Specialist - BGC
+    - Marketing Officer I
+    - Marketing Officer
+    - Associate, Marketing
+    - Marketing Associates (Graduate Program)
+    - Marketing Manager (Fresh Graduates Welcome)
+    - Entry-Level Marketing Assistant
+    - "Assistant, Digital Marketing"
+    - Brand Marketing Associate
+    - Trade Marketing Assistant
+  fail:
+    - Senior Marketing Manager | level
+    - Senior Marketing Associate | level
+    - Lead Marketing Coordinator | level
+    - Principal Digital Marketing Specialist | level
+    - Head of Marketing
+    - Marketing Director
+    - Sales Associate
+    - Customer Service Representative
+    - Graphic Designer
+    - Content Writer
+    - SEO Specialist
+    - Market Research Analyst
+    - Social Media Manager
+    - Brand Ambassador
+    - Call Center Agent
+    - Events Coordinator
+    - Public Relations Officer
+    - Business Development Associate
+    - Data Entry Clerk
+    - Supermarket Associate
+
+W:
+  who: Warehouse associate / delivery driver, Texas, part-time
+  search:
+    roles:
+      targets:
+        - name: Warehouse
+          titles: [warehouse associate, warehouse worker, package handler, material handler]
+          families: [logistics]
+        - name: Driver
+          titles: [delivery driver, driver, CDL driver, courier, repartidor]
+          families: [logistics]
+    languages: [{ name: English, level: fluent }, { name: Spanish, level: native }]
+  v1: [warehouse associate, delivery driver]
+  audit:
+    passes: [Delivery Driver - Part Time]
+    dropped: [Warehouse Worker, Package Handler, "Associate, Warehouse (Nights)", CDL-A Driver, Material Handler]
+  pass:
+    - Warehouse Associate
+    - Warehouse Associate - Part Time
+    - Warehouse Associates Needed
+    - Warehouse Worker - Nights
+    - Warehouse Workers ($18/hr)
+    - "Warehouse Associate, Weekend Shift"
+    - Seasonal Package Handler
+    - Package Handler (Part-Time)
+    - Package Handlers - Early Morning
+    - Material Handler I
+    - Material Handlers - 2nd Shift
+    - Delivery Driver
+    - Delivery Drivers Needed
+    - Van Driver
+    - CDL Driver
+    - CDL-B Delivery Driver
+    - Class A CDL Driver
+    - Box Truck Driver
+    - Courier
+    - Courier (Bike)
+    - Couriers - Same Day
+    - Route Driver
+    - Repartidor/a
+    - Repartidora de paquetería
+    - Repartidores - Medio tiempo
+    - Associate - Warehouse Operations   # any order: associate + warehouse
+    - Driver Helper   # accepted cost of "driver": the judge decides
+  fail:
+    - Warehouse Manager
+    - Warehouse Supervisor
+    - Forklift Operator
+    - Inventory Control Specialist
+    - Retail Sales Associate
+    - Truck Dispatcher
+    - Driveway Sealing Technician
+    - Package Designer
+    - Baggage Handler
+    - Order Picker
+    - Shipping Clerk
+    - Cashier
+    - Stocker
+    - Logistics Coordinator
+    - Fleet Manager
+    - Handyman
+    - Material Planner
+    - Store Associate
+    - Customer Service Associate
+    - Mail Carrier Assistant
+
+S:
+  who: Career switcher, teacher to UX designer, after a break
+  search:
+    roles:
+      targets:
+        - name: UX designer
+          titles: [ux designer, ui ux designer, user experience designer, product designer, ux researcher]
+          families: [design-creative]
+          skills: [Figma, user research, usability testing]
+    languages: [{ name: English, level: native }, { name: French, level: professional }]
+  v1: [ux designer]
+  audit:
+    passes: []
+    dropped: []
+  pass:
+    - UX Designer
+    - UI/UX Designer
+    - UX/UI Designer
+    - Junior UX Designer
+    - Senior UX Designer
+    - Product Designer (UX)
+    - Product Designer
+    - Product Designers - Growth
+    - User Experience Designer
+    - UX Researcher
+    - Junior UX Researcher (Contract)
+    - "Designer, UX"
+    - UX Designer - Remote
+    - Designer UX/UI (H/F)
+    - UX Designer (F/H)
+    - Designer UX (H/F) - CDI
+    - Lead Product Designer
+    - Product Designer II
+    - UX-Designer (m/w/d)
+    - User Experience (UX) Designer
+  fail:
+    - Graphic Designer
+    - UX Writer
+    - Interior Designer
+    - Instructional Designer
+    - Fashion Designer
+    - UI Developer
+    - Product Manager
+    - Designer
+    - Learning Experience Designer
+    - UX Design Intern
+    - Concepteur rédacteur (H/F)
+    - Web Developer
+    - Teacher of Design and Technology
+    - Visual Designer
+    - Motion Designer
+    - Game Designer
+    - UX Copywriter
+    - Research Assistant
+    - Product Owner
+    - Chargé de communication (H/F)
+
+F:
+  who: Freelance translator, Spain, remote
+  search:
+    roles:
+      targets:
+        - name: Traducción
+          titles: [translator, traductor, traducteur, translation project manager, localization specialist, localizador]
+          families: [design-creative]
+    languages: [{ name: Spanish, level: native }, { name: English, level: fluent }, { name: French, level: professional }]
+  v1: [translator]
+  audit:
+    passes: [Freelance Translator EN>ES]
+    dropped: [Traductor/a inglés-español, Localization Specialist (Spanish), Translation Project Manager]
+  pass:
+    - Translator
+    - Spanish Translator
+    - Senior Translator (EN-ES)
+    - Translators (German>Spanish)
+    - Freelance Translators - Legal
+    - Traductor
+    - Traductora
+    - Traductores freelance
+    - Traductor/a jurado/a
+    - Traductor (a) inglés-español
+    - Traductor/a técnico/a
+    - Traducteur / Traductrice anglais-espagnol
+    - Traductrice
+    - Traducteur (H/F)
+    - Traducteur(rice) juridique
+    - Traducteurs indépendants
+    - Localization Specialist
+    - Localization Specialists - Gaming
+    - Spanish Localization Specialist
+    - Specialist, Localization (Spanish)
+    - Translation Project Manager (Remote)
+    - Project Manager, Translation
+    - Localizador/a de videojuegos
+    - Localizadora
+  fail:
+    - Translation Coordinator
+    - Interpreter
+    - Intérprete
+    - Localization Engineer
+    - Transcriptionist
+    - Traducción jurada
+    - Content Writer
+    - Copywriter (ES)
+    - Profesor de inglés
+    - Transportista
+    - Translational Research Scientist
+    - Interprète (H/F)
+    - Rédacteur web (H/F)
+    - Correctora de textos
+    - Editor de contenidos
+    - Proofreader
+    - Subtitulador/a
+    - Language Teacher
+    - Project Manager
+    - Localization Program Manager

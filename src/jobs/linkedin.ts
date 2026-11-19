@@ -8,6 +8,7 @@ import { cleanHost } from './fields.ts';
 import { type FetchOptions, type NetOptions, guardedFetch } from './net/netguard.ts';
 import type { JobNotes } from './notes.ts';
 import { compileRules, prefilter } from './rules.ts';
+import { searchTerms } from './titles.ts';
 import { after, plainText } from './text.ts';
 
 export const LINKEDIN_BASE = 'https://www.linkedin.com/jobs-guest/jobs/api';
@@ -127,8 +128,8 @@ const WT: Record<string, string> = { onsite: '1', remote: '2', hybrid: '3' };
 /** What to search for, from the notes: titles × places, workplace and age filters. */
 export function searchPlan(notes: Pick<JobNotes, 'search'>, days = 7) {
   const s = notes.search.data;
-  // Each target's first three titles (not every variant, design D22), then roles.titles.
-  const terms = [...new Set([...(s.roles.targets ?? []).flatMap((t) => t.titles.slice(0, 3)), ...s.roles.titles].map((t) => t.trim()).filter(Boolean))];
+  // Each target's first three titles (not every variant, design D22), then roles.titles: the matcher's own list.
+  const terms = searchTerms(s);
   const raw = [...s.places.onsite, ...s.places.remote_from].map((p) => p.trim()).filter(Boolean);
   const places = [...new Set(raw.map((p) => (/^(worldwide|anywhere|global)$/i.test(p) ? 'Worldwide' : p)))];
   const wt = [...new Set(s.workplace.map((w) => WT[w]).filter(Boolean))].sort().join(',');

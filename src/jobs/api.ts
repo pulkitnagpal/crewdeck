@@ -21,6 +21,7 @@ import { type Db, ROLE_ID, getRole, openJobsDb } from './db.ts';
 import { NOTES, NOTE_NAMES, type JobNotes } from './notes.ts';
 import { EMPLOYMENT, LEVELS, TRAVEL, WORKPLACES } from './schema.ts';
 import { setFields } from './edit.ts';
+import { targetsOf } from './titles.ts';
 import { checkRoleUrl, isLinkedinHost, isXHost } from './fields.ts';
 import { canonicalJobUrl, linkedinJobId } from './linkedin.ts';
 import { answerFirstTime, currentAnswers, editAnswer } from './kb/ops.ts';
@@ -290,7 +291,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       errors: notes[n].issues.filter((i) => i.level === 'error').length,
     }));
     const core = files.filter((f) => ['profile', 'career', 'search'].includes(f.name));
-    const needed = core.some((f) => !f.exists || f.source === 'empty') || !notes.profile.data.identity.first_name || !notes.search.data.roles.titles.length;
+    const needed = core.some((f) => !f.exists || f.source === 'empty') || !notes.profile.data.identity.first_name || !targetsOf(notes.search.data).length;
     const last = requests.ofLane(LANE, 'setup')[0];
     return { needed, files, request: last ? { id: last.id, status: last.status, result: last.result ?? null, last: last.progress?.at(-1) ?? null } : null };
   }

@@ -10,7 +10,7 @@ import { ensureHome } from '../../config.ts';
 import { type Ctx, notesOf, nowIso } from '../ctx.ts';
 import { addEvent, setStatus, tx } from '../db.ts';
 import type { JobNotes } from '../notes.ts';
-import { compileRules, prefilter } from '../rules.ts';
+import { type Compiled, compileRules, prefilter, titleMatchOf } from '../rules.ts';
 import { fold } from '../places.ts';
 import { clip, plainText } from '../text.ts';
 import { hostOf, isLinkedinHost, isXHost } from '../fields.ts';
@@ -38,14 +38,17 @@ export function priorityBonus(notes: Pick<JobNotes, 'sources'>): Map<string, num
 const PAY_RANK: Record<string, number> = { ok: 8, unclear: 3, no_rate: 3, unlisted: 2, below_floor: 0 };
 
 /** A cheap score from the notes (no Claude). */
-export function rankScore(row: { title: string; description?: string; source?: string; source_key?: string | null; posted_at?: string | null; first_seen?: string; pay_status?: string | null }, notes: Pick<JobNotes, 'search' | 'career'> & Partial<Pick<JobNotes, 'sources'>>, at: Date, priority: Map<string, number> = notes.sources ? priorityBonus(notes as Pick<JobNotes, 'sources'>) : new Map()): number {
+export function rankScore(row: { title: string; description?: string; source?: string; source_key?: string | null; posted_at?: string | null; first_seen?: string; pay_status?: string | null; language?: string | null }, notes: Pick<JobNotes, 'search' | 'career'> & Partial<Pick<JobNotes, 'sources'>>, at: Date, priority: Map<string, number> = notes.sources ? priorityBonus(notes as Pick<JobNotes, 'sources'>) : new Map(), compiled: Pick<Compiled, 'titles'> = compileRules({ search: notes.search, memory: { data: { items: [] } } as any })): number {
   const s = notes.search.data, title = fold(row.title ?? ''), desc = plainText(row.description ?? ''), body = `${title}\n${fold(desc)}`;
   let score = 0;
-  const ti = s.roles.titles.findIndex((t) => has(title, t));
-  if (ti >= 0) score += Math.max(10, 30 - ti * 3);
+  // Which target title matched and how (D26): the old phrase in order first, any order a little less, broad least.
+  const m = titleMatchOf(compiled as Compiled, row);
+  if (m) score += m.how === 'broad' ? 8 : Math.max(10, 30 - m.variant * 3) - (m.how === 'words' ? 4 : 0);
   const si = s.roles.seniority_prefer.findIndex((t) => has(title, t));
   if (si >= 0) score += Math.max(5, 15 - si * 3);
-  score += Math.min(25, 5 * notes.career.data.skills.filter((k) => has(body, k)).length);
+  // Skills: career.md's, plus the matched target's own (a switcher's new field ranks by its skills).
+  const skills = [...new Set([...notes.career.data.skills, ...(m?.skills ?? [])])];
+  score += Math.min(25, 5 * skills.filter((k) => has(body, k)).length);
   const seen = Date.parse(row.posted_at ?? row.first_seen ?? '') || at.getTime();
   const days = (at.getTime() - seen) / 86_400_000;
   score += days <= 3 ? 15 : days <= 7 ? 10 : days <= 14 ? 6 : days <= 30 ? 3 : 0;
@@ -62,7 +65,7 @@ export function rankRoles(ctx: Ctx): Ranked[] {
   const compiled = compileRules(notes);
   const at = ctx.clock(), now = nowIso(ctx);
   const rows = ctx.db.prepare(`select r.id, r.company_id, c.name company, r.title, r.url, r.location, coalesce(r.pay_text, r.pay_status, '') pay, r.pay_status,
-      r.source, r.source_key, r.description, r.posted_at, r.first_seen from roles r join companies c on c.id=r.company_id
+      r.source, r.source_key, r.language, r.description, r.posted_at, r.first_seen from roles r join companies c on c.id=r.company_id
       where r.status='new' and r.eligibility is null`).all() as any[];
   const keep: any[] = [];
   const dropped: { id: string; reason: string }[] = [];
@@ -73,7 +76,7 @@ export function rankRoles(ctx: Ctx): Ranked[] {
   }
   if (dropped.length) tx(ctx.db, () => { for (const d of dropped) setStatus(ctx.db, d.id, 'prefiltered_out', d.reason, now); });
   const priority = priorityBonus(notes);
-  return keep.map((r) => ({ ...r, rank: rankScore(r, notes, at, priority) }))
+  return keep.map((r) => ({ ...r, rank: rankScore(r, notes, at, priority, compiled) }))
     .sort((a, b) => b.rank - a.rank || String(b.posted_at ?? b.first_seen).localeCompare(String(a.posted_at ?? a.first_seen)) || a.id.localeCompare(b.id));
 }
 

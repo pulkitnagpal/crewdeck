@@ -7,9 +7,10 @@ import { type PaySettings, payCheck, payDrops } from './pay.ts';
 import type { JobNotes } from './notes.ts';
 import { RULE_NAMES, type MemoryItem, type Search, type Workplace, WORKPLACES } from './schema.ts';
 import { isActive } from './memory.ts';
+import { type ReadTitle, type TitleMatch, type TitleMatcher, closest, describeMatcher, levelBlock, matchTitle, readTitle, targetsOf, titleMatcher } from './titles.ts';
 
 export type RuleName = (typeof RULE_NAMES)[number];
-export type Posting = { title: string; company?: string; location?: string; description?: string; pay_text?: string | null };
+export type Posting = { title: string; company?: string; location?: string; description?: string; pay_text?: string | null; /** the posting's language (ISO 639-1), when a source said */ language?: string | null };
 export type Verdict = { keep: true } | { keep: false; rule: string; reason: string };
 
 /** A list of places the user accepts; usable only when every name is known (else location drops are off). */
@@ -17,6 +18,10 @@ export type PlaceSet = { labels: string[]; ids: string[][]; unknown: string[]; w
 export type Compiled = {
   regex: Partial<Record<RuleName, RegExp[]>>;
   source: Partial<Record<RuleName, string>>;
+  /** The title matcher (D26): the gate, the level, rank. */
+  titles: TitleMatcher;
+  /** Off without titles, with `roles.match: off`, or when the user's own `rules.title_gate` regex replaces it. */
+  titleGate: boolean;
   accepted: Workplace[];
   excludedKinds: Workplace[];
   onsite: PlaceSet; remote: PlaceSet; commuteKm: number;
@@ -104,8 +109,9 @@ export function compileRules(notes: Pick<JobNotes, 'search' | 'memory'>): Compil
   const regex: Compiled['regex'] = {}, source: Compiled['source'] = {};
   const set = (name: RuleName, srcs: string[], from: string) => { regex[name] = srcs.map(re); source[name] = from; };
 
-  if (s.roles.titles.length) set('title_gate', [`${B}(?:${s.roles.titles.map(words).join('|')})`], 'roles.titles');
-  else info.push('title check off: roles.titles is empty');
+  const matcher = titleMatcher(s);
+  if (!matcher.targets.length) info.push('title check off: no titles in roles.targets or roles.titles');
+  else if (matcher.mode === 'off') info.push('title check off: roles.match is off (every title goes to the judge)');
   const avoidWords = active.filter((m) => m.kind === 'avoid').flatMap((m) => (m.title_words ?? []).map((w) => ({ word: w, id: m.id, text: m.text })));
   const exclude = [...s.roles.exclude_title_words, ...avoidWords.map((a) => a.word)];
   if (exclude.length) set('title_exclude', [`${B}(?:${exclude.map(words).join('|')})(?:s|es)?${E}`], avoidWords.length ? 'roles.exclude_title_words + avoid title words' : 'roles.exclude_title_words');
@@ -123,7 +129,8 @@ export function compileRules(notes: Pick<JobNotes, 'search' | 'memory'>): Compil
     if (p.unknown.length) info.push(`${k}: ${p.unknown.join(', ')} not in the gazetteer: location drops are off for this list`);
   }
   return {
-    regex, source, accepted, excludedKinds: WORKPLACES.filter((w) => !accepted.includes(w)),
+    // The user's own title_gate regex (rules:) replaces the matcher, as it always replaced the built-in gate.
+    regex, source, titles: matcher, titleGate: !regex.title_gate && !!matcher.targets.length && matcher.mode !== 'off', accepted, excludedKinds: WORKPLACES.filter((w) => !accepted.includes(w)),
     onsite, remote, commuteKm: s.places.commute_km,
     companies: s.exclude.companies.map((c) => ({ name: c, key: companyKey(c) })),
     companyRules: active.filter((m) => m.kind === 'company_rule' && m.company).map((m) => ({ company: m.company!, key: companyKey(m.company!), id: m.id, text: m.text })),
@@ -190,12 +197,16 @@ export function prefilter(post: Posting, c: Compiled): Verdict {
   const no = (rule: string, reason: string): Verdict => ({ keep: false, rule, reason });
 
   if (c.regex.title_gate && !first(c.regex.title_gate, title)) return no('title_gate', 'title is not one of your target titles');
+  const read = readTitle(post.title ?? '', c.titles.tw);
+  if (c.titleGate && !matchTitle(c.titles, post.title ?? '', post.language, read)) return no('title_gate', titleMiss(c.titles, post, read));
   const ex = first(c.regex.title_exclude, title);
   if (ex) {
     const hit = fold(ex[0]);
     const avoid = c.avoidWords.find((a) => hit.startsWith(fold(a.word)));
     return avoid ? no('title_exclude', `not interested ("${avoid.word}" in title): ${avoid.text} (${avoid.id})`) : no('title_exclude', `title has "${ex[0]}" (roles.exclude_title_words)`);
   }
+  const lvl = levelBlock(c.titles, read);
+  if (lvl) return no('level', `"${lvl}" in the title (roles.level: ${c.titles.level})`);
   const key = companyKey(company);
   if (key) {
     const bad = c.companies.find((x) => x.key === key);
@@ -244,6 +255,18 @@ export function prefilter(post: Posting, c: Compiled): Verdict {
   return { keep: true };
 }
 
+/** A title drop that says what was close: "Full Stack Engineer" is not one of your titles (close to engineer: Backend engineer). */
+function titleMiss(m: TitleMatcher, post: Posting, read: ReadTitle): string {
+  const near = closest(m, read, post.language);
+  const t = `"${String(post.title ?? '').trim().slice(0, 80)}"`;
+  return near ? `title ${t} is not one of your titles (close to ${near.head}: ${m.targets[near.target].name})` : `title ${t} is not one of your titles`;
+}
+
+/** Which of the user's titles a posting matches, and how (rank uses it; null without targets or no match). */
+export function titleMatchOf(c: Compiled, post: Pick<Posting, 'title' | 'language'>): TitleMatch | null {
+  return c.titles.mode !== 'off' ? matchTitle(c.titles, post.title ?? '', post.language) : null;
+}
+
 /** The most travel a description asks for: frequent, occasional or none. Sentences saying "no travel" don't count. */
 export function travelLevel(description: string, c: Pick<Compiled, 'regex'>): 'none' | 'occasional' | 'frequent' {
   let level: 'none' | 'occasional' | 'frequent' = 'none';
@@ -263,7 +286,8 @@ export function describeRules(c: Compiled): string {
   const lines: string[] = ['Hard drops (near-certain only; everything else goes to the judge):'];
   const row = (name: string, what: string, from?: string) => lines.push(`  ${name.padEnd(19)} ${what}${from ? `  [${from}]` : ''}`);
   const pat = (n: RuleName) => c.regex[n]?.map((r) => (r.source.length > 160 ? `${r.source.slice(0, 157)}...` : r.source)).join('  |  ');
-  row('title_gate', c.regex.title_gate ? `title must contain one of your titles: /${pat('title_gate')}/` : 'off (no roles.titles)', c.source.title_gate);
+  row('title_gate', c.regex.title_gate ? `title must match your regex: /${pat('title_gate')}/` : c.titleGate ? describeMatcher(c.titles) : 'off (no titles, or roles.match: off)', c.regex.title_gate ? c.source.title_gate : 'roles.targets + roles.titles');
+  if (c.titles.level !== 'any') row('level', `titles with a seniority word outside roles.level: ${c.titles.level}`, 'roles.level');
   row('title_exclude', c.regex.title_exclude ? `title must not contain: /${pat('title_exclude')}/` : 'off', c.source.title_exclude);
   row('company_excluded', c.companies.length ? c.companies.map((x) => x.name).join(', ') : 'off', 'exclude.companies');
   row('company_rule', c.companyRules.length ? c.companyRules.map((x) => `${x.company} (${x.id})`).join(', ') : 'none', 'memory company_rule');
@@ -318,7 +342,8 @@ export function judgeBrief(notes: Pick<JobNotes, 'search' | 'memory' | 'career' 
   if (rules.length) { L.push('- Company rules:'); for (const m of rules) L.push(`  - ${m.company}: "${m.text}" (${m.id})`); }
 
   L.push('', '## Scoring (0-100) for postings that pass');
-  L.push(`- Title fit: ${s.roles.titles.length ? list(s.roles.titles) : '(any title)'}.${s.roles.seniority_prefer.length ? ` Prefer seniority: ${list(s.roles.seniority_prefer)} (an ordering, not a filter).` : ''}`);
+  const targets = targetsOf(s);
+  L.push(`- Title fit: ${targets.length ? targets.map((t) => `${t.legacy ? '' : `${t.name}: `}${list(t.titles)}`).join('; ') : '(any title)'}.${s.roles.level !== 'any' ? ` Level: ${s.roles.level}.` : ''}${s.roles.seniority_prefer.length ? ` Prefer seniority: ${list(s.roles.seniority_prefer)} (an ordering, not a filter).` : ''}`);
   const skills = notes.career.data.skills.slice(0, 40);
   if (skills.length) L.push(`- Skills overlap with the user's skills: ${list(skills)}.`);
   if (s.pay) L.push(`- Pay: ${s.pay.floor > 0 ? `floor ${s.pay.floor} ${s.pay.currency} per ${s.pay.period}, judged on the ${s.pay.rule === 'top_of_range' ? 'top' : 'bottom'} of the range` : `in ${s.pay.currency}, no floor`}; postings without pay are ${s.pay.unlisted === 'keep' ? 'kept' : 'dropped'}. Higher pay scores higher.`);

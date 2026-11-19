@@ -22,7 +22,7 @@ function check(ctx: Ctx, row: any, compiled: Compiled, at: string): Drop {
   const pay = compiled.pay ? payCheck(row.pay_text, row.description, compiled.pay) : null;
   ctx.db.prepare('update roles set pay_min=?, pay_max=?, pay_currency=?, pay_period=?, pay_status=? where id=?').run(
     pay?.min ?? null, pay?.max ?? null, pay?.currency ?? null, compiled.pay && pay?.currency ? compiled.pay.period : null, pay?.status ?? null, row.id);
-  const v = prefilter({ title: row.title, company: row.company, location: row.location, description: row.description, pay_text: row.pay_text }, compiled);
+  const v = prefilter({ title: row.title, company: row.company, location: row.location, description: row.description, pay_text: row.pay_text, language: row.language }, compiled);
   if (!v.keep) return v;
   return trackerDrop(ctx.db, row, at);
 }

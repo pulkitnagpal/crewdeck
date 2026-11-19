@@ -9,6 +9,7 @@ import { type JobNotes, NOTES } from './notes.ts';
 import type { Career, MemoryItem, Profile } from './schema.ts';
 import { copyOnlyHost, hostOf, isLinkedinHost, profileValues } from './fields.ts';
 import { currentAnswers } from './kb/ops.ts';
+import { targetsOf } from './titles.ts';
 import { isActive } from './memory.ts';
 
 const PERIOD: Record<string, string> = { year: 'a year', month: 'a month', week: 'a week', day: 'a day', hour: 'an hour' };
@@ -186,7 +187,7 @@ function searchItems(n: JobNotes): Item[] {
   const s = n.search.data;
   const row = (id: string, title: string, text: string): Item => ({ id: `search:${id}`, title, text: text || '(not set)', source: 'your search note', used: '' });
   const items = [
-    row('roles.titles', 'titles', s.roles.titles.join(', ')),
+    row('roles.titles', 'titles', targetsOf(s).map((t) => `${t.legacy ? '' : `${t.name}: `}${t.titles.join(', ')}`).join('; ')),
     row('workplace', 'workplace', s.workplace.join(', ') || 'any'),
     row('places', 'places', [s.places.onsite.length ? `on-site/hybrid: ${s.places.onsite.join(', ')}` : '', s.places.remote_from.length ? `remote from: ${s.places.remote_from.join(', ')}` : ''].filter(Boolean).join('; ')),
     row('pay', 'pay', s.pay ? `${s.pay.floor > 0 ? `floor ${money(s.pay.floor, s.pay.currency, s.pay.locale || undefined)} ${PERIOD[s.pay.period]}` : `in ${s.pay.currency}, no floor`}` : ''),

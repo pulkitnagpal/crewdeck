@@ -1321,6 +1321,11 @@ placeable first, the preview shows the near misses, and Find returns N or explai
   career-ops; any provider is added only through the reviewed re-pin (§15), after checking the site's terms.
 
 ## Changelog
+- **P9c built (2026-11-20):** title matching for every field: `src/jobs/titles.ts` and `data/title-words.yaml` (seven
+  languages), `roles.targets[].skills`, `roles.match` (default `words`), `roles.level`; one matcher for the gate, the
+  `level` rule, rank and LinkedIn's terms; title drops name the closest target word. A 445-title corpus for the nine
+  audit people; v1 `roles.titles` never pass fewer than the old phrase gate. Details:
+  [impl/09c-title-matching.md](impl/09c-title-matching.md).
 - **P9b built (2026-11-20):** employers: `crewdeck jobs sources resolve <key>` (detectors in the sandbox, a one-page test
   fetch ≤ 30 s, the answer written to the note at once: the provider, or `fetch: none` with the reason), `sources
   set-url` (plain or `--request`), the `source` request kind with the page action `findJobsPage` and the workspace
