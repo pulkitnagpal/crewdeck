@@ -1,6 +1,6 @@
 // Today: the roles waiting for the user, one role's application (first-time questions on top, every answer with its
 // source), and its apply panel.
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { html, noop, cls, safeHref, Icon } from '../lib.js';
 import { ApplyPanel } from './apply.js';
 import { SetupCard } from './setup.js';
@@ -51,21 +51,44 @@ function AnswerRow({ row, asking, onEdit, onImprove }) {
   </div>`;
 }
 
-function NotInterested({ d, onSave, onCancel }) {
+/** "Skipping titles with Sales drops 12 of the 340 roles that pass now": the preview of the words, read-only (§24.6). */
+export function dropLine(pv, list) {
+  if (!pv || pv.ok === false || !pv.pool || pv.was === null || pv.was === undefined) return '';
+  const drops = Math.max(0, pv.was - pv.pass);
+  const words = list.map((w) => `"${w}"`).join(', ');
+  return drops ? `Skipping titles with ${words} drops ${n(drops)} of the ${n(pv.was)} roles that pass your rules now (last ${pv.days} days).`
+    : `Skipping titles with ${words} drops none of the ${n(pv.was)} roles that pass your rules now.`;
+}
+
+function NotInterested({ d, exclude = [], onSave, onCancel, onDryRun = null }) {
   const [reason, setReason] = useState('');
   const [words, setWords] = useState('');
+  const [drop, setDrop] = useState('');
+  const seq = useRef(0);
+  const list = words.split(',').map((w) => w.trim()).filter(Boolean);
+  const key = JSON.stringify(list);
+  useEffect(() => {
+    const my = ++seq.current;
+    if (!onDryRun || !list.length) { setDrop(''); return undefined; }
+    const t = setTimeout(async () => {
+      const pv = await onDryRun({ 'roles.exclude_title_words': [...exclude, ...list.filter((w) => !exclude.includes(w))] }).catch(() => null);
+      if (my === seq.current) setDrop(dropLine(pv, list));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [key]);
   return html`<div class="skipbox">
     <b>Not interested in ${d.company}?</b>
     <label class="f"><span class="lab">Why? Later searches read this in your words.</span>
       <textarea class="field" rows="2" placeholder="e.g. too much travel for me" value=${reason} onInput=${(e) => setReason(e.currentTarget.value)}></textarea></label>
     <label class="f"><span class="lab">Also skip every future role with these words in the title (optional, comma-separated)</span>
       <input class="field" value=${words} placeholder="e.g. Sales" onInput=${(e) => setWords(e.currentTarget.value)} /></label>
-    <div class="row-flex"><button type="button" class="btn primary small" disabled=${!reason.trim()} onClick=${() => onSave(reason, words.split(',').map((w) => w.trim()).filter(Boolean))}>Skip and remember</button>
+    <p class="small soft" role="status">${drop}</p>
+    <div class="row-flex"><button type="button" class="btn primary small" disabled=${!reason.trim()} onClick=${() => onSave(reason, list)}>Skip and remember</button>
       <button type="button" class="btn quiet small" onClick=${onCancel}>Cancel</button></div>
   </div>`;
 }
 
-function Detail({ d, asking, actions }) {
+function Detail({ d, asking, actions, exclude = [] }) {
   const [tab, setTab] = useState('form');
   const [skipping, setSkipping] = useState(false);
   const posting = safeHref(d.url);
@@ -82,7 +105,7 @@ function Detail({ d, asking, actions }) {
         ${d.status !== 'applied' ? html`<button type="button" class="btn small quiet" aria-expanded=${skipping} onClick=${() => setSkipping(!skipping)}>Not interested</button>` : null}
       </div>
     </div>
-    ${skipping ? html`<${NotInterested} d=${d} onCancel=${() => setSkipping(false)} onSave=${(reason, words) => { actions.onSkip(d.id, reason, words); setSkipping(false); }} />` : null}
+    ${skipping ? html`<${NotInterested} d=${d} exclude=${exclude} onDryRun=${actions.onDryRun} onCancel=${() => setSkipping(false)} onSave=${(reason, words) => { actions.onSkip(d.id, reason, words); setSkipping(false); }} />` : null}
     <div class="tabs" role="tablist">
       ${[['form', 'Application form', d.rows.length], ['resume', 'Resume'], ['outreach', 'Outreach', d.outreach.length || undefined]].map(([k, label, n]) =>
         html`<button type="button" role="tab" aria-selected=${tab === k} onClick=${() => setTab(k)}>${label}${n ? html`<span class="n">${n}</span>` : null}</button>`)}
@@ -107,7 +130,7 @@ const n = (x) => Number(x ?? 0).toLocaleString('en-US');
  * judge said, sources that returned nothing, and fixes from the preview. Each fix opens Preferences with the change in
  * the form and its preview showing; nothing is saved until the user clicks Save.
  */
-export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onNotes = noop }) {
+export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onSources = noop }) {
   const f = find.funnel;
   // The rules took most of the pool, or the judge said no to most of what they let through (or both).
   const rulesCause = f.rules.reduce((x, r) => x + r.n, 0) > f.passed_rules;
@@ -119,7 +142,7 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onNote
       <p class="funnel">${f.line}</p>
       ${rulesCause && f.rules_line ? html`<p class="soft">${f.rules_line}</p>` : null}
       ${judgeCause && f.judge_reasons.length ? html`<div class="soft"><span>The judge's most common reasons:</span><ul class="reasons">${f.judge_reasons.map((r, i) => html`<li key=${i}>${r.text}${r.n > 1 ? ` (${n(r.n)})` : ''}</li>`)}</ul></div>` : null}
-      ${f.sources?.empty ? html`<p class="soft">Sources: ${f.sources.empty} of your ${f.sources.total} returned nothing${f.sources.why.length ? ` (${f.sources.why.join('; ')})` : ''}. <button type="button" class="linkbtn" onClick=${() => onNotes('jobs/sources')}>Open your sources</button></p>` : null}
+      ${f.sources?.empty ? html`<p class="soft">Sources: ${f.sources.empty} of your ${f.sources.total} returned nothing${f.sources.why.length ? ` (${f.sources.why.join('; ')})` : ''}. <button type="button" class="linkbtn" onClick=${onSources}>Open your sources</button></p>` : null}
       ${f.coverage ? html`<p class="soft">${f.coverage}</p>` : null}
       <div class="row-flex">
         ${fixes.map((s, i) => html`<button type="button" key=${i} class=${`btn small${i === 0 ? ' primary' : ''}`} title=${s.text} onClick=${() => onFix(s)}>${s.label}</button>`)}
@@ -131,10 +154,10 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onNote
 }
 
 export function Today({ data, state, preview = null, actions = {} }) {
-  const a = { onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, ...actions };
+  const a = { onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onDryRun: null, ...actions };
   const setup = state?.setup?.needed;
   if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} /></div>`;
-  const why = data.find ? html`<${WhySoFew} find=${data.find} preview=${preview} onFix=${a.onFix} onPreview=${a.onPreview} onNotes=${a.onNotes} />` : null;
+  const why = data.find ? html`<${WhySoFew} find=${data.find} preview=${preview} onFix=${a.onFix} onPreview=${a.onPreview} onSources=${a.onSources} />` : null;
   if (!data.queue.length) {
     return html`<div class="page">${why}<div class="empty">
       <span class="ico"><${Icon} name="briefcase" size=${22} /></span>
@@ -148,7 +171,7 @@ export function Today({ data, state, preview = null, actions = {} }) {
       ${data.queue.map((q) => html`<${QueueItem} key=${q.id} item=${q} active=${q.id === data.selected} onSelect=${a.onSelect} />`)}
     </nav>
     ${data.detail ? html`<div class="work">
-      <${Detail} d=${data.detail} asking=${data.asking ?? []} actions=${a} />
+      <${Detail} d=${data.detail} asking=${data.asking ?? []} exclude=${data.exclude_title_words ?? []} actions=${a} />
       <${ApplyPanel} d=${data.detail} panel=${data.panel} reveal=${!!state?.reveal} workspace=${state?.agent?.workspace ?? ''}
         onApply=${a.onApply} onCancel=${a.onCancel} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />
     </div>` : null}

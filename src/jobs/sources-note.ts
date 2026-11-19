@@ -45,7 +45,11 @@ function sourcesSeq(doc: Document): { seq: YAMLSeq; migrated: boolean } {
   if (doc.contents === null || !isMap(doc.contents)) doc.contents = doc.createNode({}) as any;
   const root = doc.contents as YAMLMap;
   const have = root.get('sources', true);
-  if (isSeq(have)) return { seq: have, migrated: false };
+  if (isSeq(have)) {
+    // The template's empty `sources: []` becomes a block list once it has entries: one source per line.
+    if (!have.items.length) have.flow = false;
+    return { seq: have, migrated: false };
+  }
   const js = doc.toJS() ?? {};
   const items = sourceItems(js).items;
   const seq = new YAMLSeq();

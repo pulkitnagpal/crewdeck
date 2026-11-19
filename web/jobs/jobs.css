@@ -260,3 +260,47 @@ fieldset.f legend { padding: 0; margin-bottom: 5px; font-size: 12.5px; font-weig
 .pv .fixes { display: flex; flex-wrap: wrap; gap: 8px; }
 .target { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .target .row-flex .field { flex: 1; min-width: 0; }
+
+/* ---- Sources (design §24.3, D23). D41: rem type, nothing under 14 px, secondary text in --soft (AA in both themes),
+   reordering by buttons. ---- */
+.srcs { font-size: 0.875rem; }
+.srcs h1 { font-size: 1.375rem; }
+.srcs h2 { font-size: 1.0625rem; }
+.srcs h2 .soft { font-weight: 500; }
+.srcs h3 { font-size: 1rem; font-weight: 650; }
+.srcs .small, .srcs .hint, .srcs .chip, .srcs .btn.small, .srcs .btn, .srcs .linkbtn, .srcs .field, .srcs .check,
+.srcs .f > label, .srcs .f > .lab, .srcs code, .srcs .kv, .srcs .banner, .srcs .banner .fix { font-size: 0.875rem; }
+.srcs .soft, .srcs .hint, .srcs .kv dt { color: var(--soft); }
+.srcs .chip { font-weight: 600; padding: 0.125rem 0.5rem; }
+.srcs .btn.small { padding: 0.3125rem 0.75rem; }
+.srcs .page-head .sub { font-size: 0.9375rem; }
+.srcs .coverage p { max-width: 75ch; }
+.srcs .coverage.bare { background: var(--warn-soft); border-color: var(--warn-line); }
+.srcs .chips { display: inline-flex; flex-wrap: wrap; gap: 0.375rem; }
+.slist, .clist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.srow, .crow { display: flex; gap: 0.875rem; align-items: flex-start; padding: 0.75rem 0.875rem; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--ground); }
+.srow.off .head h3 { color: var(--soft); }
+.srow .pos { width: 1.75rem; height: 1.75rem; flex: none; border-radius: 50%; background: var(--accent-bg); color: var(--accent); font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.srow .body, .crow .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.375rem; }
+.srow .head, .crow .head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.srow .last { display: flex; align-items: center; gap: 0.5rem; }
+.srow .last.ok { color: var(--ok); }
+.srow .last.bad { color: var(--bad); }
+.srow .last.warn { color: var(--warn); }
+.srow .last.off, .srow .last.none { color: var(--soft); }
+.srow .addr { overflow-wrap: anywhere; }
+.srow .ctl, .crow .ctl { flex: none; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; max-width: 50%; }
+.srow .moves { display: flex; gap: 0.25rem; }
+.srcs .filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; align-items: end; }
+.srcs .filters .check { grid-column: 1 / -1; justify-self: start; }
+.srcs .outcome:empty { display: none; }
+.srcs .outcome .ok { color: var(--ok); }
+.srcs .addform { height: 100%; }
+.srcs .adds { align-items: stretch; }
+@media (max-width: 820px) {
+  .srow { flex-wrap: wrap; }
+  .srow .ctl { flex-basis: 100%; max-width: none; justify-content: flex-start; padding-left: 2.625rem; }
+  .crow { flex-direction: column; }
+  .crow .ctl { max-width: none; justify-content: flex-start; }
+  .srcs .filters { grid-template-columns: minmax(0, 1fr); }
+}

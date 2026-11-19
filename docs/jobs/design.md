@@ -1321,6 +1321,12 @@ placeable first, the preview shows the near misses, and Find returns N or explai
   career-ops; any provider is added only through the reviewed re-pin (§15), after checking the site's terms.
 
 ## Changelog
+- **P9e built (2026-11-20):** the Sources screen (Yours with Move up/down, on/off, remove and each source's last fetch;
+  Add a company and Add a web address checked in the sandbox with Claude's help when unreadable; the catalog with region,
+  field and kind filters and suggestions; LinkedIn's row through the native confirm; the coverage line; where it lives),
+  `GET /api/jobs/sources` and the `resolveSource` page action; Find's card opens it. Preferences Save keeps hand-written
+  keys and comments on targets; Not interested previews its drop count. Details:
+  [impl/09e-sources-screen.md](impl/09e-sources-screen.md).
 - **P9d built (2026-11-20):** the search preview (`crewdeck jobs preview`, `POST /api/jobs/preview`; read-only, single
   blockers, near-miss clusters, fixes with exact counts) and Find's funnel stored with the run (`run.funnel`, Today's
   **Why so few?** card, Preferences' Preview panel and targets editor, the daily-run close line). The owner's case as a

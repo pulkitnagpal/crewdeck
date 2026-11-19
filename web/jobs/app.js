@@ -1,4 +1,4 @@
-// The Jobs page: one screen at a time (#today, #applications, #knowledge, #preferences, #settings), live while Claude
+// The Jobs page: one screen at a time (#today, #sources, #applications, #knowledge, #preferences, #settings), live while Claude
 // works (server-sent events), every change through the page's own actions.
 import { render } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
@@ -11,6 +11,7 @@ import { Applications } from './screens/applications.js';
 import { Knowledge } from './screens/knowledge.js';
 import { Preferences } from './screens/preferences.js';
 import { Settings } from './screens/settings.js';
+import { Sources } from './screens/sources.js';
 
 const screenOf = () => { const s = location.hash.slice(1).split('/')[0]; return SCREENS.some(([k]) => k === s) ? s : 'today'; };
 
@@ -101,7 +102,10 @@ function App() {
     onToast: say,
     onFix: (s) => { setPending({ changes: s.change, from: 'find' }); nav('preferences'); },
     onPreview: () => { setPending({ changes: {}, from: 'find' }); nav('preferences'); },
+    onSources: () => nav('sources'),
+    onDryRun: (changes) => preview({ search: changes }),
   };
+  const onFeature = (name, value) => run('feature', { name, value }, (r) => (r.ok ? `${name.replace(/_/g, ' ')}: ${value === true ? 'on' : value === false ? 'off' : value}` : null));
   const onLink = async (url) => {
     const r = await run('addLink', { url }, 'Link sent to Claude');
     if (r?.request) sentLinks.current.set(r.request, url);
@@ -119,7 +123,8 @@ function App() {
     body = html`<${Preferences} key=${JSON.stringify([d.values, pending])} data=${d} pending=${pending} onNotes=${openNotes} onPreview=${(changes) => preview({ search: changes })}
       onSave=${async (changes, from) => { const r = await run('prefs', { changes, ...(from ? { from } : {}) }, (x) => (x.ok ? 'Saved to jobs/search.md' : null)); if (r?.ok) setPending(null); return r; }} />`;
   }
-  else body = html`<${Settings} data=${d} onSet=${(name, value) => run('feature', { name, value }, (r) => (r.ok ? `${name.replace(/_/g, ' ')}: ${value === true ? 'on' : value === false ? 'off' : value}` : null))} />`;
+  else if (screen === 'sources') body = html`<${Sources} data=${d} state=${state} onAct=${(name, b) => run(name, b)} onFeature=${onFeature} onNotes=${openNotes} />`;
+  else body = html`<${Settings} data=${d} onSet=${onFeature} />`;
 
   // A link Claude couldn't pick (cooldown, already applied): offer the user's override, set by this click only.
   const warned = (state?.agent?.recent ?? []).find((r) => r.kind === 'link' && sentLinks.current.has(r.id) && /warning|cooldown|already|in progress/i.test(r.result ?? ''));

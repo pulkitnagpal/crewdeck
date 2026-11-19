@@ -9,7 +9,7 @@
 // - reads (GET /api/jobs/*): never for another site (no CORS headers; a browser must send Sec-Fetch-Site same-origin or
 //   none). The live stream also needs a same-origin browser or the token, so a local process can't take its slots.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { execFile, spawn } from 'node:child_process';
+import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { type FSWatcher, existsSync, readFileSync, realpathSync, statSync, watch } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { basename, join, sep } from 'node:path';
@@ -36,9 +36,11 @@ import { FEATURE_INFO, RISK, confirmText, featureChanges, widens } from './featu
 import { type Confirm, codeFile, issueCode, nativeConfirm } from './confirm.ts';
 import { findBrowser, installHint } from './browser.ts';
 import { providersStatus } from './providers.ts';
-import { parseEvery, readSourcesState, writeSourcesState } from './sources.ts';
+import { parseEvery, readSourcesState, sandboxSupport, writeSourcesState } from './sources.ts';
 import { type SourceOp, changeSources, isKey, listSources } from './sources-note.ts';
 import { type SchedulerOptions, createSourceScheduler } from './schedule.ts';
+import { type ResolveState, sourcesScreen } from './sources-view.ts';
+import type { ResolveResult } from './resolve.ts';
 
 export type JobsApi = {
   handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void>;
@@ -62,9 +64,16 @@ export type JobsApiOptions = {
   confirm?: Confirm;
   /** Where the terminal fallback's one-time code is kept (default ~/.crewdeck/feature-code.json). */
   codeFile?: string;
+  /**
+   * Check a careers page from the Sources screen (P9e): by default `crewdeck jobs sources resolve <key> --json` in a
+   * child process, like the scheduled fetch (the sandbox and netguard stay out of the server). Tests replace it.
+   */
+  resolve?: (key: string) => Promise<ResolveResult>;
 };
 
 const LANE = 'jobs';
+/** Careers pages checked at once from the Sources screen (each is a sandboxed child of ≤ 35 s). */
+const MAX_RESOLVING = 2;
 const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page' };
 const MAX_CLIENTS = 20;
 const SET_ON_PAGE = '(set on the Jobs page)';
@@ -139,7 +148,9 @@ function prefRaw(path: string, v: unknown): string {
     return JSON.stringify(v.map((t: any, i: number) => {
       if (!t || typeof t !== 'object' || Array.isArray(t)) throw new HttpError(400, `${path}[${i}]: give a target`);
       const name = t.name === undefined ? '' : str(t.name, 120, `${path}[${i}].name`);
-      return { ...(name ? { name } : {}), titles: words(t.titles, `${path}[${i}].titles`), families: words(t.families, `${path}[${i}].families`), skills: words(t.skills, `${path}[${i}].skills`) };
+      // Empty lists are left out (the note stays as the user would write it).
+      const families = words(t.families, `${path}[${i}].families`), skills = words(t.skills, `${path}[${i}].skills`);
+      return { ...(name ? { name } : {}), titles: words(t.titles, `${path}[${i}].titles`), ...(families.length ? { families } : {}), ...(skills.length ? { skills } : {}) };
     }));
   }
   if (kind === 'num') { if (typeof v !== 'number' || !Number.isFinite(v)) throw new HttpError(400, `${path}: give a number`); return String(v); }
@@ -147,10 +158,21 @@ function prefRaw(path: string, v: unknown): string {
   return str(v, kind === 'str' && path === 'judge_notes' ? 2000 : 200, path);
 }
 
-/** The Preferences form's changes as `setFields` changes (every field checked as Save checks it). */
+/** The keys of a target the Preferences form edits; anything else written on a target in the note is kept. */
+const TARGET_KEYS = ['name', 'titles', 'families', 'skills'];
+
+/**
+ * The Preferences form's changes as `setFields` changes (every field checked as Save checks it). A target the form
+ * loaded carries `at`, its place in the note, so Save updates that entry in place (its other keys and comments kept).
+ */
 function prefChanges(changes: unknown) {
   if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw new HttpError(400, 'changes must be a map of field → value');
-  return Object.entries(changes).map(([path, v]) => ({ segs: path.split('.'), raw: prefRaw(path, v) }));
+  return Object.entries(changes).map(([path, v]) => {
+    const raw = prefRaw(path, v);
+    if (path !== 'roles.targets' || !Array.isArray(v)) return { segs: path.split('.'), raw };
+    const keep = v.map((t: any) => (Number.isInteger(t?.at) && t.at >= 0 && t.at < 1000 ? t.at as number : null));
+    return { segs: path.split('.'), raw, ...(keep.some((k) => k !== null) ? { keep, owns: TARGET_KEYS } : {}) };
+  });
 }
 /** A validation error from the notes, as one issue per field (the form shows each next to its field). */
 const fieldIssues = (e: any) => String(e.message).split('\n').map((l) => { const m = /^([\w.\[\]]+): (.*)$/.exec(l); return m ? { path: m[1].replace(/\[(\d+)\]/g, '.$1'), message: m[2] } : { path: '', message: l }; });
@@ -270,6 +292,29 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     onChange: () => emit('sources'),
   });
 
+  // ---- checking a careers page from the Sources screen (§24.3): a child process; its answer is kept for the screen ----
+  const resolving = new Map<string, ResolveState>();
+  const resolved = new Map<string, ResolveState>();
+  const children = new Set<ChildProcess>();
+  const resolveChild = (key: string): Promise<ResolveResult> => new Promise((ok, bad) => {
+    // Said at once, without a child, when it can't run here (the child would refuse the same way).
+    const support = sandboxSupport();
+    if (!support.ok) return bad(new Error(support.why));
+    const st = providersStatus(c);
+    if (!st.ready) return bad(new Error(st.message));
+    const child = execFile(process.execPath, [join(REPO, 'src', 'cli.ts'), 'jobs', 'sources', 'resolve', key, '--json'],
+      { env: { ...process.env, CREWDECK_HOME: HOME }, timeout: 45_000, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+        children.delete(child);
+        // Exit 2 is "not readable": still an answer, printed as JSON.
+        try { const r = JSON.parse(String(stdout)); if (r && typeof r === 'object' && r.key === key) return ok(r); } catch { /* no answer */ }
+        bad(new Error((String(stderr).trim().split('\n').at(-1) || err?.message || 'the check stopped').slice(0, 300)));
+      });
+    children.add(child);
+  });
+  const resolver = o.resolve ?? resolveChild;
+  /** Answers younger than an hour, for sources still in the list. */
+  const recentResolves = () => new Map([...resolved].filter(([, v]) => Date.now() - Date.parse(v.at ?? '') < 3_600_000));
+
   /** "N new roles since <time>": waiting for judging, first seen since the last Find (design §2.4). */
   function sourcesView() {
     const last = readSourcesState(c.jobs.home);
@@ -371,7 +416,9 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       return chip ? { ...q, chip } : q;
     });
     const find = findCard();
-    if (!v.detail) return { ...v, queue, panel: null, asking: [], find };
+    // The Not interested dialog previews what skipping more title words drops (§24.6): it adds to these.
+    const exclude_title_words = notesOf(ctx).search.data.roles.exclude_title_words;
+    if (!v.detail) return { ...v, queue, panel: null, asking: [], find, exclude_title_words };
     const d = v.detail;
     const notes = notesOf(ctx);
     const pdf = d.resume ? resumePath(ctx, d.id, notes) : null;
@@ -380,14 +427,20 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       ...v, queue,
       detail: { ...d, resume: pdf ? { file: basename(pdf), url: `/api/jobs/resume/${d.id}`, note: d.resume!.note } : null, copy: d.apply.mode === 'copy' ? copyModel(db, d.id).answers : null },
-      panel, asking, find,
+      panel, asking, find, exclude_title_words,
     };
   }
 
   function preferences() {
     const notes = notesOf(ctx);
     const s = notes.search;
-    const values = Object.fromEntries(Object.keys(PREF_FIELDS).map((k) => [k, getIn(s.data, k) ?? null]));
+    const values: Record<string, any> = Object.fromEntries(Object.keys(PREF_FIELDS).map((k) => [k, getIn(s.data, k) ?? null]));
+    // Each target's place in the note (only when the note itself is read: the last-valid copy's places may differ).
+    const rawTargets = (s.raw as any)?.roles?.targets;
+    if (s.source === 'note' && Array.isArray(rawTargets) && Array.isArray(values['roles.targets'])) {
+      const at = rawTargets.flatMap((t: unknown, i: number) => (t && typeof t === 'object' && !Array.isArray(t) ? [i] : []));
+      values['roles.targets'] = values['roles.targets'].map((t: any, j: number) => (at[j] === undefined ? t : { ...t, at: at[j] }));
+    }
     return {
       exists: s.exists, source: s.source, file: NOTES.search, page: notesPage(NOTES.search), values,
       issues: s.issues.map((i) => ({ level: i.level, path: i.path, message: i.message, fix: i.fix ?? null })),
@@ -581,6 +634,29 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
         return { ok: true, changed: r.changed, key: r.key, line: r.line };
       } catch (e: any) { throw new HttpError(400, String(e.message).slice(0, 500)); }
     },
+    /**
+     * D23/D24: check a careers page or web address in the user's list (which provider reads it, a one-page test). It runs
+     * in the background; the Sources screen shows "checking…" and then the answer, which is also written to the note.
+     */
+    resolveSource: (b) => {
+      const key = sourceKey(b.key);
+      const it = notesOf(ctx).sources.data.items.find((x) => x.key === key);
+      if (!it) throw new HttpError(404, 'no such source');
+      if (it.linkedin || (!it.careers_url && !it.url)) throw new HttpError(400, 'only an employer\'s page or a web address can be checked');
+      if (resolving.has(key)) return { ok: true, key, already: true };
+      if (resolving.size >= MAX_RESOLVING) throw new HttpError(409, 'Two pages are being checked already: try again when one is done');
+      const started = new Date().toISOString();
+      resolving.set(key, { key, started });
+      resolved.delete(key);
+      const done = (v: ResolveState) => {
+        resolved.set(key, v);
+        for (const k of [...resolved.keys()].slice(0, Math.max(0, resolved.size - 50))) resolved.delete(k);
+      };
+      Promise.resolve().then(() => resolver(key))
+        .then((result) => done({ key, at: new Date().toISOString(), result }), (e) => done({ key, at: new Date().toISOString(), refused: String(e?.message ?? e).slice(0, 300) }))
+        .finally(() => { resolving.delete(key); emit('sources'); });
+      return { ok: true, key, started };
+    },
     reveal: async (b) => {
       if (platform !== 'darwin') throw new HttpError(404, 'Show in Finder is only on macOS');
       const r = roleArg(b.role);
@@ -651,6 +727,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       }
       if (path === '/api/jobs/preferences') return json(res, 200, preferences());
       if (path === '/api/jobs/settings') return json(res, 200, settings());
+      if (path === '/api/jobs/sources') return json(res, 200, sourcesScreen(ctx, { resolving, results: recentResolves(), notesPage: (f) => notesPage(f)! }));
       throw new HttpError(404, 'not found');
     } catch (e: any) {
       if (e instanceof HttpError) throw e;
@@ -692,6 +769,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     handle, contextFor, emit, scheduler,
     close() {
       scheduler.stop();
+      for (const ch of children) { try { ch.kill('SIGKILL'); } catch {} }
       for (const t of timers) clearInterval(t);
       if (flush) clearTimeout(flush);
       for (const w of watchers.values()) { try { w.close(); } catch {} }

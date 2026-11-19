@@ -11,15 +11,25 @@ const WORDS = { words: 'every word of a title, any order', broad: 'also a shared
 const word = (v) => WORDS[v] ?? v;
 const norm = (p) => String(p ?? '').replace(/\[(\d+)\]/g, '.$1');
 
-/** The form's working values: lists as one entry per line, so commas inside a place ("Cambridge, MA") survive. */
-function toForm(values) {
+/**
+ * The form's working values: lists as one entry per line, so commas inside a place ("Cambridge, MA") survive. A target
+ * keeps `at`, its place in the note, so Save updates it in place (keys the form doesn't show stay); a change from a fix
+ * (same targets, same order) takes them from `ref`, the form as loaded.
+ */
+function toForm(values, ref = null) {
   const out = {};
   for (const [k, v] of Object.entries(values)) {
     if (LIST.has(k)) out[k] = (v ?? []).join('\n');
     else if (NUM.has(k)) out[k] = v === null || v === undefined ? '' : String(v);
     else if (k === 'languages') out[k] = (v ?? []).map((l) => ({ name: l.name ?? '', level: l.level ?? '' }));
     else if (k === 'needs_sponsorship') out[k] = v === true ? 'yes' : v === false ? 'no' : '';
-    else if (k === 'roles.targets') out[k] = (v ?? []).map((t) => ({ name: t.name ?? '', titles: (t.titles ?? []).join('\n'), skills: (t.skills ?? []).join('\n'), families: t.families ?? [] }));
+    else if (k === 'roles.targets') {
+      const loaded = ref?.[k] ?? [];
+      out[k] = (v ?? []).map((t, i) => {
+        const at = Number.isInteger(t.at) ? t.at : (v.length === loaded.length ? loaded[i]?.at : undefined);
+        return { name: t.name ?? '', titles: (t.titles ?? []).join('\n'), skills: (t.skills ?? []).join('\n'), families: t.families ?? [], ...(Number.isInteger(at) ? { at } : {}) };
+      });
+    }
     else out[k] = v ?? (CHECKS.has(k) ? [] : '');
   }
   return out;
@@ -33,7 +43,7 @@ function fromForm(k, v) {
   if (k === 'needs_sponsorship') return v === 'yes';
   if (k === 'roles.targets') {
     const lines = (x) => x.split('\n').map((y) => y.trim()).filter(Boolean);
-    return v.map((t) => ({ name: t.name.trim(), titles: lines(t.titles), skills: lines(t.skills), families: t.families })).filter((t) => t.titles.length || t.name);
+    return v.map((t) => ({ name: t.name.trim(), titles: lines(t.titles), skills: lines(t.skills), families: t.families, ...(Number.isInteger(t.at) ? { at: t.at } : {}) })).filter((t) => t.titles.length || t.name);
   }
   return v;
 }
@@ -61,7 +71,7 @@ export function PreviewPanel({ pv, busy, dirty, onApply = noop }) {
 export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = null, pending = null, preview = null }) {
   const [init] = useState(() => toForm(data.values));
   // A fix from Find's card (or the preview) arrives as unsaved changes: the form starts with them filled in.
-  const [vals, setVals] = useState(() => (pending?.changes ? { ...init, ...toForm(pending.changes) } : init));
+  const [vals, setVals] = useState(() => (pending?.changes ? { ...init, ...toForm(pending.changes, init) } : init));
   const [errors, setErrors] = useState([]);
   const [busy, setBusy] = useState(false);
   const [pv, setPv] = useState(preview);
@@ -174,7 +184,7 @@ export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = n
         <div class="grid3">${num('schedule.daily_picks', 'Picks a day')}${num('schedule.cooldown_days', 'Cooldown after applying (days)')}${text('schedule.timezone', 'Time zone', 'e.g. Europe/Berlin; empty = this computer\'s')}</div>
         ${lines('judge_notes', 'Anything else, for the judging step', 'In your words, e.g. "prefer product companies over agencies"', 3)}
       </section>
-      ${onPreview || pv ? html`<${PreviewPanel} pv=${pv} busy=${pvBusy} dirty=${changed.length > 0} onApply=${(change) => setVals({ ...vals, ...toForm(change) })} />` : null}
+      ${onPreview || pv ? html`<${PreviewPanel} pv=${pv} busy=${pvBusy} dirty=${changed.length > 0} onApply=${(change) => setVals({ ...vals, ...toForm(change, init) })} />` : null}
       <div class="savebar" role="region" aria-label="Save preferences">
         <span class="grow small soft">${errors.length ? html`<span class="err">Nothing saved: fix ${plural(errors.length, 'field')} above.</span>` : changed.length ? `${plural(changed.length, 'change')} not saved yet${pv?.ok !== false && pv?.pool ? ` · ${pv.pass.toLocaleString('en-US')} pass${pv.was !== null && pv.was !== undefined ? ` (now ${pv.was.toLocaleString('en-US')})` : ''}` : ''}` : 'Everything saved'}</span>
         <button type="button" class="btn quiet" disabled=${!changed.length || busy} onClick=${() => { setVals(init); setErrors([]); }}>Undo</button>

@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
-import { type Document, isCollection, isNode, parseDocument } from 'yaml';
+import { type Document, type YAMLMap, isCollection, isMap, isNode, isSeq, parseDocument } from 'yaml';
 import { ensureHome } from '../config.ts';
 import { type Issue, type Career, type Memory, type Profile, type Search, type Sources, NOTE_FILES, normalise, validate } from './schema.ts';
 
@@ -70,6 +70,44 @@ export function setInDoc(doc: Document, path: (string | number)[], value: unknow
   }
   if (doc.contents === null) doc.contents = doc.createNode({}) as any;
   doc.setIn(path, node);
+}
+
+/**
+ * Set a list of maps that a form edits only part of (Preferences' targets): item i continues the existing entry
+ * `keep[i]`, whose node is reused, so the keys the form doesn't own and every comment stay. Keys in `owns` take the new
+ * value (an empty one removes the key); items with `keep` null are new. The list's own node and comments are kept.
+ */
+export function mergeListInDoc(doc: Document, path: (string | number)[], value: Record<string, unknown>[], keep: (number | null)[], owns: string[]) {
+  const old = doc.getIn(path, true);
+  const oldItems = isSeq(old) ? old.items : [];
+  const used = new Set<number>();
+  // Lists of words read best on one line, as the templates write them.
+  const flowLists = (n: any) => { if (isSeq(n) && n.items.every((x: any) => !isCollection(x))) n.flow = true; return n; };
+  const items = value.map((v, i) => {
+    const k = keep[i];
+    const node = typeof k === 'number' && !used.has(k) && isMap(oldItems[k]) ? oldItems[k] as YAMLMap : null;
+    if (!node) {
+      const fresh = doc.createNode(v) as YAMLMap;
+      for (const p of fresh.items) flowLists(p.value);
+      return fresh;
+    }
+    used.add(k as number);
+    for (const key of owns) {
+      const nv = v[key];
+      if (nv === undefined || nv === null || nv === '' || (Array.isArray(nv) && !nv.length)) { node.delete(key); continue; }
+      const cur = node.get(key, true) as any;
+      if (JSON.stringify(isNode(cur) ? cur.toJSON() : cur) === JSON.stringify(nv)) continue;
+      const nn = flowLists(doc.createNode(nv));
+      if (isNode(cur)) { nn.comment = (cur as any).comment; nn.commentBefore = (cur as any).commentBefore; if (isCollection(cur) && isCollection(nn)) nn.flow = cur.flow; }
+      node.set(key, nn);
+    }
+    return node;
+  });
+  if (isSeq(old)) { old.items = items as any; return; }
+  const seq = doc.createNode([]) as any;
+  seq.items = items;
+  if (doc.contents === null) doc.contents = doc.createNode({}) as any;
+  doc.setIn(path, seq);
 }
 
 // ---- the five job notes, validated, with the last-valid fallback ----

@@ -167,7 +167,7 @@ test('first run, banners and the top bar', async () => {
   assert.match(b, /pay\.floor must be a number.*last valid version.*Open in Notes/);
   assert.equal(render(html`<${Banners} state=${{ ...st, agent: { ...st.agent, connected: true }, banners: [] }} />`), '');
   const bar = text(render(html`<${TopBar} screen="today" agent=${st.agent} quota=${3} />`));
-  assert.match(bar, /Today Applications What Claude knows Preferences Settings/);
+  assert.match(bar, /Today Sources Applications What Claude knows Preferences Settings/);
   assert.match(bar, /Find 3 jobs/);
   assert.match(bar, /No Claude session/);
   assert.equal(agentLine({ connected: true, working: [{ label: 'Apply to a role', role: { company: 'Example Labs' }, last: { text: 'Step 1 of 3' } }], waiting: [] }).head, 'Claude is working:');

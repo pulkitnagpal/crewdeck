@@ -2,7 +2,7 @@
 import { useState } from 'preact/hooks';
 import { html, noop, plural, ago, clock, Icon } from '../lib.js';
 
-export const SCREENS = [['today', 'Today'], ['applications', 'Applications'], ['knowledge', 'What Claude knows'], ['preferences', 'Preferences'], ['settings', 'Settings']];
+export const SCREENS = [['today', 'Today'], ['sources', 'Sources'], ['applications', 'Applications'], ['knowledge', 'What Claude knows'], ['preferences', 'Preferences'], ['settings', 'Settings']];
 
 /** connected / working / waiting / last lines, in one line. */
 export function agentLine(agent) {

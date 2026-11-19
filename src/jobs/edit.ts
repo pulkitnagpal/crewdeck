@@ -1,7 +1,7 @@
 // `crewdeck jobs me set` and `pref set`: change one field of a note, typed by the schema and validated before the
 // file is touched. `pref set` also logs the change under "## Changes" in jobs/search.md, quoting the user.
 import { parse, stringify } from 'yaml';
-import { readNote, renderNote, setInDoc, writeAtomic } from './notes.ts';
+import { mergeListInDoc, readNote, renderNote, setInDoc, writeAtomic } from './notes.ts';
 import { type Schema, didYouMean, keysAt, schemaAt, validate } from './schema.ts';
 
 const PROFILE_ROOTS = ['identity', 'standard_answers', 'education', 'copy_only_hosts'];
@@ -56,6 +56,13 @@ export function coerce(s: Schema, raw: string, path: string): unknown {
 const showValue = (v: unknown): string => {
   if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) return '(none)';
   if (Array.isArray(v) && v.every((x) => typeof x !== 'object')) return v.join(', ');
+  // Targets (and other named entries): one line, "Name (title, title); Name (…)", never a YAML block in Changes.
+  if (Array.isArray(v) && v.every((x) => x && typeof x === 'object' && !Array.isArray(x))) {
+    return v.map((x: any) => {
+      const words = Array.isArray(x.titles) ? x.titles.join(', ') : '';
+      return x.name ? `${x.name}${words ? ` (${words})` : ''}` : words || stringify(x, { collectionStyle: 'flow', lineWidth: 0 }).trim();
+    }).join('; ');
+  }
   if (typeof v === 'object') return stringify(v, { collectionStyle: 'flow' }).trim();
   return String(v);
 };
@@ -74,7 +81,11 @@ export function addChangeLine(body: string, line: string): string {
 }
 
 export type SetResult = { file: string; path: string; before: unknown; after: unknown; changed: boolean };
-export type Change = { segs: (string | number)[]; raw: string };
+/**
+ * One field's new value as text. For a list of maps a form edits only part of, `keep[i]` names the existing entry item i
+ * continues and `owns` the keys the form edits: the rest of that entry (and its comments) is kept.
+ */
+export type Change = { segs: (string | number)[]; raw: string; keep?: (number | null)[]; owns?: string[] };
 
 /**
  * Set one field of a note. Refuses unknown paths, values of the wrong type, and anything that adds a validation
@@ -105,11 +116,11 @@ export function setFields(file: string, note: 'profile' | 'career' | 'search', c
   return results;
 }
 
-type Typed = { segs: (string | number)[]; label: string; value: unknown };
+type Typed = { segs: (string | number)[]; label: string; value: unknown; keep?: (number | null)[]; owns?: string[] };
 
 /** Each change typed by the schema (a value from the command line or a form is text until then). */
 function typeChanges(note: 'profile' | 'career' | 'search', changes: Change[]): Typed[] {
-  return changes.map(({ segs, raw }) => {
+  return changes.map(({ segs, raw, keep, owns }) => {
     const label = labelOf(segs);
     const schema = schemaAt(note, segs);
     if (!schema) {
@@ -117,7 +128,9 @@ function typeChanges(note: 'profile' | 'career' | 'search', changes: Change[]): 
       const near = didYouMean(String(segs[segs.length - 1]), keysAt(note, parent));
       throw new Error(`${label} is not a field Crewdeck knows in ${noteFile(note)}${near ? `: did you mean "${[...parent, near].join('.')}"?` : ''}`);
     }
-    return { segs, label, value: coerce(schema, raw, label) };
+    const value = coerce(schema, raw, label);
+    if (keep && (!Array.isArray(value) || keep.length !== value.length || !owns?.length)) throw new Error(`${label}: the entries to keep don't match the list`);
+    return { segs, label, value, ...(keep ? { keep, owns } : {}) };
   });
 }
 
@@ -128,11 +141,13 @@ function applyFields(file: string, note: 'profile' | 'career' | 'search', typed:
   if (n.errors.length) throw new Error(`${noteFile(note)} can't be read (${n.errors[0]}): fix it in Notes first`);
   const beforeAll = n.doc.toJS() ?? {};
   const known = new Set(validate(note, beforeAll).filter((i) => i.level === 'error').map((i) => `${i.path}|${i.message}`));
-  const results: SetResult[] = typed.map(({ segs, label, value }) => {
-    const before = n.doc.getIn(segs) as any;
-    const beforeJs = before && typeof before.toJSON === 'function' ? before.toJSON() : before;
-    setInDoc(n.doc, segs, value);
-    return { file, path: label, before: beforeJs, after: value, changed: JSON.stringify(beforeJs) !== JSON.stringify(value) };
+  const js = (x: any) => (x && typeof x.toJSON === 'function' ? x.toJSON() : x);
+  const results: SetResult[] = typed.map(({ segs, label, value, keep, owns }) => {
+    const beforeJs = js(n.doc.getIn(segs));
+    if (keep && Array.isArray(value)) mergeListInDoc(n.doc, segs, value as Record<string, unknown>[], keep, owns!);
+    else setInDoc(n.doc, segs, value);
+    const after = keep ? js(n.doc.getIn(segs)) : value;
+    return { file, path: label, before: beforeJs, after, changed: JSON.stringify(beforeJs) !== JSON.stringify(after) };
   });
   const fresh = validate(note, n.doc.toJS()).filter((i) => i.level === 'error' && !known.has(`${i.path}|${i.message}`));
   if (fresh.length) throw new Error(fresh.map((i) => `${i.path}: ${i.message}${i.fix ? `. Fix: ${i.fix}` : ''}`).join('\n'));
