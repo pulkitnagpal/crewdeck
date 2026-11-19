@@ -20,7 +20,7 @@ after(() => s.close());
 
 // Asynchronous: the server runs in this process, so a blocking spawn would never let it answer.
 const crewdeck = (args: string[], input = ''): Promise<{ code: number | null; out: string; err: string }> => new Promise((ok) => {
-  const p = spawn(process.execPath, [join(REPO, 'src', 'cli.ts'), ...args], { env: { ...process.env, CREWDECK_HOME: s.w.home } });
+  const p = spawn(process.execPath, [join(REPO, 'src', 'cli.ts'), ...args], { cwd: s.workspace, env: { ...process.env, CREWDECK_HOME: s.w.home } });
   let out = '', err = '';
   p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (err += d));
   p.on('close', (code) => ok({ code, out, err }));
@@ -50,7 +50,7 @@ test('link --request: the address comes from the page\'s request (and still goes
   const role = preparedRole(s.w, 'Example Labs');
   const apply = (await s.action('approve', { role })).json.request;
   assert.match((await jobs(s.w.home, ['link', '--request', String(apply)])).err, /kind apply: this command works link requests/);
-  await s.call('POST', `/api/requests/${id}/done`, s.agent(), { result: 'could not read it' });
+  await s.call('POST', `/api/requests/${id}/done`, s.agent(), { cwd: s.workspace, result: 'could not read it' });
   assert.match((await jobs(s.w.home, ['link', '--request', String(id)])).err, /already done/);
   assert.match((await jobs(s.w.home, ['link', '--request', 'x'])).err, /request id/);
 });

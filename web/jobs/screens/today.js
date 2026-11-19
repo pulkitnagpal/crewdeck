@@ -119,7 +119,7 @@ export function Today({ data, state, actions = {} }) {
     ${data.detail ? html`<div class="work">
       <${Detail} d=${data.detail} asking=${data.asking ?? []} actions=${a} />
       <${ApplyPanel} d=${data.detail} panel=${data.panel} reveal=${!!state?.reveal} workspace=${state?.agent?.workspace ?? ''}
-        onApply=${a.onApply} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />
+        onApply=${a.onApply} onCancel=${a.onCancel} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />
     </div>` : null}
   </div>`;
 }

@@ -11,6 +11,8 @@ export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const HOME = process.env.CREWDECK_HOME ?? join(homedir(), '.crewdeck');
 export const CONFIG_PATH = join(HOME, 'config.yaml');
 export const TOKEN_PATH = join(HOME, 'token');
+/** A small script that runs this checkout's CLI with this Crewdeck home: the one command the jobs sandbox lets out. */
+export const CLI_WRAPPER = join(HOME, 'bin', 'crewdeck');
 export const SB_VERSION = '2.12.1';
 
 /** label: what the nav shows (defaults to "Board" with one project, else the project name). */
@@ -77,7 +79,7 @@ export function normaliseJobs(raw: unknown): JobsConfig {
   if (typeof f !== 'object' || Array.isArray(f)) throw new Error('jobs.features: must be a map of switches');
   const features = { ...FEATURE_DEFAULTS };
   for (const [k, v] of Object.entries(f)) {
-    if (!(k in FEATURE_DEFAULTS)) throw new Error(`jobs.features.${k}: unknown feature (known: ${Object.keys(FEATURE_DEFAULTS).join(', ')})`);
+    if (!Object.hasOwn(FEATURE_DEFAULTS, k)) throw new Error(`jobs.features.${k}: unknown feature (known: ${Object.keys(FEATURE_DEFAULTS).join(', ')})`);
     (features as any)[k] = featureValue(k as keyof JobsFeatures, v);
   }
   return { enabled: bool(j.enabled, 'jobs.enabled', false), home, workspace: path(j.workspace, 'jobs.workspace', home), browser: browser === 'auto' ? 'auto' : expand(browser), fetch_every: every, features };
@@ -85,7 +87,7 @@ export function normaliseJobs(raw: unknown): JobsConfig {
 
 /** A feature switch value, checked against its type and cap. */
 export function featureValue(name: keyof JobsFeatures, v: unknown): boolean | number {
-  if (name in FEATURE_CAPS) {
+  if (Object.hasOwn(FEATURE_CAPS, name)) {
     const cap = FEATURE_CAPS[name as keyof typeof FEATURE_CAPS];
     if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) throw new Error(`jobs.features.${name}: use a whole number from 0 to ${cap}`);
     if (v > cap) throw new Error(`jobs.features.${name}: at most ${cap} (a hard cap)`);
@@ -100,7 +102,7 @@ export function featureValue(name: keyof JobsFeatures, v: unknown): boolean | nu
  * human asked: the Jobs page toggle or an interactive terminal (design D13).
  */
 export function setFeature(name: string, value: boolean | number, path = CONFIG_PATH) {
-  if (!(name in FEATURE_DEFAULTS)) throw new Error(`unknown feature ${name} (known: ${Object.keys(FEATURE_DEFAULTS).join(', ')})`);
+  if (!Object.hasOwn(FEATURE_DEFAULTS, name)) throw new Error(`unknown feature ${name} (known: ${Object.keys(FEATURE_DEFAULTS).join(', ')})`);
   featureValue(name as keyof JobsFeatures, value);
   const doc = parseDocument(existsSync(path) ? readFileSync(path, 'utf8') : '');
   if (doc.errors.length) throw new Error(`${path}: ${doc.errors[0].message}`);
@@ -171,6 +173,33 @@ export function ensureToken(path = TOKEN_PATH): string {
   const t = randomBytes(32).toString('hex');
   writeFileSync(path, t + '\n', { mode: 0o600 });
   return t;
+}
+
+/**
+ * A new token on every `crewdeck up`: one that leaked (to a port squatter, a log) stops working at the next start. The
+ * bridge re-reads the file when the server's proof stops matching; the CLI reads it on every run.
+ */
+export function rotateToken(path = TOKEN_PATH): string {
+  ensureHome(dirname(path));
+  const t = randomBytes(32).toString('hex');
+  const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+  writeFileSync(tmp, t + '\n', { mode: 0o600 });
+  renameSync(tmp, path);
+  return t;
+}
+
+/** Single-quoted for sh. */
+const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+
+/** Write ~/.crewdeck/bin/crewdeck (0700): node + this checkout's cli.ts + this CREWDECK_HOME, so the call is one plain word. */
+export function writeCliWrapper(path = CLI_WRAPPER, home = HOME): string {
+  ensureHome(dirname(path));
+  const text = `#!/bin/sh\n# Managed by Crewdeck (rewritten by crewdeck up and crewdeck jobs init): this checkout's CLI with this Crewdeck home.\nCREWDECK_HOME=${shq(home)} exec ${shq(process.execPath)} ${shq(join(REPO, 'src', 'cli.ts'))} "$@"\n`;
+  if (existsSync(path) && readFileSync(path, 'utf8') === text) { chmodSync(path, 0o700); return path; }
+  const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+  writeFileSync(tmp, text, { mode: 0o700 });
+  renameSync(tmp, path);
+  return path;
 }
 
 export function readToken(path = TOKEN_PATH): string | null {

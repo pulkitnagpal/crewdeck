@@ -197,6 +197,8 @@ tr:first-child td { border-top: 0; }
 .switch[aria-checked="true"] { background: var(--accent); box-shadow: none; }
 .switch[aria-checked="true"]::after { transform: translateX(16px); }
 .confirm { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 10px; background: var(--warn-soft); border: 1px solid var(--warn-line); }
+.confirm code, .confirm .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.confirm .code { letter-spacing: .08em; }
 .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: 13px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }

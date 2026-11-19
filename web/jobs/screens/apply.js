@@ -43,13 +43,15 @@ function AnswerBox({ label, options = [], onSave, required = true }) {
   </div>`;
 }
 
-export function ApplyPanel({ d, panel, reveal = false, workspace = '', onApply = noop, onMarkApplied = noop, onAnswer = noop, onReveal = noop, onToast = noop }) {
+export function ApplyPanel({ d, panel, reveal = false, workspace = '', onApply = noop, onCancel = noop, onMarkApplied = noop, onAnswer = noop, onReveal = noop, onToast = noop }) {
   const p = panel ?? { state: 'ready', progress: [] };
   const c = d.counts;
   const url = safeHref(d.url);
   const linkedin = !!url && /(^|\.)linkedin\.com$/i.test(new URL(url).hostname);
   const firstRows = d.rows.filter((r) => r.status === 'first_time' && r.required);
   const openForm = url ? html`<a class="btn small" href=${url} target="_blank" rel="noopener noreferrer">Open the form</a>` : null;
+  // Stop a request that waits, or that a session took and never finished (it closed, crashed or got stuck).
+  const cancel = p.request ? html`<button type="button" class="btn quiet small" onClick=${() => onCancel(p.request)}>Cancel</button>` : null;
   const submitted = (primary) => html`<button type="button" class=${cls('btn', primary && 'primary big')} onClick=${() => onMarkApplied(d.id)}>I submitted it</button>`;
 
   let body;
@@ -66,13 +68,15 @@ export function ApplyPanel({ d, panel, reveal = false, workspace = '', onApply =
       break;
     case 'waiting':
       body = html`<div class="state info" role="status"><span class="title"><span class="dot wait"></span>Waiting for Claude</span>
-        <span class="small">${p.connected ? 'Claude picks it up as soon as the chat is idle.' : html`No Claude session is working Jobs: open one in <code>${workspace}</code>.`}</span></div>
+        <span class="small">${p.connected ? 'Claude picks it up as soon as the chat is idle.' : html`No Claude session is working Jobs: open one in <code>${workspace}</code>.`}</span>
+        <div class="row-flex">${cancel}</div></div>
         <${Steps} state="waiting" />`;
       break;
     case 'filling':
       body = html`<div class="state info" role="status"><span class="title"><span class="dot busy"></span>Claude is filling the form</span>
         <span class="small">In its own tab of the browser pane, next to this one. Switch to it any time to watch.</span>
-        <div class="row-flex">${openForm}</div></div>
+        ${p.connected ? null : html`<span class="small">No Claude session is connected: if it closed, cancel and try again.</span>`}
+        <div class="row-flex">${openForm}${cancel}</div></div>
         <${Steps} state="filling" />`;
       break;
     case 'needs_you':

@@ -1,12 +1,13 @@
 // `crewdeck jobs init`: from a finished `crewdeck init` to a working Jobs (design §2.2, §22 P4). Switches Jobs on,
 // makes jobs.home and the tracker, creates the notes the user doesn't have yet (never overwriting one), seeds the search
 // from a preset, and writes the jobs workspace's guard rails: a managed CLAUDE.md (the hard rules, §13) and a
-// .claude/settings.json with deny rules (§14). Running it again changes nothing but those two managed files.
+// .claude/settings.json (§14) that runs Claude's Bash in Claude Code's sandbox (no network, no loopback, no writes to
+// Crewdeck's own files), lets only the `crewdeck` wrapper out, and adds deny rules. Running it again changes nothing but
+// those managed files.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
-import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { type Config, CONFIG_PATH, HOME, REPO, TOKEN_PATH, ensureHome, expand, loadConfig, setJobsSettings } from '../config.ts';
+import { type Config, CLI_WRAPPER, CONFIG_PATH, HOME, REPO, TOKEN_PATH, ensureHome, expand, loadConfig, setJobsSettings, writeCliWrapper } from '../config.ts';
 import { NOTES, NOTE_NAMES, type NoteName } from './notes.ts';
 import { findBrowser, installHint } from './browser.ts';
 import { type InstallOptions, installProviders } from './providers.ts';
@@ -26,10 +27,12 @@ const localDay = () => new Date().toLocaleDateString('en-CA');
 /** A path for the shell: bare when safe, else single-quoted. */
 export const shq = (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
 
-/** How a Claude session runs Crewdeck's CLI on this machine (`crewdeck` may not be on PATH). */
+/**
+ * How a Claude session runs Crewdeck's CLI on this machine: the managed wrapper (~/.crewdeck/bin/crewdeck), one plain
+ * word, because the sandbox lets a command out only when its text matches an excluded command exactly.
+ */
 export function cliCommand(): string {
-  const env = HOME !== join(homedir(), '.crewdeck') ? `CREWDECK_HOME=${shq(HOME)} ` : '';
-  return `${env}node ${shq(join(REPO, 'src', 'cli.ts'))}`;
+  return shq(CLI_WRAPPER);
 }
 
 // ---- notes ----
@@ -103,11 +106,70 @@ export function denyRules(c: Config): string[] {
     `Edit(${abs(join(ws, 'CLAUDE.md'))})`, `Edit(${abs(join(ws, '.claude'))}/**)`,
     // No raw database writes, no direct calls to the agent API, no fetching around the SSRF guard.
     'Bash(sqlite3:*)', 'Bash(curl:*)', 'Bash(wget:*)', 'WebFetch',
+    // The usual ways around the sandbox and the terminal check: raw sockets, remote shells, fake terminals, other
+    // programs' windows (a dialog only the user should click), the default browser (which can reach loopback).
+    'Bash(nc:*)', 'Bash(ncat:*)', 'Bash(netcat:*)', 'Bash(socat:*)', 'Bash(telnet:*)', 'Bash(ssh:*)', 'Bash(scp:*)',
+    'Bash(script:*)', 'Bash(expect:*)', 'Bash(unbuffer:*)', 'Bash(osascript:*)', 'Bash(open:*)', 'Bash(xdg-open:*)',
+    'Bash(xdotool:*)', 'Bash(ydotool:*)',
   ];
 }
 
+/** The sandbox's own path syntax: plain absolute paths (permission rules use `//` instead). */
+const sbPath = (p: string) => real(p);
+
+/**
+ * The `crewdeck` commands that run outside the sandbox (they reach Crewdeck on loopback and the job sites through
+ * netguard). Claude Code matches the call's text: a call with `cd`, `&&`, a redirect or `$(…)` stays sandboxed.
+ */
+export const excludedCommands = () => ['jobs', 'request', 'progress'].map((verb) => `${cliCommand()} ${verb} *`);
+
+/**
+ * Claude Code's Bash sandbox for the jobs workspace (design §14, review W3/C1):
+ * - no network: nothing allowed, loopback names denied outright (a prompt for "localhost" never appears); on macOS
+ *   allowLocalBinding stays off, on Linux the sandbox's loopback is its own;
+ * - no escape hatch (allowUnsandboxedCommands false) and no running unsandboxed when the sandbox is missing;
+ * - Crewdeck's own files: the token unreadable, config, queue, wrapper, tracker and these guard rails unwritable at the
+ *   OS level (the Edit deny rules only cover Claude's tools and the commands Claude Code recognises).
+ */
+export function sandboxSettings(c: Config) {
+  const home = c.jobs.home, ws = c.jobs.workspace;
+  return {
+    enabled: true,
+    failIfUnavailable: true,
+    autoAllowBashIfSandboxed: true,
+    allowUnsandboxedCommands: false,
+    excludedCommands: excludedCommands(),
+    network: {
+      allowedDomains: [] as string[],
+      deniedDomains: ['localhost', '*.localhost', '127.0.0.1', '[::1]', '0.0.0.0'],
+      allowLocalBinding: false,
+      allowAllUnixSockets: false,
+      allowUnixSockets: [] as string[],
+    },
+    filesystem: {
+      denyRead: [sbPath(TOKEN_PATH), sbPath(join(HOME, 'feature-code.json'))],
+      denyWrite: [
+        sbPath(CONFIG_PATH), sbPath(TOKEN_PATH), sbPath(join(HOME, 'requests.json')), sbPath(join(HOME, 'feature-code.json')),
+        sbPath(join(HOME, 'bin')), sbPath(join(HOME, 'run')),
+        ...['jobs.db', 'jobs.db-wal', 'jobs.db-shm', 'state', 'providers'].map((n) => sbPath(join(home, n))),
+        sbPath(join(ws, 'CLAUDE.md')), sbPath(join(ws, '.claude')),
+      ],
+    },
+  };
+}
+
 export function workspaceSettings(c: Config): string {
-  return `${JSON.stringify({ $schema: 'https://json.schemastore.org/claude-code-settings.json', permissions: { allow: [], deny: denyRules(c) } }, null, 2)}\n`;
+  const settings = {
+    $schema: 'https://json.schemastore.org/claude-code-settings.json',
+    sandbox: sandboxSettings(c),
+    permissions: {
+      allow: [] as string[],
+      // A new home or workspace moves the guard rails: the user says yes to that.
+      ask: [`Bash(${cliCommand()} jobs init)`, `Bash(${cliCommand()} jobs init *)`],
+      deny: denyRules(c),
+    },
+  };
+  return `${JSON.stringify(settings, null, 2)}\n`;
 }
 
 export function workspaceClaudeMd(c: Config): string {
@@ -155,15 +217,17 @@ has no command, is edited directly). After any change, \`crewdeck jobs check\`.
 7. **No invented experience.** Resume bullets are fact ids from career.md; answers cite facts, memory or profile values
    and pass the citation check. Unknown → a first-time question for the user, never a guess.
 8. **No page text in the shell.** Request data is read with \`crewdeck jobs request show <id>\` and passed with
-   \`--request <id>\`; anything else from a page or from the user goes into a file written with a single-quoted heredoc
-   (\`cat > file <<'EOF'\`) and is passed with a \`--…-file\` flag.
+   \`--request <id>\`; anything else from a page or from the user goes into a file written with the **Write tool**
+   (never a heredoc or \`echo\`: text can end a heredoc early) and is passed with a \`--…-file\` flag.
 9. **No raw database writes** (no \`sqlite3\`), and no direct calls to Crewdeck's API: only \`crewdeck\` commands.
+   Your shell runs in Claude Code's sandbox (no network); only a \`crewdeck jobs|request|progress …\` call written
+   plainly gets out: one command per Bash call, literal paths, no \`cd\`, \`&&\`, variables, redirects or \`$(…)\`.
 10. **Open only the role's own pages** (its posting, its application form) in the browser pane, and never put the user's
     details into a URL.
 
 ## Closing requests
 Every request ends with exactly one of \`crewdeck request done <id> --result-file <f>\` or
-\`crewdeck request fail <id> --result-file <f>\` (the result line written with a single-quoted heredoc). While working,
+\`crewdeck request fail <id> --result-file <f>\` (the result line written to the file with the Write tool). While working,
 \`crewdeck progress <id> --text-file <f>\` shows a line on the Jobs page. Keep the chat short: the page is where the user looks.
 `;
 }
@@ -188,6 +252,7 @@ function readState(c: Config): Record<string, string> {
  */
 export function writeWorkspaceFiles(c: Config): { written: string[]; backedUp: string[] } {
   const out = { written: [] as string[], backedUp: [] as string[] };
+  writeCliWrapper(); // the one command the workspace's sandbox lets out
   if (!existsSync(c.jobs.workspace)) mkdirSync(c.jobs.workspace, { recursive: true, mode: 0o700 });
   const state = readState(c);
   for (const f of workspaceFiles(c)) {

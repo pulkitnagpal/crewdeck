@@ -6,8 +6,17 @@ import { connect } from 'node:net';
 import { createGunzip, createBrotliDecompress, createInflate } from 'node:zlib';
 import { isLocalHost, isSafeMethod, originIsOwnOrAbsent } from './http.ts';
 
-/** injectAt: 'start' (default) puts injectHead first in <head>; 'end' puts it last, after the page's own styles. */
-export type ProxyOpts = { target: { host: string; port: number }; injectHead?: string; injectAt?: 'start' | 'end' };
+/**
+ * target: a local TCP port, or a Unix socket (SilverBullet: no TCP port at all, only this user can open the socket's
+ * folder). injectAt: 'start' (default) puts injectHead first in <head>; 'end' puts it last, after the page's own styles.
+ */
+export type Target = { host: string; port: number } | { socketPath: string };
+export type ProxyOpts = { target: Target; injectHead?: string; injectAt?: 'start' | 'end' };
+
+const isSocket = (t: Target): t is { socketPath: string } => 'socketPath' in t;
+/** The Host header the upstream sees (a socket has no host: localhost, which SilverBullet expects). */
+const upstreamHost = (t: Target) => (isSocket(t) ? 'localhost' : `${t.host}:${t.port}`);
+const where = (t: Target) => (isSocket(t) ? { socketPath: t.socketPath } : { host: t.host, port: t.port });
 
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 
@@ -20,10 +29,10 @@ function decoder(enc: string | undefined) {
 
 /** Forward one request; when the response is HTML and injectHead is set, insert it before </head>. */
 export function forward(req: IncomingMessage, res: ServerResponse, o: ProxyOpts, path = req.url ?? '/') {
-  const headers = { ...req.headers, host: `${o.target.host}:${o.target.port}` };
+  const headers = { ...req.headers, host: upstreamHost(o.target) };
   // Ask for an uncompressed body only when we may rewrite it.
   if (o.injectHead) delete headers['accept-encoding'];
-  const up = request({ host: o.target.host, port: o.target.port, method: req.method, path, headers }, (r) => {
+  const up = request({ ...where(o.target), method: req.method, path, headers }, (r) => {
     const type = String(r.headers['content-type'] ?? '');
     const out: Record<string, any> = {};
     for (const [k, v] of Object.entries(r.headers)) if (!HOP.has(k)) out[k] = v;
@@ -52,9 +61,10 @@ export function forward(req: IncomingMessage, res: ServerResponse, o: ProxyOpts,
 
 /** Pass a WebSocket (or any Upgrade) through untouched. */
 export function forwardUpgrade(req: IncomingMessage, socket: any, head: Buffer, o: ProxyOpts, path = req.url ?? '/') {
-  const up = connect(o.target.port, o.target.host, () => {
+  const t = o.target;
+  const up = connect(isSocket(t) ? { path: t.socketPath } : { port: t.port, host: t.host }, () => {
     const lines = [`${req.method} ${path} HTTP/${req.httpVersion}`];
-    for (const [k, v] of Object.entries(req.headers)) lines.push(`${k}: ${k === 'host' ? `${o.target.host}:${o.target.port}` : v}`);
+    for (const [k, v] of Object.entries(req.headers)) lines.push(`${k}: ${k === 'host' ? upstreamHost(t) : v}`);
     up.write(lines.join('\r\n') + '\r\n\r\n');
     if (head?.length) up.write(head);
     up.pipe(socket); socket.pipe(up);

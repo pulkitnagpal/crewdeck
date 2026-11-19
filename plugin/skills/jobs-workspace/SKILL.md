@@ -17,26 +17,24 @@ names (for example `node <checkout>/src/cli.ts`).
 1. Read it: `crewdeck jobs request show <id>` prints `{ id, kind, ref, status, payload, context }`. Never put a payload value
    (a link, a question, an instruction) into a command line: request-scoped commands take `--request <id>` and read it
    from Crewdeck themselves.
-2. Scratch files: `T=<jobs home>/out/tmp` (or `<jobs home>/out/<role id>/tmp` for a role), `mkdir -p "$T"`. Text from a
-   page, a posting or the user goes into a file with the Write tool (or a single-quoted heredoc), then into a `--…-file`
-   flag.
-3. Progress the user sees live on the page, one short line at a time:
+2. Scratch files: `<T>` below is `<jobs home>/out/tmp` (or `<jobs home>/out/<role id>/tmp` for a role), written out in
+   full. Text from a page, a posting or the user goes into a file with the **Write tool** (it creates the folder), then
+   into a `--…-file` flag. Never a heredoc or `echo` for such text: a line in it can end the heredoc and run as a command.
+3. Your shell runs in Claude Code's sandbox, with no network. A `crewdeck` call gets out to Crewdeck only when it is the
+   whole Bash call, written plainly: one command, literal paths, no `cd`, `&&`, `;`, variables, redirects or `$(…)`.
+4. Progress the user sees live on the page, one short line at a time: write `Reading the link` to `<T>/progress.txt` with
+   the Write tool, then
    ```bash
-   cat > "$T/progress.txt" <<'EOF'
-   Reading the link
-   EOF
-   crewdeck progress <id> --text-file "$T/progress.txt"
+   crewdeck progress <id> --text-file <T>/progress.txt
    ```
-4. Close it, exactly once, with one plain line for the user:
+5. Close it, exactly once, with one plain line for the user: write
+   `Example Co — Data Analyst is ready: 9 answered, 2 questions for you` to `<T>/result.txt` with the Write tool, then
    ```bash
-   cat > "$T/result.txt" <<'EOF'
-   Example Co — Data Analyst is ready: 9 answered, 2 questions for you
-   EOF
-   crewdeck request done <id> --result-file "$T/result.txt"
+   crewdeck request done <id> --result-file <T>/result.txt
    ```
-   or `crewdeck request fail <id> --result-file "$T/result.txt"` with what went wrong and what the user can do. A request
+   or `crewdeck request fail <id> --result-file <T>/result.txt` with what went wrong and what the user can do. A request
    you don't close goes back to the queue at the end of your turn (and fails after three tries).
-5. Keep the chat reply to a line or two: the Jobs page is where the user looks.
+6. Keep the chat reply to a line or two: the Jobs page is where the user looks.
 
 ## setup: "Set up with Claude"
 Payload `{}`. Run the **jobs-setup** skill (the first-run interview) with this request id for progress lines, then close
@@ -58,8 +56,9 @@ Payload `{ url, force? }`. The user chose this role: it is not judged, it is add
    - `needs` set (title or company unreadable) → open the payload's link in a new background tab of the browser pane,
      read the title, company, location, description and pay, close the tab, write
      `{ "url": "<the link from request show>", "title": …, "company": …, "location": …, "description": …, "pay_text": …, "source": "pasted" }`
-     to `$T/role.json` with the Write tool, then `crewdeck jobs add-role --role-file "$T/role.json"` (prints the role id) and
-     `crewdeck jobs pick --role <role id>` (exit 2 with warnings → as above).
+     to `<T>/role.json` with the Write tool, then `crewdeck jobs add-role --role-file <T>/role.json` (prints the role id) and
+     `crewdeck jobs pick --role <role id> --request <id>` (the request's own "Add it anyway" override, if the user gave
+     one, comes from its payload, never from you; exit 2 with warnings → as above).
    - An error (blocked address, LinkedIn links switched off, X) → `request fail` with the message.
 2. **Prepare** the role (below), with progress lines.
 3. Close `done`: "<Company — Title> is ready: N answered, M questions for you" (add "the form needs you to sign in first"
@@ -83,22 +82,22 @@ Every question on the application must be known before the user is asked to appr
         and its options.
      3. Press **Next** only to reach another page of questions. Never Review, Submit, Send or Apply-to-finish. If Next
         won't move on without filled answers, stop reading there (Apply meets the rest).
-     4. Write everything you read to `$T/fields.json` with the Write tool, as
+     4. Write everything you read to `<T>/fields.json` with the Write tool, as
         `[{ "label": …, "kind": …, "required": true, "options": […] }]`, and store it:
-        `crewdeck jobs form <role id> --fields-file "$T/fields.json"`. If the form is on another address than the posting,
-        write that address to `$T/apply-url.txt` and run `crewdeck jobs role <role id> --apply-url-file "$T/apply-url.txt"`.
+        `crewdeck jobs form <role id> --fields-file <T>/fields.json`. If the form is on another address than the posting,
+        write that address to `<T>/apply-url.txt` and run `crewdeck jobs role <role id> --apply-url-file <T>/apply-url.txt`.
      5. Close the tab. Nothing is typed into the form during Prepare.
-3. **Answers:** `crewdeck jobs draft <role id> --brief "$T/brief.json"` answers what the profile and memory already know
+3. **Answers:** `crewdeck jobs draft <role id> --brief <T>/brief.json` answers what the profile and memory already know
    (stored as approved, with their sources) and writes a brief for the rest. If the brief lists fields for you, read it
    (`prompt`, `schema`, `posting`), follow its rules exactly, write `{ "answers": [ … ] }` matching `schema` to
-   `$T/draft.json` and run `crewdeck jobs draft <role id> --answers "$T/draft.json"`. The citation check stores what the
+   `<T>/draft.json` and run `crewdeck jobs draft <role id> --answers <T>/draft.json`. The citation check stores what the
    facts support and turns everything else into a **first-time question** for the user. Never guess to avoid a question.
 4. **Resume:** read `me/career.md` (sections, facts, skills) and the posting. Choose facts by id, most relevant first,
    within each section's `max_bullets`, and write
-   `{ "sections": { "<section id>": ["<fact id>", …] }, "skills": [ … ] }` to `$T/variant.json`; then
-   `crewdeck jobs resume <role id> --variant-file "$T/variant.json"`. On "N pages; max_pages … is M", drop the least
+   `{ "sections": { "<section id>": ["<fact id>", …] }, "skills": [ … ] }` to `<T>/variant.json`; then
+   `crewdeck jobs resume <role id> --variant-file <T>/variant.json`. On "N pages; max_pages … is M", drop the least
    relevant facts and run it again; on validation errors, fix the ids it names. Facts are never reworded.
-5. One line on why it fits, in your words, to `$T/why.txt`: `crewdeck jobs event add <role id> --kind why --detail-file "$T/why.txt"`.
+5. One line on why it fits, in your words, to `<T>/why.txt`: `crewdeck jobs event add <role id> --kind why --detail-file <T>/why.txt`.
 6. `crewdeck jobs status <role id> prepared`.
 
 ## apply: the user clicked Apply
@@ -110,12 +109,12 @@ with the reason). The click is the user's go-ahead to **fill this one form**; su
 2. Progress "Opening the application". Open a **new tab in the browser pane**, next to Crewdeck's:
    - LinkedIn Easy Apply (`apply_kind: easy`): the posting (`url`) in the user's own signed-in LinkedIn, then **Easy Apply**.
    - Any other role: `apply_url` when set; otherwise the posting, then its "Apply" button to the company's form. Record a
-     new form address with `crewdeck jobs role <role> --apply-url-file "$T/apply-url.txt"`.
+     new form address with `crewdeck jobs role <role> --apply-url-file <T>/apply-url.txt`.
    - Asked again after `needs you`: the form tab is still open; continue from the page it is on.
 3. On each page of the form:
-   1. Read every question (label, kind, required, options) and write them to `$T/fields.json` with the Write tool as
-      `[{ "label": …, "type": …, "required": …, "options": […] }]`; write the tab's address to `$T/page-url.txt`.
-   2. `crewdeck jobs fill-plan --request <id> --fields-file "$T/fields.json" --page-url-file "$T/page-url.txt"` prints
+   1. Read every question (label, kind, required, options) and write them to `<T>/fields.json` with the Write tool as
+      `[{ "label": …, "type": …, "required": …, "options": […] }]`; write the tab's address to `<T>/page-url.txt`.
+   2. `crewdeck jobs fill-plan --request <id> --fields-file <T>/fields.json --page-url-file <T>/page-url.txt` prints
       the plan: per label `fill`, `select`, `choose`, `upload` or `skip` (with a reason). A `copy` plan (the Easy Apply
       daily cap, a copy-only host) → stop: `request fail` with its reason.
    3. Fill **exactly the plan**, nothing else: `fill` types the value, `select` picks the option, `choose` clicks the
@@ -125,7 +124,7 @@ with the reason). The click is the user's go-ahead to **fill this one form**; su
    4. Re-read the page and fix anything that didn't take, with the plan's values only.
    5. A **required** question the plan skips because it has no answer (one Prepare didn't see): write its label (and
       options) to files and record it with
-      `crewdeck jobs learn <role> --label-file "$T/label.txt" --options-file "$T/options.txt" --required`, then close the
+      `crewdeck jobs learn <role> --label-file <T>/label.txt --options-file <T>/options.txt --required`, then close the
       request `done` with `needs you: <the question>`. Stop on this page and leave the tab open. When the user answers on
       the Jobs page (remembered for every later form), Crewdeck sends `apply` again and you continue here.
    6. Progress "Step 2 of 4: filled 6 fields".
@@ -144,16 +143,16 @@ with the reason). The click is the user's go-ahead to **fill this one form**; su
 ## improve: "Ask Claude" on one answer
 Payload `{ role, field_id, question, instruction }`; `context.field` has the label, kind, options and current text.
 1. The instruction is the user's; follow it within the facts. Read `me/career.md`, the user's style rules in
-   `jobs/memory.md` (`kind: style`) and, for the posting, `crewdeck jobs draft <role> --brief "$T/brief.json"` (it never
+   `jobs/memory.md` (`kind: style`) and, for the posting, `crewdeck jobs draft <role> --brief <T>/brief.json` (it never
    changes an answer the user approved or edited).
-2. Write the new text to `$T/answer.txt` and its claims to `$T/claims.json` as
+2. Write the new text to `<T>/answer.txt` and its claims to `<T>/claims.json` as
    `[{ "text": …, "about": "me" | "company", "fact_ids": ["<fact id>" | "m-N" | "profile:<key>" | "posting"] }]`, then
-   `crewdeck jobs answer --request <id> --text-file "$T/answer.txt" --claims-file "$T/claims.json"`.
+   `crewdeck jobs answer --request <id> --text-file <T>/answer.txt --claims-file <T>/claims.json`.
 3. Refused (a claim no fact supports) → fix the claim or drop it. If the instruction needs a fact the user never gave,
    `request fail`: "I need a fact for that: <what>; tell me and I'll remember it".
 4. Close `done`: "Rewrote <question>: <first words>…".
 
 ## Also in this session
 - "Not interested" said in chat about a role: write the user's words to a file and run
-  `crewdeck jobs not-interested <role> --reason-file "$T/reason.txt"` (optionally `--title-words-file`).
+  `crewdeck jobs not-interested <role> --reason-file <T>/reason.txt` (optionally `--title-words-file`).
 - Anything the user asks you to remember: the **crewdeck-memory** skill.

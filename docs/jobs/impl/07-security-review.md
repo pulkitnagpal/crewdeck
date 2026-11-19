@@ -53,4 +53,49 @@ A process running as the user (including a prompt-injected Claude session with B
 | E7 | low | CI leak key visible to all tests; actions unpinned | Leak scan as its own step with the secret; actions pinned by SHA | B |
 
 ## Done
-(filled in by the passes)
+
+### Pass A (2026-11-19)
+
+Research first (no guesses):
+- **SilverBullet 2.12.1** (the installed binary, run only with a temp space): `SB_UNIX_SOCKET` is supported in `--single`
+  mode and then no TCP port is opened at all; `SB_SHELL_BACKEND=off` answers `POST /.shell` with "Shell commands are
+  disabled". `SB_AUTH_TOKEN`/`SB_USER` exist but a socket is stronger (no port for pages or rebinding at all). Socket
+  paths must stay under ~100 bytes (`SUN_LEN`).
+- **Backlog.md 1.55.3** (`backlog browser --help` and the bundled source in the binary): `Bun.serve({ port, hostname:
+  "127.0.0.1", routes })`, no Unix socket option, no auth, no Host/Origin check, `POST /api/tasks` parses the body
+  whatever its type.
+- **Claude Code sandbox** (code.claude.com/docs/en/sandboxing, settings, permissions, schemastore schema): `sandbox.enabled`,
+  `allowUnsandboxedCommands: false` (ignores `dangerouslyDisableSandbox`), `failIfUnavailable`, `excludedCommands` match
+  the call's text (`cmd *`; a `cd`, redirect or `$(…)` keeps the call sandboxed), `network.allowedDomains`/`deniedDomains`
+  (deny wins in every mode), `allowLocalBinding` off (macOS loopback), `filesystem.denyRead`/`denyWrite` with plain
+  absolute paths. `strictAllowlist` (hard block instead of a prompt for unlisted hosts) is ignored in project settings:
+  the README tells users to set it in `~/.claude/settings.json`.
+
+| ID | What was done | Tests |
+|---|---|---|
+| W1 | `src/services.ts`: SilverBullet runs `--single <vault>` with `SB_UNIX_SOCKET=~/.crewdeck/run/notes.sock` (0700 folder; a private temp folder when the path is too long; a stale socket removed before each start) and `SB_SHELL_BACKEND=off`; `src/proxy.ts` targets a socket for HTTP and WebSocket upgrades | `test/hardening.test.ts`: socket folder, proxy over a socket (pages, POST, WebSocket, Origin/Host checks), **the real binary** (page through the proxy, `/.shell` disabled and nothing runs, no TCP listener; skips with a message when SilverBullet isn't installed) |
+| W2 | Each board's internal port is chosen by the system per launch (`freePort`), not `boardPort + 100`; `/api/state` shows only public proxy ports. Residual risk documented in the README; upstream issue draft below | `test/hardening.test.ts` (W2) |
+| W3/C1 | Generated `.claude/settings.json`: `sandbox` (enabled, failIfUnavailable, no unsandboxed retry, excluded only `~/.crewdeck/bin/crewdeck jobs\|request\|progress *`, no domains, loopback names denied, no local binding or Unix sockets, denyRead token and feature code, denyWrite config/token/queue/wrapper/run/tracker/state/providers/guard rails), `ask` for `jobs init`, deny rules for nc/socat/ssh/script/expect/osascript/open/xdotool. A managed wrapper `~/.crewdeck/bin/crewdeck` makes the CLI one plain word. `fromOwnPage` requires `Sec-Fetch-Site: same-origin`; `ownRead` refuses a browser without same-origin/none. Risky switches: `src/jobs/confirm.ts` native dialog (osascript with the text as argv, zenity, kdialog; timeout 2 min; never under `node --test`), one dialog at a time; no dialog → a one-time code on the page for `crewdeck jobs features …` in a terminal (HMAC under the token, 10 min, single use, 3 tries); the CLI also needs the dialog or that code | `test/jobs/setup.test.ts` (settings checked against a subset of the schemastore schema, `test/fixtures/claude-code-settings.subset.schema.json`), `test/jobs/confirm.test.ts`, `test/jobs/api.test.ts` (yes/no/unavailable, one dialog at a time, off/lower never ask), `test/server.test.ts` (W3) |
+| W4 | `POST /api/hello` answers a nonce with `sha256(crewdeck-proof:<token>:<nonce>:<port>)` before any token is sent; the bridge (`verified()`) and the CLI (`verifyServer`) check it first and re-read the token once on mismatch; `crewdeck up` rotates the token | `test/hardening.test.ts` (a squatter and a relay to the real server on another port never see the token; rotation), `test/server.test.ts` (W4), `test/jobs/skills.test.ts` (the bridge sends hello without the token, the token only after `verified`) |
+| W5 | show/progress/done/fail need `cwd` and `laneFor(cwd) === request.lane` (links resolved: macOS `/var` vs `/private/var`); the CLI sends `process.cwd()`; progress no longer marks presence | `test/server.test.ts` (W5), `test/requests.test.ts` (C4 presence) |
+| W6–W10 | `Object.hasOwn` for commands, static files, vendor map, features, preference fields, hints; `readJson` refuses non-objects (400); `ownRead` on `/api/state` and `/api/requests`; SSE only for a same-origin browser or the token, HEAD never streams; caps per lane **and kind** | `test/server.test.ts` (W6–W8), `test/jobs/api.test.ts` (W6, W9), `test/requests.test.ts` (W10) |
+| C4 | Lease: picked with no claim/progress from its session for 15 min goes back (tries+1, failed after 3), checked on claims, adds and the Jobs timer; presence = a claim in the last 10 s, the busy bridge claims with `take: false` every 4 s; **Cancel** on the apply panel (waiting and filling, with a "no session" hint); the bridge puts back what a previous load held on `session.start` | `test/requests.test.ts` (C4 ×3), `test/jobs/api.test.ts` (Cancel), `test/jobs/skills.test.ts` (heartbeat, requeue on start) |
+| C12 | The Jobs API re-reads `jobs.features` from `config.yaml` (by mtime and size) on every view, action and `request show` context | `test/jobs/api.test.ts` (C11/C12) |
+| C11 | "Easy Apply filling is on, but its forms per day is 0"; switching Easy Apply (or drafts) on with its number at 0 sets 5 (10) in the same confirmed change | `test/jobs/api.test.ts`, `test/jobs/confirm.test.ts` |
+| E3 | Skills, the managed CLAUDE.md, the vault CLAUDE.md and the bridge prompt: untrusted text goes into files with the Write tool, never a heredoc or `echo`; `<T>` literal paths; one plain `crewdeck` call per Bash call (what the sandbox lets out) | `test/jobs/skills.test.ts` (E3; the command lint still covers every line) |
+| C9 (skill) | jobs-workspace's `needs` path runs `crewdeck jobs pick --role <role id> --request <id>`: the "Add it anyway" override comes from the request's payload. **Pass B** adds the code in `commands.ts` that reads `force` from that payload (today `pick` ignores `--request`, so nothing is forced) | `test/jobs/skills.test.ts` (C9) |
+
+Residual risks (also in the README): any process running as the user outside the sandbox can forge page headers and
+reach the board ports; a web page spraying every local port could still create a board task (Backlog.md has no
+socket or auth); the sandbox prompts (rather than hard-blocks) for unlisted hosts unless the user sets
+`strictAllowlist` in their own settings; the excluded `crewdeck` wrapper runs unsandboxed with any `jobs` arguments
+(it can only do what the CLI and agent endpoints allow; `jobs init` asks); sessions outside the jobs workspace have no
+sandbox from Crewdeck; Linux needs bubblewrap and socat or Bash refuses to run in the workspace.
+
+Upstream issue draft (Backlog.md, not filed: the owner decides):
+> **`backlog browser`: protect the local API from other sites.** The browser server binds 127.0.0.1 with no Host or
+> Origin check and no auth, so any web page can `fetch('http://127.0.0.1:6420/api/tasks', { method: 'POST', mode:
+> 'no-cors', body: '{"title":"…"}' })` and DNS-rebinding pages can read tasks. Please (1) refuse requests whose `Host`
+> isn't `localhost`/`127.0.0.1`/`[::1]`, (2) refuse state-changing requests with a foreign `Origin` or
+> `Sec-Fetch-Site: cross-site`, and ideally (3) support `--unix-socket <path>` (Bun.serve's `unix` option) or a
+> per-launch token for embedders that proxy it.

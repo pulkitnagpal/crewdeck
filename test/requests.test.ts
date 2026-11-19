@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Requests, laneFor } from '../src/requests.ts';
+import { LEASE_MS, Requests, laneFor } from '../src/requests.ts';
 
 test('requests: claimed once per lane, closed once, put back, failed after 3 tries', () => {
   const q = new Requests(join(mkdtempSync(join(tmpdir(), 'cdq-')), 'requests.json'));
@@ -76,12 +76,59 @@ test('jobs lane: typed requests only, deduped while open (payload key order too)
   assert.throws(() => q.progress(a.id, 'late'), /not open/);
   assert.notEqual(q.add('jobs', 'Apply to a role', { kind: 'apply', ref: 'abcdefabcdef', payload: { role: 'abcdefabcdef', x: 1 } }).id, a.id, 'closed ones are not reused');
   assert.equal(q.latest('jobs', 'apply', 'abcdefabcdef')!.status, 'new');
-  // Caps hold for typed requests too.
-  for (let i = 0; q.ofLane('jobs').filter((x) => x.status === 'new').length < 20; i++) q.add('jobs', 'Find jobs', { kind: 'find', payload: { count: (i % 20) + 1 } });
-  assert.throws(() => q.add('jobs', 'Set up', { kind: 'setup', payload: {} }), /too many open/);
+  // Caps hold for typed requests too, per kind (W10): twenty open finds don't block an Apply.
+  for (let i = 0; q.ofLane('jobs', 'find').filter((x) => x.status === 'new').length < 20; i++) q.add('jobs', 'Find jobs', { kind: 'find', payload: { count: (i % 20) + 1 } });
+  assert.throws(() => q.add('jobs', 'Find jobs', { kind: 'find', payload: { count: 99 } }), /too many open find requests/);
+  assert.ok(q.add('jobs', 'Set up', { kind: 'setup', payload: {} }).id, 'another kind still queues');
+  assert.ok(q.add('jobs', 'Apply to a role', { kind: 'apply', ref: 'fedcbafedcba', payload: { role: 'fedcbafedcba' } }).id, 'Apply has its own cap');
 });
 
-test('presence: a claim (or progress) in the last 10 s, or a request being worked on; reconcile closes applied/skipped roles', () => {
+test('C4: presence is a claim in the last 10 s (a picked request or progress alone is not); a busy claim takes nothing', () => {
+  const q = new Requests(join(mkdtempSync(join(tmpdir(), 'cdq-')), 'requests.json'));
+  const a = q.add('jobs', 'Apply', { kind: 'apply', ref: 'aaaaaaaaaaaa', payload: { role: 'aaaaaaaaaaaa' } });
+  assert.deepEqual(q.claim('jobs', 's1').map((r) => r.id), [a.id]);
+  const b = q.add('jobs', 'Find', { kind: 'find', payload: { count: 3 } });
+  (q as any).seen.clear();
+  assert.equal(q.presence('jobs').connected, false, 'holding a picked request is not presence');
+  q.progress(a.id, 'Step 1 of 3');
+  assert.equal(q.presence('jobs').connected, false, 'progress is not presence');
+  assert.deepEqual(q.claim('jobs', 's1', false), [], 'a busy session\'s heartbeat takes nothing');
+  assert.equal(q.presence('jobs').connected, true);
+  assert.equal(q.get(b.id)!.status, 'new');
+});
+
+test('C4: a lease: picked with no word from its session for 15 min goes back (tries + 1, failed after 3); heartbeats and progress renew it', () => {
+  const q = new Requests(join(mkdtempSync(join(tmpdir(), 'cdq-')), 'requests.json'));
+  const a = q.add('jobs', 'Apply', { kind: 'apply', ref: 'aaaaaaaaaaaa', payload: { role: 'aaaaaaaaaaaa' } });
+  const t0 = Date.now();
+  q.claim('jobs', 's1');
+  assert.deepEqual(q.expire(t0 + LEASE_MS - 1000), [], 'still within the lease');
+  q.claim('jobs', 's1', false); // heard from, now
+  assert.deepEqual(q.expire(Date.now() + LEASE_MS - 1000), []);
+  assert.deepEqual(q.expire(Date.now() + LEASE_MS + 1000), [a.id], 'the session went quiet: back to the queue');
+  assert.equal(q.get(a.id)!.status, 'new');
+  assert.equal(q.get(a.id)!.tries, 1);
+  q.claim('jobs', 's2'); q.expire(Date.now() + LEASE_MS + 1000);
+  q.claim('jobs', 's3'); q.expire(Date.now() + LEASE_MS + 1000);
+  assert.equal(q.get(a.id)!.status, 'failed', 'after three tries it fails instead of looping');
+  assert.match(q.get(a.id)!.result!, /stopped answering/);
+  assert.equal(q.get(a.id)!.payload, undefined);
+});
+
+test('C4: Cancel closes an open request of its lane as failed; nothing else', () => {
+  const q = new Requests(join(mkdtempSync(join(tmpdir(), 'cdq-')), 'requests.json'));
+  const a = q.add('jobs', 'Apply', { kind: 'apply', ref: 'aaaaaaaaaaaa', payload: { role: 'aaaaaaaaaaaa' } });
+  const p = q.add('project:x', 'do a thing');
+  q.claim('jobs', 's1');
+  assert.throws(() => q.cancel(p.id, 'jobs'), /not open/, 'another lane');
+  assert.equal(q.cancel(a.id, 'jobs').status, 'failed');
+  assert.equal(q.get(a.id)!.result, 'Cancelled on the page');
+  assert.equal(q.get(a.id)!.payload, undefined);
+  assert.throws(() => q.cancel(a.id, 'jobs'), /not open/);
+  assert.throws(() => q.finish(a.id, 'done late'), /not open/, 'Claude closing it afterwards is refused');
+});
+
+test('presence: a claim in the last 10 s; reconcile closes applied/skipped roles', () => {
   const q = new Requests(join(mkdtempSync(join(tmpdir(), 'cdq-')), 'requests.json'));
   assert.deepEqual(q.presence('jobs'), { connected: false, seen: null });
   q.claim('jobs', 's1');

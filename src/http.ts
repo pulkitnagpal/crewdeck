@@ -26,8 +26,13 @@ export function sameSecret(given: unknown, expected: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** What the server answers to a bridge's nonce, so the bridge knows it reached Crewdeck and not a port squatter. */
-export const proofFor = (token: string, nonce: string) => createHash('sha256').update(`crewdeck-proof:${token}:${nonce}`).digest('hex');
+/**
+ * What the server answers to a client's nonce (POST /api/hello, before any token is sent), so the bridge and the CLI know
+ * they reached Crewdeck and not a port squatter. The port is in it: a squatter relaying the nonce to Crewdeck on another
+ * port gets a proof for that port, which the client refuses.
+ */
+export const proofFor = (token: string, nonce: string, port: number) => createHash('sha256').update(`crewdeck-proof:${token}:${nonce}:${port}`).digest('hex');
+export const NONCE = /^[A-Za-z0-9_-]{16,128}$/;
 
 export const SECURITY_HEADERS: Record<string, string> = {
   'x-content-type-options': 'nosniff',
@@ -72,7 +77,11 @@ export function readJson(req: Req): Promise<any> {
     });
     req.on('end', () => {
       const s = Buffer.concat(chunks).toString('utf8');
-      try { ok(s ? JSON.parse(s) : {}); } catch { bad(new HttpError(400, 'bad json')); }
+      let v: unknown;
+      try { v = s ? JSON.parse(s) : {}; } catch { return bad(new HttpError(400, 'bad json')); }
+      // Every endpoint takes a map: null, a list or a number is the caller's mistake, never a 500.
+      if (!v || typeof v !== 'object' || Array.isArray(v)) return bad(new HttpError(400, 'a JSON object is expected'));
+      ok(v);
     });
     req.on('error', () => bad(new HttpError(400, 'bad request')));
   });
@@ -80,22 +89,32 @@ export function readJson(req: Req): Promise<any> {
 
 const isJson = (req: Req) => /^application\/json\b/i.test(String(req.headers['content-type'] ?? ''));
 
-/** A call from this very page: exact own origin, a same-origin fetch, a JSON body (not a form another site can post). */
+/**
+ * A call from this very page: exact own origin, a same-origin fetch (every browser Crewdeck supports sends
+ * Sec-Fetch-Site), a JSON body (not a form another site can post). A local process can forge all three: the jobs
+ * workspace's sandbox keeps Claude's shell off loopback, and risky switches also need a native confirmation (README).
+ */
 export function fromOwnPage(req: Req): boolean {
   const origin = req.headers.origin;
   if (!origin || !ownOrigins(req.socket.localPort ?? 0).includes(origin)) return false;
-  const site = req.headers['sec-fetch-site'];
-  if (site !== undefined && site !== 'same-origin') return false;
+  if (req.headers['sec-fetch-site'] !== 'same-origin') return false;
   return isJson(req);
 }
 
 /** A call from an agent (bridge mod, CLI): the token, and no browser Origin. */
 export const fromAgent = (req: Req, token: string) => req.headers.origin === undefined && sameSecret(req.headers['x-crewdeck-token'], token);
 
-/** A GET of the user's data: from this origin's own pages, or typed in the address bar; never fetched by another site. */
+/** Sent by a browser: browsers add Fetch Metadata (and an Origin on posts); tools like curl or the CLI send neither. */
+export const fromBrowser = (req: Req) => req.headers['sec-fetch-site'] !== undefined || req.headers['sec-fetch-mode'] !== undefined || req.headers['sec-fetch-dest'] !== undefined || req.headers.origin !== undefined;
+
+/**
+ * A GET of the user's data: from this origin's own pages, or typed in the address bar; never fetched by another site.
+ * A browser must say so with Sec-Fetch-Site; a request without any Fetch Metadata is a local tool (the CLI, curl).
+ */
 export function ownRead(req: Req): boolean {
   const site = req.headers['sec-fetch-site'];
-  return site === undefined || site === 'same-origin' || site === 'none';
+  if (site === undefined) return !fromBrowser(req);
+  return site === 'same-origin' || site === 'none';
 }
 
 /** The Jobs page's CSP: like the shell's, plus its one inline importmap (by hash) and same-origin frames (the resume). */

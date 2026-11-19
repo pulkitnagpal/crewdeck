@@ -4,15 +4,17 @@
 //
 // Who may call what (design D16):
 // - page actions (POST /api/jobs/action/*): this origin's own page only (exact Origin, same-origin fetch, JSON). They are
-//   the only way a request reaches the jobs lane, each checked for its kind, and the only way (besides a terminal) a
-//   risky switch changes.
-// - reads (GET /api/jobs/*): never for another site (no CORS headers; Sec-Fetch-Site other than same-origin/none refused).
+//   the only way a request reaches the jobs lane, each checked for its kind. A risky switch also needs a native dialog
+//   the user clicks (or, with none, a one-time code typed in a terminal): headers alone can't prove a human (confirm.ts).
+// - reads (GET /api/jobs/*): never for another site (no CORS headers; a browser must send Sec-Fetch-Site same-origin or
+//   none). The live stream also needs a same-origin browser or the token, so a local process can't take its slots.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { execFile, spawn } from 'node:child_process';
-import { type FSWatcher, existsSync, readFileSync, realpathSync, watch } from 'node:fs';
+import { type FSWatcher, existsSync, readFileSync, realpathSync, statSync, watch } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
 import { basename, join, sep } from 'node:path';
-import { type Config, CONFIG_PATH, HOME, REPO, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, featureValue, setFeature } from '../config.ts';
-import { HttpError, SECURITY_HEADERS, fromOwnPage, json, ownRead, readJson, send } from '../http.ts';
+import { type Config, CONFIG_PATH, HOME, REPO, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, featureValue, normaliseJobs, setFeature } from '../config.ts';
+import { HttpError, SECURITY_HEADERS, fromAgent, fromOwnPage, json, ownRead, readJson, send } from '../http.ts';
 import { type JobKind, type Request, type Requests, RequestError, isOpen } from '../requests.ts';
 import { type Ctx, makeCtx, notesOf, todayOf } from './ctx.ts';
 import { type Db, ROLE_ID, getRole, openJobsDb } from './db.ts';
@@ -26,7 +28,8 @@ import { learnField } from './kb/learn.ts';
 import { markApplied, notInterested } from './pipeline/apply.ts';
 import { KNOWLEDGE_TABS, type KnowledgeTab, applicationsView, applyMode, canApprove, copyModel, knowledgeView, resumeFileName, resumePath, todayView } from './views.ts';
 import { NEEDS_YOU, applyPanel } from './panel.ts';
-import { FEATURE_INFO, RISK } from './features.ts';
+import { FEATURE_INFO, RISK, confirmText, featureChanges, widens } from './features.ts';
+import { type Confirm, codeFile, issueCode, nativeConfirm } from './confirm.ts';
 import { findBrowser, installHint } from './browser.ts';
 import { providersStatus } from './providers.ts';
 import { parseEvery, readSourcesState, writeSourcesState } from './sources.ts';
@@ -48,6 +51,12 @@ export type JobsApiOptions = {
   browser?: () => { name: string; path: string } | null;
   /** The sourcing timer (tests replace the child run and the delays). */
   sources?: Partial<Pick<SchedulerOptions, 'run' | 'firstDelayMs' | 'everyMs' | 'ready'>>;
+  /** The agent token (the live stream accepts it; the terminal fallback's code is keyed with it). */
+  token?: string;
+  /** The native yes/no dialog for risky switches (tests replace it). */
+  confirm?: Confirm;
+  /** Where the terminal fallback's one-time code is kept (default ~/.crewdeck/feature-code.json). */
+  codeFile?: string;
 };
 
 const LANE = 'jobs';
@@ -96,7 +105,7 @@ export function checkLink(raw: unknown, features: Pick<JobsFeatures, 'linkedin_l
 
 /** A value from the Preferences form as the text `setFields` types by the schema (lists and maps as YAML flow). */
 function prefRaw(path: string, v: unknown): string {
-  const kind = PREF_FIELDS[path];
+  const kind = Object.hasOwn(PREF_FIELDS, path) ? PREF_FIELDS[path] : undefined;
   if (!kind) throw new HttpError(400, `${path} is not a field the Jobs page edits`);
   if (kind === 'list' || kind === 'langs') {
     if (!Array.isArray(v)) throw new HttpError(400, `${path}: give a list`);
@@ -119,7 +128,27 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   const db: Db = openJobsDb(c.jobs.home, { server: true });
   const ctx: Ctx = makeCtx({ db, vault: c.vault, home: c.jobs.home, features: c.jobs.features });
   const browser = (o.browser ?? (() => findBrowser(c.jobs.browser)))();
+  const confirm = o.confirm ?? nativeConfirm();
+  let confirming = false;
   let selected: string | null = null;
+
+  /**
+   * The switches as config.yaml has them now (a terminal may have changed them since start): re-read on every view and
+   * action when the file changed, so the page, the plans and the checks never act on a stale switch.
+   */
+  let configStamp = '';
+  function refreshFeatures() {
+    let stamp: string;
+    try { const st = statSync(configPath); stamp = `${st.mtimeMs}:${st.size}`; } catch { return; }
+    if (stamp === configStamp) return;
+    try {
+      const features = normaliseJobs((parseYaml(readFileSync(configPath, 'utf8')) as any)?.jobs).features;
+      c.jobs.features = features;
+      ctx.features = { ...features };
+      configStamp = stamp;
+    } catch { /* a half-written or broken file: keep the last good switches */ }
+  }
+  refreshFeatures();
 
   // ---- live refresh: DB (data_version), notes (fs.watch), the queue, presence, the server's own writes ----
   const clients = new Set<ServerResponse>();
@@ -147,6 +176,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       } catch { /* busy: next tick */ }
       const now = requests.presence(LANE).connected;
       if (now !== wasConnected) { wasConnected = now; emit('presence'); }
+      try { requests.expire(); } catch { /* the next tick tries again */ }
     }, o.pollMs ?? 500),
     setInterval(() => armWatchers(), 5000),
     setInterval(() => { for (const res of clients) { try { res.write(': ping\n\n'); } catch {} } }, 25_000),
@@ -426,14 +456,36 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       }
       return { ok: true, changed: out.filter((r) => r.changed).map((r) => r.path) };
     },
-    feature: (b) => {
+    feature: async (b) => {
       const name = String(b.name ?? '');
-      if (!(name in FEATURE_DEFAULTS)) throw new HttpError(400, `unknown feature ${name}`);
+      if (!Object.hasOwn(FEATURE_DEFAULTS, name)) throw new HttpError(400, `unknown feature ${name}`);
       const value = featureValue(name as keyof JobsFeatures, b.value);
-      setFeature(name, value, configPath);
-      c.jobs.features = { ...c.jobs.features, [name]: value };
-      ctx.features = { ...ctx.features, [name]: value };
-      return { ok: true, name, value };
+      const changes = featureChanges(name as keyof JobsFeatures, value, ctx.features);
+      if (widens(changes, ctx.features)) {
+        // A human must say yes outside the page: a native dialog, or else a code for their own terminal.
+        if (confirming) throw new HttpError(409, 'A confirmation is already open on your screen: answer it first');
+        confirming = true;
+        let answer;
+        try { answer = await confirm('Crewdeck', confirmText(changes)); } finally { confirming = false; }
+        if (answer === 'no') throw new HttpError(409, 'Not changed: the confirmation was cancelled');
+        if (answer === 'unavailable') {
+          if (!o.token) throw new HttpError(409, 'No confirmation dialog on this system: run crewdeck jobs features in your own terminal');
+          const code = issueCode(o.token, name, value, o.codeFile ?? codeFile());
+          const word = typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value);
+          return { ok: false, name, value, terminal: { command: `crewdeck jobs features ${name} ${word}`, code: code.code, expires: code.expires } };
+        }
+        refreshFeatures(); // the dialog took a while: apply to the switches as they are now
+      }
+      for (const ch of changes) setFeature(ch.name, ch.value, configPath);
+      refreshFeatures();
+      return { ok: true, name, value, also: changes.slice(1) };
+    },
+    /** Stop a request the page shows (waiting, or picked by a session that is gone): closed as cancelled. */
+    cancel: (b) => {
+      const id = Number(b.request);
+      if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'unknown request');
+      const r = requests.cancel(id, LANE);
+      return { ok: true, request: r.id, status: r.status };
     },
     reveal: async (b) => {
       if (platform !== 'darwin') throw new HttpError(404, 'Show in Finder is only on macOS');
@@ -459,6 +511,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   async function handle(req: IncomingMessage, res: ServerResponse, url: URL) {
     const path = url.pathname;
     try {
+      refreshFeatures();
       if (req.method === 'POST') {
         const m = /^\/api\/jobs\/action\/([A-Za-z]+)$/.exec(path);
         if (!m || !Object.hasOwn(actions, m[1])) throw new HttpError(404, 'not found');
@@ -471,7 +524,12 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method not allowed');
       if (!ownRead(req)) throw new HttpError(403, 'forbidden');
-      if (path === '/api/jobs/events') return events(req, res);
+      if (path === '/api/jobs/events') {
+        // A slot only for the page itself (a same-origin browser fetch) or an agent with the token; HEAD never streams.
+        if (req.headers['sec-fetch-site'] !== 'same-origin' && !fromAgent(req, o.token ?? '')) throw new HttpError(403, 'forbidden');
+        if (req.method === 'HEAD') { res.writeHead(200, { ...SECURITY_HEADERS, 'content-type': 'text/event-stream; charset=utf-8' }); return res.end(); }
+        return events(req, res);
+      }
       const resume = /^\/api\/jobs\/resume\/([^/]+)$/.exec(path);
       if (resume) {
         const file = resumeFile(resume[1]);
@@ -513,6 +571,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
 
   function contextFor(r: Request) {
     if (r.lane !== LANE || !r.kind) return undefined;
+    refreshFeatures();
     if (r.kind === 'find') return { daily_picks: notesOf(ctx).search.data.schedule.daily_picks };
     if ((r.kind !== 'apply' && r.kind !== 'improve') || !r.ref || !ROLE_ID.test(r.ref)) return {};
     let role;

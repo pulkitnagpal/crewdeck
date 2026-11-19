@@ -4,7 +4,7 @@
 //
 // Two shapes share the queue: plain text from the Ask box (cockpit and project lanes), and typed requests (kind, ref,
 // payload) that only the Jobs page's own actions create, after checking them (design D4, D16).
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { HOME, type Config } from './config.ts';
 
@@ -22,10 +22,13 @@ export type Typed = { kind: JobKind; ref?: string; payload?: Record<string, unkn
 const LANE = /^(cockpit|jobs|project:[a-z0-9][a-z0-9-]{0,39})$/;
 const REF = /^[A-Za-z0-9_-]{1,64}$/;
 const now = () => new Date().toISOString();
+/** Open requests per lane and kind (plain text counts as its own kind): a pile of links never blocks an Apply. */
 export const MAX_OPEN_PER_LANE = 20;
 export const MAX_ADDS_PER_MINUTE = 30;
 export const MAX_PROGRESS = 50;
 export const SEEN_MS = 10_000;
+/** A picked request with no word from Claude (claim, progress) for this long goes back to the queue (a crashed session). */
+export const LEASE_MS = 15 * 60_000;
 const KEEP_CLOSED = 500;
 const KEEP_CLOSED_DAYS = 30;
 /** A queue rule the caller broke (bad lane, empty, limits, a closed request): the caller's to fix, so a 400. */
@@ -51,6 +54,7 @@ export class Requests {
   private file: string;
   private adds = new Map<string, number[]>(); // lane → times of recent adds (rate limit)
   private seen = new Map<string, { at: number; by: string }>(); // lane → last claim (presence)
+  private heard = new Map<number, number>(); // picked request → when its session was last heard from (the lease; memory only)
   private listeners = new Set<() => void>();
   constructor(file = join(HOME, 'requests.json')) {
     this.file = file;
@@ -70,6 +74,7 @@ export class Requests {
     renameSync(tmp, this.file); // atomic: a crash never leaves half a file
     for (const fn of this.listeners) { try { fn(); } catch { /* a listener never breaks the queue */ } }
   }
+
   list(limit = 30) { return this.items.slice(-limit).reverse(); }
   get(id: number): Request | undefined { return this.items.find((x) => x.id === id); }
   /** Requests of a lane (newest first), optionally only one kind. */
@@ -93,37 +98,76 @@ export class Requests {
       const same = this.items.find((r) => isOpen(r) && r.lane === lane && r.kind === typed.kind && (r.ref ?? '') === (typed.ref ?? '') && canonical(r.payload ?? {}) === key);
       if (same) return same;
     }
+    this.expire();
     const t = String(text ?? '').trim().slice(0, 2000);
     if (!t) throw new RequestError('empty request');
-    if (this.items.filter((r) => r.lane === lane && isOpen(r)).length >= MAX_OPEN_PER_LANE) throw new RequestError(`too many open requests for ${lane}: let Claude finish some first`);
-    const recent = (this.adds.get(lane) ?? []).filter((x) => Date.now() - x < 60_000);
+    const kind = typed?.kind;
+    if (this.items.filter((r) => r.lane === lane && r.kind === kind && isOpen(r)).length >= MAX_OPEN_PER_LANE) throw new RequestError(`too many open ${kind ?? 'requests'} requests for ${lane}: let Claude finish some first`);
+    const rate = `${lane}\u0000${kind ?? ''}`;
+    const recent = (this.adds.get(rate) ?? []).filter((x) => Date.now() - x < 60_000);
     if (recent.length >= MAX_ADDS_PER_MINUTE) throw new RequestError('too many requests in a minute: slow down');
-    this.adds.set(lane, [...recent, Date.now()]);
+    this.adds.set(rate, [...recent, Date.now()]);
     const r: Request = { id: Math.max(0, ...this.items.map((x) => x.id)) + 1, lane, text: t, status: 'new', tries: 0, created: now(), updated: now() };
     if (typed) Object.assign(r, { kind: typed.kind, ...(typed.ref !== undefined ? { ref: typed.ref } : {}), payload: typed.payload ?? {} });
     this.items.push(r); this.save();
     return r;
   }
-  /** A session of this lane is alive (its bridge claimed, or Claude reported progress). */
+  /** A session of this lane is alive: its bridge claimed (a busy session's bridge claims without taking anything). */
   markSeen(lane: string, by = 'session') { this.seen.set(lane, { at: Date.now(), by }); }
-  /** Is a Claude session working this lane: seen in the last 10 s, or holding one of its requests (busy sessions don't claim). */
+  /**
+   * Is a Claude session working this lane: a claim in the last 10 s. A picked request alone doesn't say so: the session
+   * that took it may have crashed (the lease puts it back).
+   */
   presence(lane: string) {
     const s = this.seen.get(lane);
-    const working = this.items.some((r) => r.lane === lane && r.status === 'picked');
-    return { connected: working || (!!s && Date.now() - s.at < SEEN_MS), seen: s ? new Date(s.at).toISOString() : null };
+    return { connected: !!s && Date.now() - s.at < SEEN_MS, seen: s ? new Date(s.at).toISOString() : null };
   }
-  /** Atomically hand a lane's new requests to one session. */
-  claim(lane: string, by: string): Request[] {
+  /**
+   * Atomically hand a lane's new requests to one session; `take: false` is a busy session's heartbeat (presence only).
+   * The session's own picked requests count as heard from, so a long piece of work keeps its lease.
+   */
+  claim(lane: string, by: string, take = true): Request[] {
     this.markSeen(lane, by);
-    const out = this.items.filter((r) => r.lane === lane && r.status === 'new');
-    for (const r of out) { r.status = 'picked'; r.by = by; r.updated = now(); }
+    this.expire();
+    for (const r of this.items) if (r.lane === lane && r.status === 'picked' && r.by === by) this.heard.set(r.id, Date.now());
+    const out = take ? this.items.filter((r) => r.lane === lane && r.status === 'new') : [];
+    for (const r of out) { r.status = 'picked'; r.by = by; r.updated = now(); this.heard.set(r.id, Date.now()); }
     if (out.length) this.save();
     return out;
+  }
+  /**
+   * Leases: a picked request whose session hasn't been heard from (claim, progress) for 15 min goes back to the queue
+   * (tries + 1; failed after 3, like requeue). Called on every claim and add, and by the Jobs page's timer.
+   */
+  expire(at = Date.now()): number[] {
+    const back: number[] = [];
+    for (const r of this.items) {
+      if (r.status !== 'picked') continue;
+      const last = Math.max(this.heard.get(r.id) ?? 0, Date.parse(r.updated));
+      if (at - last < LEASE_MS) continue;
+      this.putBack(r, 'Claude stopped answering 3 times (the session closed or crashed): open a session and try again.');
+      back.push(r.id);
+    }
+    if (back.length) this.save();
+    return back;
+  }
+  private putBack(r: Request, failText: string) {
+    r.tries += 1; r.updated = now(); r.by = undefined; this.heard.delete(r.id);
+    if (r.tries >= 3) { r.status = 'failed'; r.result = failText; r.payload = undefined; }
+    else r.status = 'new';
+  }
+  /** The user stopped it on the page: closed as failed, whatever state it was in. */
+  cancel(id: number, lane: string): Request {
+    const r = this.items.find((x) => x.id === id);
+    if (!r || r.lane !== lane || !isOpen(r)) throw new RequestError(`request ${id} is not open`);
+    r.status = 'failed'; r.result = 'Cancelled on the page'; r.updated = now(); r.by = undefined; r.payload = undefined; this.heard.delete(id);
+    this.save();
+    return r;
   }
   finish(id: number, result: string, failed = false): Request {
     const r = this.items.find((x) => x.id === id);
     if (!r || !isOpen(r)) throw new RequestError(`request ${id} is not open`);
-    r.status = failed ? 'failed' : 'done'; r.result = String(result ?? '').slice(0, 1000); r.updated = now();
+    r.status = failed ? 'failed' : 'done'; r.result = String(result ?? '').slice(0, 1000); r.updated = now(); this.heard.delete(id);
     if (r.payload) r.payload = undefined; // the page's data has done its job (design §9)
     this.save();
     return r;
@@ -135,8 +179,7 @@ export class Requests {
     const t = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
     if (!t) throw new RequestError('empty progress line');
     r.progress = [...(r.progress ?? []), { at: now(), text: t }].slice(-MAX_PROGRESS);
-    r.updated = now();
-    this.markSeen(r.lane, r.by ?? 'session');
+    r.updated = now(); // progress renews the lease (updated); presence comes only from claims
     this.save();
     return r;
   }
@@ -145,9 +188,8 @@ export class Requests {
     const back: number[] = [];
     for (const r of this.items) {
       if (!ids.includes(r.id) || r.status !== 'picked' || r.by !== by) continue;
-      r.tries += 1; r.updated = now(); r.by = undefined;
-      if (r.tries >= 3) { r.status = 'failed'; r.result = 'Delivered 3 times without being finished: ask Claude about it in the chat.'; r.payload = undefined; }
-      else { r.status = 'new'; back.push(r.id); }
+      this.putBack(r, 'Delivered 3 times without being finished: ask Claude about it in the chat.');
+      if (r.status === 'new') back.push(r.id);
     }
     this.save();
     return back;
@@ -175,9 +217,12 @@ export class Requests {
  * inside a project still works Jobs); inside a project (or its worktrees) → that project; else cockpit.
  */
 export function laneFor(c: Config, cwd: string): string {
-  const dir = resolve(cwd);
+  // Compared as given and with links resolved (macOS /var is /private/var; a process's cwd is always the real path).
+  const dirs = [resolve(cwd), real(cwd)];
+  const inside = (root: string) => [root, real(root)].some((r) => dirs.some((d) => d === r || d.startsWith(r + sep)));
   const ws = c.jobs?.enabled ? c.jobs.workspace : '';
-  if (ws && (dir === ws || dir.startsWith(ws + sep))) return 'jobs';
-  const p = c.projects.find((x) => dir === x.path || dir.startsWith(x.path + sep));
+  if (ws && inside(ws)) return 'jobs';
+  const p = c.projects.find((x) => inside(x.path));
   return p ? `project:${p.name}` : 'cockpit';
 }
+const real = (p: string) => { try { return realpathSync(p); } catch { return resolve(p); } };

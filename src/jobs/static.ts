@@ -27,14 +27,14 @@ export function importmapHash(html: string): string {
 /** Serve one /jobs/… path; false when it isn't a Jobs file (the caller answers 404). */
 export function serveJobsStatic(path: string, res: ServerResponse): boolean {
   const rel = path === '/jobs/' ? 'index.html' : decodeURIComponent(path.slice('/jobs/'.length));
-  if (VENDOR[rel]) {
+  if (Object.hasOwn(VENDOR, rel)) {
     // Source maps are not served: drop the comment so the browser doesn't ask.
     const js = readFileSync(VENDOR[rel], 'utf8').replace(/\n\/\/# sourceMappingURL=\S+\s*$/, '\n');
     send(res, 200, js, TYPES['.mjs']);
     return true;
   }
   const file = normalize(join(WEB_JOBS, rel));
-  if (!file.startsWith(WEB_JOBS + sep) || !TYPES[extname(file)] || extname(file) === '.mjs' || !existsSync(file) || !statSync(file).isFile()) return false;
+  if (!file.startsWith(WEB_JOBS + sep) || !Object.hasOwn(TYPES, extname(file)) || extname(file) === '.mjs' || !existsSync(file) || !statSync(file).isFile()) return false;
   const body = readFileSync(file);
   if (extname(file) === '.html') send(res, 200, body, TYPES['.html'], { 'content-security-policy': jobsCsp(importmapHash(body.toString('utf8'))) });
   else send(res, 200, body, TYPES[extname(file)]);

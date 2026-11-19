@@ -83,7 +83,10 @@ type Run = { code: number | null; out: string; err: string };
 function crewdeck(args: string[], input = ''): Promise<Run> {
   if (!HOME.startsWith(TMP)) throw new Error('journeys must use a temp CREWDECK_HOME');
   return new Promise((ok) => {
-    const p = spawn(process.execPath, [CLI, ...args], { env: { ...process.env, CREWDECK_HOME: HOME } });
+    // From the jobs workspace once it exists, like Claude's session (its folder decides the lane).
+    let cwd: string | undefined;
+    try { const ws = loadConfig().jobs.workspace; if (existsSync(ws)) cwd = ws; } catch {}
+    const p = spawn(process.execPath, [CLI, ...args], { cwd, env: { ...process.env, CREWDECK_HOME: HOME } });
     let out = '', err = '';
     p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (err += d));
     p.on('close', (code) => ok({ code, out, err }));
@@ -91,6 +94,12 @@ function crewdeck(args: string[], input = ''): Promise<Run> {
   });
 }
 const jobs = (...args: string[]) => crewdeck(['jobs', ...args]);
+/** `request show` as Claude's session runs it: from the jobs workspace (the folder decides the lane, review W5). */
+async function showAsClaude(id: string) {
+  const prev = process.cwd();
+  process.chdir(loadConfig().jobs.workspace);
+  try { return await showRequest(id); } finally { process.chdir(prev); }
+}
 function ok(r: Run, what: string) { assert.equal(r.code, 0, `${what}: exit ${r.code}\n${r.err}${r.out}`); return r.out; }
 const okJson = (r: Run, what: string) => JSON.parse(ok(r, what));
 let nfile = 0;
@@ -220,7 +229,7 @@ export function runJourney(spec: Spec) {
     const nonce = `e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`.replace(/[^A-Za-z0-9_-]/g, '');
     const r = await call('POST', '/api/claim', agentHeaders(), { cwd: loadConfig().jobs.workspace, by: `session@${spec.person}`, nonce });
     assert.equal(r.status, 200, r.body);
-    assert.equal(r.json.proof, sha(`crewdeck-proof:${token}:${nonce}`), 'the server proves it holds the token');
+    assert.equal(r.json.proof, sha(`crewdeck-proof:${token}:${nonce}:${port}`), 'the server proves it holds the token (and its port)');
     assert.equal(r.json.lane, 'jobs');
     assert.equal(r.json.hint, 'Use the jobs-workspace skill.');
     return r.json as { requests: { id: number; kind: string; ref: string | null; keys: string[] }[]; cli: string };
@@ -412,7 +421,7 @@ export function runJourney(spec: Spec) {
     server = createShell(c, q, {
       token,
       jobs: {
-        configPath: CONFIG_PATH, pollMs: 100,
+        configPath: CONFIG_PATH, pollMs: 100, confirm: async () => 'yes' as const,
         // Refresh sources runs the real runSources (sandboxed child, checks, prefilter) with the fixture manifest.
         sources: {
           ready: () => providersStatus(c, manifest).ready, firstDelayMs: 3_600_000,
@@ -524,7 +533,7 @@ export function runJourney(spec: Spec) {
     assert.equal(refused.code, 1);
     assert.match(refused.err, /could not be read/);
     // The same command body in-process, with the allowance: the payload from the running server by id, with the token.
-    const r = await showRequest(String(W.link));
+    const r = await showAsClaude(String(W.link));
     assert.equal(r.status, 'picked');
     const res = await link(ctx, { url: String(r.payload.url), force: r.payload.force === true }, { net });
     assert.equal(res.picked, true, JSON.stringify(res));
@@ -751,7 +760,7 @@ export function runJourney(spec: Spec) {
     assert.equal(add.status, 200, add.body);
     const cl = await claim();
     assert.deepEqual(cl.requests.map((r) => r.kind), ['link']);
-    const r = await showRequest(String(add.json.request));
+    const r = await showAsClaude(String(add.json.request));
     const res = await link(ctx, { url: String(r.payload.url) }, { net });
     assert.equal(res.picked, false);
     assert.ok(res.warnings.some((w) => /already applied/.test(w)), res.warnings.join('; '));
@@ -767,7 +776,7 @@ export function runJourney(spec: Spec) {
     const url = jobUrl(other!.slug);
     const first = await click('addLink', { url });
     await claim();
-    const r1 = await showRequest(String(first.json.request));
+    const r1 = await showAsClaude(String(first.json.request));
     const res1 = await link(ctx, { url: String(r1.payload.url), force: r1.payload.force === true }, { net });
     assert.equal(res1.picked, false);
     assert.deepEqual(res1.warnings, [`${busy.company} already has "${busy.title}" in progress`]);
@@ -776,7 +785,7 @@ export function runJourney(spec: Spec) {
     // The user clicks "Add it anyway": the override comes from the page's request, never from Claude's command line.
     const again = await click('addLink', { url, force: true });
     await claim();
-    const r2 = await showRequest(String(again.json.request));
+    const r2 = await showAsClaude(String(again.json.request));
     assert.equal(r2.payload.force, true);
     const res2 = await link(ctx, { url: String(r2.payload.url), force: r2.payload.force === true }, { net });
     assert.equal(res2.picked, true);

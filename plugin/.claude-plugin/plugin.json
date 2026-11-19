@@ -1,7 +1,7 @@
 {
   "name": "crewdeck",
   "displayName": "Crewdeck",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Crewdeck in every Claude session: the bridge brings clicks from the Crewdeck page to the session that owns that work, and the skills work Jobs (setup, find, apply) and remember what you tell Claude in your notes.",
   "license": "MIT",
   "types": "./types/index.d.ts",

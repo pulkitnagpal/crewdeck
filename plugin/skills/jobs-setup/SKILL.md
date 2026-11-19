@@ -13,13 +13,11 @@ When this runs for a `setup` request, post a progress line at each stage (`crewd
 jobs-workspace) and close the request at the end. Ask your questions in the chat, a few at a time, and wait for answers.
 
 ## Writing values
-Every write goes through a command that validates it. Values come from files (Write tool or a single-quoted heredoc),
-never typed into the command line, because they are the resume's or the user's words:
+Every write goes through a command that validates it. Values come from files written with the **Write tool** (never a
+heredoc or `echo`: the resume's or the user's words could end it early), never typed into the command line. `<T>` is
+the scratch folder `<jobs home>/out/tmp`, written out in full. Write `Ada` to `<T>/value.txt`, then, as its own Bash call:
 ```bash
-cat > "$T/value.txt" <<'EOF'
-Ada
-EOF
-crewdeck jobs me set identity.first_name --value-file "$T/value.txt"
+crewdeck jobs me set identity.first_name --value-file <T>/value.txt
 ```
 - `crewdeck jobs me set <path> --value-file <f>` writes `me/profile.md` (`identity.*`, `standard_answers.*`, `education`,
   `copy_only_hosts`) or `me/career.md` (`resume.*`, `sections`, `facts`, `skills`, `terms.extra`).
@@ -53,7 +51,7 @@ questions) only in their words, and only if they want them stored. Write each wi
    numbers, names and `**bold**`), optional `tags`. Never merge, polish or add. If a bullet is unclear, ask.
 3. Propose **skills** as the resume lists them.
 4. Show the proposal (a compact list), let the user change, drop or add, and only then write:
-   `crewdeck jobs me set sections --value-file "$T/sections.yaml"`, then `facts`, then `skills`. Ask for paper size
+   `crewdeck jobs me set sections --value-file <T>/sections.yaml`, then `facts`, then `skills`. Ask for paper size
    (A4 or Letter) and page limit: `resume.paper`, `resume.max_pages`.
 
 ## 4. The search (`jobs/search.md`)

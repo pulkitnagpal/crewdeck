@@ -23,7 +23,7 @@ export async function jobsServer(person: keyof typeof PEOPLE = 'example', o: { f
     jobs: { enabled: o.enabled ?? true, home: w.jobsHome, workspace, browser: 'auto', fetch_every: '12h', features: { ...FEATURE_DEFAULTS, ...(o.features ?? {}) } },
   };
   const q = new Requests(join(w.home, 'requests.json'));
-  const server = createShell(c, q, { token: TOKEN, jobs: { configPath: join(w.home, 'config.yaml'), pollMs: 50, browser: () => ({ name: 'Test Browser', path: '/x' }), ...o.api } });
+  const server = createShell(c, q, { token: TOKEN, jobs: { configPath: join(w.home, 'config.yaml'), pollMs: 50, browser: () => ({ name: 'Test Browser', path: '/x' }), confirm: async () => 'yes', codeFile: join(w.home, 'feature-code.json'), ...o.api } });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as any).port as number;
   const call = (method: string, path: string, headers: Record<string, string> = {}, body?: unknown): Promise<Res> => new Promise((ok, bad) => {

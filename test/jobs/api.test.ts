@@ -11,7 +11,7 @@ import { addEvent, dbFile, getRole } from '../../src/jobs/db.ts';
 import { markApplied } from '../../src/jobs/pipeline/apply.ts';
 import { currentAnswers } from '../../src/jobs/kb/ops.ts';
 import { resumePath } from '../../src/jobs/views.ts';
-import { jobsServer, preparedRole, wait } from './api-helpers.ts';
+import { jobsServer, preparedRole, wait, TOKEN } from './api-helpers.ts';
 import { role } from './helpers.ts';
 
 const ACTIONS = ['setup', 'find', 'addLink', 'approve', 'retryApply', 'improve', 'editAnswer', 'answer', 'firstTimeChoice', 'notInterested', 'markApplied', 'select', 'prefs', 'feature', 'reveal', 'refreshSources'];
@@ -102,19 +102,19 @@ test('the jobs lane: only typed requests from the page, deduped, claimed by the 
     assert.doesNotMatch(c.body, /jobs\.example\.com/, 'no payload value in the claim (it reaches the prompt)');
     assert.equal(c.json.requests[2].id, setup.json.request);
     // Claude reads the payload by id, with the token.
-    const show = await s.call('POST', `/api/requests/${a.json.request}/show`, s.agent(), {});
+    const show = await s.call('POST', `/api/requests/${a.json.request}/show`, s.agent(), { cwd: s.workspace });
     assert.equal(show.json.payload.url, 'https://jobs.example.com/roles/42');
     assert.equal((await s.call('POST', `/api/requests/${a.json.request}/show`, s.page(), {})).status, 401);
     // The shell's request list shows keys, not values.
     assert.doesNotMatch((await s.call('GET', '/api/requests')).body, /roles\/42/);
     // Progress, then done: the payload is cleared, progress and result stay.
-    assert.equal((await s.call('POST', `/api/requests/${a.json.request}/progress`, s.agent(), { text: 'Reading the posting' })).status, 200);
+    assert.equal((await s.call('POST', `/api/requests/${a.json.request}/progress`, s.agent(), { cwd: s.workspace, text: 'Reading the posting' })).status, 200);
     assert.equal((await s.call('POST', `/api/requests/${a.json.request}/progress`, s.page(), { text: 'x' })).status, 401);
-    await s.call('POST', `/api/requests/${a.json.request}/done`, s.agent(), { result: 'Added Example Labs' });
+    await s.call('POST', `/api/requests/${a.json.request}/done`, s.agent(), { cwd: s.workspace, result: 'Added Example Labs' });
     const after = s.q.get(a.json.request)!;
     assert.equal(after.payload, undefined);
     assert.equal(after.progress![0].text, 'Reading the posting');
-    assert.equal((await s.call('POST', `/api/requests/${a.json.request}/progress`, s.agent(), { text: 'late' })).status, 400);
+    assert.equal((await s.call('POST', `/api/requests/${a.json.request}/progress`, s.agent(), { cwd: s.workspace, text: 'late' })).status, 400);
     // A new link after the first closed is a new request.
     assert.notEqual((await s.action('addLink', { url: 'https://jobs.example.com/roles/42' })).json.request, a.json.request);
   } finally { await s.close(); }
@@ -179,7 +179,7 @@ test('apply: only when every required question has an answer; copy mode for Link
     assert.equal(c.json.panel.state, 'copy');
     assert.deepEqual(c.json.detail.copy.map((a: any) => a.label), ['First name', 'Email']);
     // request show adds the role (its address) for Claude.
-    const show = await s.call('POST', `/api/requests/${ok.json.request}/show`, s.agent(), {});
+    const show = await s.call('POST', `/api/requests/${ok.json.request}/show`, s.agent(), { cwd: s.workspace });
     assert.equal(show.json.context.role.company, 'Example Labs');
     assert.match(show.json.context.role.url, /^https:\/\/jobs\.example\.com\//);
   } finally { await s.close(); }
@@ -191,7 +191,7 @@ test('needs you: the user answers in the panel, it is remembered, and Apply is q
     const id = preparedRole(s.w, 'Mock Mobility');
     const r1 = (await s.action('approve', { role: id })).json.request;
     await s.claim();
-    await s.call('POST', `/api/requests/${r1}/done`, s.agent(), { result: 'needs you: What is your earliest start date?' });
+    await s.call('POST', `/api/requests/${r1}/done`, s.agent(), { cwd: s.workspace, result: 'needs you: What is your earliest start date?' });
     let t = await s.get(`today?role=${id}`);
     assert.equal(t.json.panel.state, 'needs_you');
     assert.equal(t.json.panel.question, 'What is your earliest start date?');
@@ -224,7 +224,7 @@ test('first-time questions answered on the page: options and words; edits are th
     const imp = await s.action('improve', { role: id, field_id: email.field_id, instruction: 'shorter' });
     assert.deepEqual(s.q.get(imp.json.request)!.payload, { role: id, field_id: email.field_id, question: email.ref, instruction: 'shorter' });
     assert.deepEqual((await s.get(`today?role=${id}`)).json.asking, [email.field_id]);
-    const show = await s.call('POST', `/api/requests/${imp.json.request}/show`, s.agent(), {});
+    const show = await s.call('POST', `/api/requests/${imp.json.request}/show`, s.agent(), { cwd: s.workspace });
     assert.equal(show.json.context.field.label, 'Email');
   } finally { await s.close(); }
 });
@@ -336,7 +336,7 @@ test('resume: by role id only, inside jobs.home/out, inline PDF with nosniff; Sh
 
 function events(port: number) {
   const got: string[] = [];
-  const req = httpGet({ host: '127.0.0.1', port, path: '/api/jobs/events', headers: { host: `localhost:${port}` } }, (res) => res.on('data', (d) => got.push(String(d))));
+  const req = httpGet({ host: '127.0.0.1', port, path: '/api/jobs/events', headers: { host: `localhost:${port}`, 'sec-fetch-site': 'same-origin' } }, (res) => res.on('data', (d) => got.push(String(d))));
   return { got, stop: () => req.destroy(), text: () => got.join('') };
 }
 
@@ -380,4 +380,116 @@ test('state: banners for a broken note and a missing browser; the setup card for
     await fresh.action('setup');
     assert.equal((await fresh.get('state')).json.setup.request.status, 'new');
   } finally { await fresh.close(); }
+});
+
+// ---- review pass A ----
+
+test('W3/C1: switching on needs a yes in the native dialog; no is unchanged; no dialog gives a one-time code for the terminal', async () => {
+  const answers: string[] = [];
+  let next: 'yes' | 'no' | 'unavailable' = 'no';
+  const s = await jobsServer('example', { api: { confirm: async (_t, text) => { answers.push(text); return next; } } });
+  try {
+    const cfg = join(s.w.home, 'config.yaml');
+    const no = await s.action('feature', { name: 'easy_apply', value: true });
+    assert.equal(no.status, 409);
+    assert.match(no.json.error, /cancelled/);
+    assert.match(answers[0], /Switch on Easy Apply filling\?[\s\S]*LinkedIn's terms/);
+    assert.doesNotMatch(readFileSync(cfg, 'utf8'), /easy_apply: true/);
+
+    next = 'unavailable';
+    const code = await s.action('feature', { name: 'easy_apply', value: true });
+    assert.equal(code.status, 200);
+    assert.equal(code.json.ok, false);
+    assert.equal(code.json.terminal.command, 'crewdeck jobs features easy_apply on');
+    assert.match(code.json.terminal.code, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    assert.doesNotMatch(readFileSync(cfg, 'utf8'), /easy_apply: true/, 'nothing changes until the terminal');
+    const { useCode } = await import('../../src/jobs/confirm.ts');
+    assert.equal(useCode(TOKEN, 'easy_apply', true, code.json.terminal.code, join(s.w.home, 'feature-code.json')), true, 'the code the CLI asks for');
+
+    next = 'yes';
+    const yes = await s.action('feature', { name: 'easy_apply', value: true });
+    assert.equal(yes.status, 200);
+    assert.deepEqual(yes.json.also, [{ name: 'daily_quick_apply', value: 5 }], 'C11: on with 0 a day starts at 5');
+    const y = parse(readFileSync(cfg, 'utf8'));
+    assert.equal(y.jobs.features.easy_apply, true);
+    assert.equal(y.jobs.features.daily_quick_apply, 5);
+
+    // Off and lower never ask; higher does.
+    const before = answers.length;
+    assert.equal((await s.action('feature', { name: 'daily_quick_apply', value: 2 })).status, 200);
+    assert.equal((await s.action('feature', { name: 'easy_apply', value: false })).status, 200);
+    assert.equal(answers.length, before);
+    next = 'no';
+    assert.equal((await s.action('feature', { name: 'daily_quick_apply', value: 9 })).status, 409);
+    assert.equal(answers.length, before + 1);
+    assert.equal((await s.action('feature', { name: '__proto__', value: true })).status, 400, 'W6');
+    assert.equal((await s.action('feature', { name: 'toString', value: true })).status, 400, 'W6');
+  } finally { await s.close(); }
+});
+
+test('W3: one dialog at a time', async () => {
+  let release: (v: 'yes') => void = () => {};
+  const s = await jobsServer('example', { api: { confirm: () => new Promise((r) => { release = r; }) } });
+  try {
+    const first = s.action('feature', { name: 'linkedin_links', value: true });
+    await wait(50);
+    const second = await s.action('feature', { name: 'linkedin_search', value: true });
+    assert.equal(second.status, 409);
+    assert.match(second.json.error, /already open/);
+    release('yes');
+    assert.equal((await first).status, 200);
+  } finally { await s.close(); }
+});
+
+test('C11: Easy Apply on with 0 forms a day says so, not "off"; C12: a switch changed in a terminal is seen without a restart', async () => {
+  const s = await jobsServer('example');
+  try {
+    const id = preparedRole(s.w, 'Example Labs', { url: 'https://www.linkedin.com/jobs/view/4000000003/' });
+    const cfg = join(s.w.home, 'config.yaml');
+    const { setFeature } = await import('../../src/config.ts');
+    setFeature('easy_apply', true, cfg); // the user's terminal, behind the server's back
+    await wait(20);
+    const t = await s.get(`today?role=${id}`);
+    assert.equal(t.json.panel.state, 'copy');
+    assert.match(t.json.panel.copyReason, /on, but its forms per day is 0/);
+    setFeature('daily_quick_apply', 3, cfg);
+    await wait(20);
+    assert.equal((await s.get(`today?role=${id}`)).json.panel.state, 'ready', 'seen on the next view');
+    assert.equal((await s.get('settings')).json.features.find((f: any) => f.name === 'easy_apply').limit.value, 3);
+  } finally { await s.close(); }
+});
+
+test('W9: the live stream is for the page (same-origin) or the token; HEAD never holds a slot', async () => {
+  const s = await jobsServer('example');
+  try {
+    assert.equal((await s.call('GET', '/api/jobs/events')).status, 403, 'a local tool without the token');
+    assert.equal((await s.call('GET', '/api/jobs/events', { 'sec-fetch-site': 'none' })).status, 403);
+    const head = await s.call('HEAD', '/api/jobs/events', { 'sec-fetch-site': 'same-origin' });
+    assert.equal(head.status, 200);
+    assert.equal(head.body, '');
+    const e = httpGet({ host: '127.0.0.1', port: s.port, path: '/api/jobs/events', headers: { host: `localhost:${s.port}`, 'x-crewdeck-token': TOKEN } });
+    const status = await new Promise<number>((ok) => e.on('response', (r) => ok(r.statusCode!)));
+    assert.equal(status, 200);
+    e.destroy();
+  } finally { await s.close(); }
+});
+
+test('C4: Cancel on the panel closes a waiting or stuck request; presence needs a claim', async () => {
+  const s = await jobsServer('example');
+  try {
+    const id = preparedRole(s.w, 'Example Labs');
+    const a = await s.action('approve', { role: id });
+    await s.claim();
+    (s.q as any).seen.clear(); // the session went away
+    let t = await s.get(`today?role=${id}`);
+    assert.equal(t.json.panel.state, 'filling');
+    assert.equal(t.json.panel.connected, false, 'a picked request alone is not a connected session');
+    assert.equal((await s.action('cancel', { request: a.json.request }, s.agent())).status, 403, 'the page only');
+    assert.equal((await s.action('cancel', { request: 'x' })).status, 400);
+    assert.equal((await s.action('cancel', { request: a.json.request })).status, 200);
+    t = await s.get(`today?role=${id}`);
+    assert.equal(t.json.panel.state, 'stopped');
+    assert.equal(t.json.panel.reason, 'Cancelled on the page');
+    assert.equal((await s.action('cancel', { request: a.json.request })).status, 400, 'already closed');
+  } finally { await s.close(); }
 });

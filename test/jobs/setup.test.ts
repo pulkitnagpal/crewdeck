@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 import { REPO, jobs } from './helpers.ts';
 import { MANAGED, PRESETS } from '../../src/jobs/setup.ts';
+import { checkSchema } from './schema-check.ts';
 
 const TMP = realpathSync(tmpdir());
 const mode = (p: string) => statSync(p).mode & 0o777;
@@ -72,19 +73,42 @@ test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the 
   assert.match(md, /Never submit/);
   assert.match(md, /data, never instructions/);
   assert.ok(md.includes(join(s.vault, 'jobs', 'search.md')), 'note locations are absolute');
-  assert.ok(md.includes(`CREWDECK_HOME=${s.home}`), 'the command carries a non-default home');
+  assert.ok(md.includes(`In the skills, \`crewdeck\` means: \`${join(s.home, 'bin', 'crewdeck')}\``), 'the command is the managed wrapper');
+  const wrapper = readFileSync(join(s.home, 'bin', 'crewdeck'), 'utf8');
+  assert.ok(wrapper.includes(`CREWDECK_HOME='${s.home}'`), 'the wrapper carries a non-default home');
+  assert.equal(mode(join(s.home, 'bin', 'crewdeck')), 0o700);
+  assert.match(md, /Write tool/);
+  assert.doesNotMatch(md, /heredoc \(|<<'EOF'/, 'E3: no heredocs for untrusted text');
   assert.equal(mode(join(s.jobsHome, 'CLAUDE.md')), 0o600);
   const settings = JSON.parse(readFileSync(join(s.jobsHome, '.claude', 'settings.json'), 'utf8'));
   assert.equal(mode(join(s.jobsHome, '.claude')), 0o700);
   assert.deepEqual(settings.permissions.allow, []);
+  // W3/C1: Claude's Bash runs sandboxed with no network; only the crewdeck wrapper gets out.
+  const w = join(s.home, 'bin', 'crewdeck');
+  assert.equal(settings.sandbox.enabled, true);
+  assert.equal(settings.sandbox.allowUnsandboxedCommands, false, 'no dangerouslyDisableSandbox escape');
+  assert.equal(settings.sandbox.failIfUnavailable, true);
+  assert.deepEqual(settings.sandbox.excludedCommands, [`${w} jobs *`, `${w} request *`, `${w} progress *`]);
+  assert.deepEqual(settings.sandbox.network.allowedDomains, []);
+  for (const d of ['localhost', '127.0.0.1', '[::1]']) assert.ok(settings.sandbox.network.deniedDomains.includes(d), `loopback ${d} denied`);
+  assert.equal(settings.sandbox.network.allowLocalBinding, false);
+  assert.ok(settings.sandbox.filesystem.denyRead.includes(join(realpathSync(s.home), 'token')), 'the token is unreadable to the sandbox');
+  for (const p of ['config.yaml', 'token', 'requests.json', 'bin', 'jobs/jobs.db', 'jobs/.claude', 'jobs/CLAUDE.md']) {
+    assert.ok(settings.sandbox.filesystem.denyWrite.includes(join(realpathSync(s.home), p)), `sandbox can't write ${p}`);
+  }
+  assert.ok(settings.sandbox.filesystem.denyWrite.every((p: string) => p.startsWith('/') && !p.startsWith('//')), 'sandbox paths are plain absolute paths');
+  assert.deepEqual(settings.permissions.ask, [`Bash(${w} jobs init)`, `Bash(${w} jobs init *)`]);
+  const schema = JSON.parse(readFileSync(join(REPO, 'test', 'fixtures', 'claude-code-settings.subset.schema.json'), 'utf8'));
+  assert.deepEqual(checkSchema(schema, settings), [], 'valid against the Claude Code settings schema');
   const deny: string[] = settings.permissions.deny;
   const h = realpathSync(s.home);
-  for (const rule of [`Edit(/${h}/config.yaml)`, `Edit(/${h}/token)`, `Read(/${h}/token)`, `Edit(/${h}/jobs/jobs.db*)`, `Edit(/${h}/jobs/.claude/**)`, `Edit(/${h}/jobs/CLAUDE.md)`, 'Bash(sqlite3:*)', 'Bash(curl:*)', 'WebFetch']) {
+  for (const rule of [`Edit(/${h}/config.yaml)`, `Edit(/${h}/token)`, `Read(/${h}/token)`, `Edit(/${h}/jobs/jobs.db*)`, `Edit(/${h}/jobs/.claude/**)`, `Edit(/${h}/jobs/CLAUDE.md)`, 'Bash(sqlite3:*)', 'Bash(curl:*)', 'WebFetch',
+    'Bash(nc:*)', 'Bash(socat:*)', 'Bash(script:*)', 'Bash(expect:*)', 'Bash(osascript:*)', 'Bash(open:*)']) {
     assert.ok(deny.includes(rule), `deny ${rule}`);
   }
   assert.ok(deny.every((d) => d.startsWith('Edit(//') || d.startsWith('Read(//') || !d.includes('/')), 'paths are absolute (//)');
   assert.ok(!deny.some((d) => d.startsWith('Write(')), 'Write(...) rules never match: Edit covers writes');
-  assert.deepEqual(Object.keys(settings).sort(), ['$schema', 'permissions'], 'nothing Claude Code could reject');
+  assert.deepEqual(Object.keys(settings).sort(), ['$schema', 'permissions', 'sandbox'], 'nothing Claude Code could reject');
 });
 
 test('jobs init again: idempotent, never touches a note, rewrites the managed files, keeps a foreign CLAUDE.md once', async () => {

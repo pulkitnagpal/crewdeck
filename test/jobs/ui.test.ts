@@ -81,6 +81,19 @@ test('apply panel: every state, as design §2.3a describes it', async () => {
   assert.match(copyText, /Copy these answers into the form.*Easy Apply filling is off/);
   assert.match(copyText, /First name Sam Copy/);
   assert.match(show(P(req('picked')), { ...d, resume: null }), /Not made yet/);
+  // C4: a waiting or picked request can be cancelled from the panel; a picked one with no session says so.
+  assert.match(waiting, /Cancel/);
+  assert.match(filling, /Open the form\s*Cancel/);
+  assert.match(show(P(req('picked'), { connected: false })), /No Claude session is connected: if it closed, cancel and try again/);
+  assert.doesNotMatch(turn, /Cancel/);
+});
+
+test('settings: no system dialog → the terminal command and the one-time code, shown only here', async () => {
+  const st = (await s.get('settings')).json;
+  assert.match(text(render(html`<${Settings} data=${st} />`)), /confirm in your computer's own dialog/);
+  const { TerminalCode } = await import('../../web/jobs/screens/settings.js');
+  const box = text(render(html`<${TerminalCode} t=${{ command: 'crewdeck jobs features easy_apply on', code: 'ABCD-EFGH' }} />`));
+  assert.match(box, /Confirm in your own terminal.*not in a Claude chat.*crewdeck jobs features easy_apply on.*ABCD-EFGH/);
 });
 
 test('apply panel: a needs-you question the role already holds is answered right there (options as buttons)', async () => {

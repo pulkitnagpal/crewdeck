@@ -3,13 +3,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { type Config, CONFIG_PATH, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, ensureHome, loadConfig, setFeature } from '../config.ts';
+import { type Config, CONFIG_PATH, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, ensureHome, featureValue, loadConfig, readToken, setFeature } from '../config.ts';
 import { type Issue, MEMORY_KINDS } from './schema.ts';
 import { NOTES, NOTE_NAMES, loadJobNotes } from './notes.ts';
 import { compileRules, describeRules, judgeBrief } from './rules.ts';
 import { meTarget, parsePath, setField } from './edit.ts';
 import { retire } from './memory.ts';
-import { RISK } from './features.ts';
+import { RISK, confirmText, featureChanges, widens } from './features.ts';
 
 const say = (s: string) => console.log(s);
 export const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
@@ -141,21 +141,35 @@ async function features(args: string[]) {
     for (const [k, v] of Object.entries(c.jobs.features)) say(`${k.padEnd(22)} ${String(typeof v === 'boolean' ? (v ? 'on' : 'off') : v).padEnd(4)} ${RISK[k as keyof JobsFeatures]}`);
     return say('\nOnly you can change these: Jobs → Settings, or crewdeck jobs features <name> <on|off|number> in your own terminal.');
   }
-  if (!(name in FEATURE_DEFAULTS)) throw new Error(`unknown feature ${name} (known: ${Object.keys(FEATURE_DEFAULTS).join(', ')})`);
+  if (!Object.hasOwn(FEATURE_DEFAULTS, name)) throw new Error(`unknown feature ${name} (known: ${Object.keys(FEATURE_DEFAULTS).join(', ')})`);
   // An agent's shell is not a terminal: risky switches change only when a person is at the keyboard (design D13).
   if (!process.stdin.isTTY) throw new Error('Only you can change feature switches: run this yourself in a terminal, or use Jobs → Settings.');
-  if (value === undefined) throw new Error(`usage: crewdeck jobs features ${name} <${name in FEATURE_CAPS ? 'number' : 'on|off'}>`);
-  const v: boolean | number = name in FEATURE_CAPS ? Number(value) : value === 'on' ? true : value === 'off' ? false : (() => { throw new Error('use on or off'); })();
-  const enabling = v === true || (typeof v === 'number' && v > 0);
-  if (enabling) {
+  if (value === undefined) throw new Error(`usage: crewdeck jobs features ${name} <${Object.hasOwn(FEATURE_CAPS, name) ? 'number' : 'on|off'}>`);
+  const v: boolean | number = Object.hasOwn(FEATURE_CAPS, name) ? Number(value) : value === 'on' ? true : value === 'off' ? false : (() => { throw new Error('use on or off'); })();
+  featureValue(name as keyof JobsFeatures, v);
+  const changes = featureChanges(name as keyof JobsFeatures, v, c.jobs.features);
+  if (widens(changes, c.jobs.features)) {
+    // A terminal can be faked (`script`), so widening also needs a yes no agent can give: the system's own dialog, or
+    // where there is none, the one-time code the Jobs page shows when you click the switch there.
     say(RISK[name as keyof JobsFeatures]);
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const answer = (await rl.question('Type yes to switch it on: ')).trim().toLowerCase();
-    rl.close();
-    if (answer !== 'yes') return say('Unchanged.');
+    try {
+      const answer = (await rl.question('Type yes to switch it on: ')).trim().toLowerCase();
+      if (answer !== 'yes') return say('Unchanged.');
+      const { nativeConfirm, useCode } = await import('./confirm.ts');
+      const native = await nativeConfirm()('Crewdeck', confirmText(changes));
+      if (native === 'no') return say('Unchanged: the confirmation was cancelled.');
+      if (native === 'unavailable') {
+        const token = readToken();
+        if (!token) throw new Error('No confirmation dialog on this system and no Crewdeck token: run crewdeck up, then click the switch in Jobs → Settings for a one-time code.');
+        say('No confirmation dialog on this system. Click the switch in Jobs → Settings: the page shows a one-time code for this change.');
+        const typed = await rl.question('Code from the Jobs page: ');
+        if (!useCode(token, name, v, typed)) return say('Unchanged: that is not the code the Jobs page showed for this change (codes last 10 minutes).');
+      }
+    } finally { rl.close(); }
   }
-  setFeature(name, v, CONFIG_PATH);
-  say(`${name}: ${typeof v === 'boolean' ? (v ? 'on' : 'off') : v}`);
+  for (const ch of changes) setFeature(ch.name, ch.value, CONFIG_PATH);
+  for (const ch of changes) say(`${ch.name}: ${typeof ch.value === 'boolean' ? (ch.value ? 'on' : 'off') : ch.value}`);
 }
 
 /** crewdeck jobs init [--preset <name>] [--home <dir>]: switch Jobs on and set it up (idempotent). */
@@ -192,7 +206,7 @@ export async function main(args: string[]) {
     const m = await import('./commands.ts');
     return await m.COMMANDS[cmd](rest);
   }
-  if (!cmd || !run[cmd]) {
+  if (!cmd || !Object.hasOwn(run, cmd)) {
     say(USAGE);
     if (cmd !== undefined) process.exitCode = 1;
     if (cmd === undefined || cmd === 'help') say((await import('./commands.ts')).USAGE);

@@ -84,12 +84,12 @@ test('a claim proves the server knows the token, and delivers only that lane', a
   const nonce = 'abcdefghijklmnop1234';
   const r = JSON.parse((await call('POST', '/api/claim', agent(), JSON.stringify({ cwd: '/code/myapp', by: 's1', nonce }))).body);
   assert.equal(r.lane, 'project:myapp');
-  assert.equal(r.proof, proofFor(TOKEN, nonce));
+  assert.equal(r.proof, proofFor(TOKEN, nonce, port), 'bound to the port the bridge dialled');
   assert.deepEqual(r.requests.map((x: any) => x.id), [id]);
   assert.equal((await call('POST', '/api/claim', agent(), JSON.stringify({ cwd: '/x', nonce: 'short' }))).status, 400, 'nonce required');
-  const done = await call('POST', `/api/requests/${id}/done`, agent(), JSON.stringify({ result: 'done!' }));
+  const done = await call('POST', `/api/requests/${id}/done`, agent(), JSON.stringify({ result: 'done!', cwd: '/code/myapp/src' }));
   assert.equal(JSON.parse(done.body).status, 'done');
-  assert.equal((await call('POST', `/api/requests/${id}/done`, agent(), '{}')).status, 400, 'not open any more');
+  assert.equal((await call('POST', `/api/requests/${id}/done`, agent(), JSON.stringify({ cwd: '/code/myapp' }))).status, 400, 'not open any more');
 });
 
 test('oversized bodies and unknown endpoints are refused', async () => {
@@ -122,4 +122,58 @@ test('a claim tells the session its lane\'s hint; typed requests travel without 
   assert.equal(r.lane, 'cockpit');
   assert.equal(r.hint, null);
   assert.equal((await call('POST', '/api/requests/999/show', agent(), '{}')).status, 404);
+});
+
+// ---- review pass A ----
+
+test('W4: hello answers a nonce with a port-bound proof before any token is sent; a page cannot use it', async () => {
+  const nonce = 'q'.repeat(24);
+  const r = await call('POST', '/api/hello', { 'content-type': 'application/json' }, JSON.stringify({ nonce }));
+  assert.equal(r.status, 200);
+  assert.equal(JSON.parse(r.body).proof, proofFor(TOKEN, nonce, port));
+  assert.notEqual(JSON.parse(r.body).proof, proofFor(TOKEN, nonce, port + 1), 'a relay to Crewdeck on another port gets another proof');
+  assert.equal((await call('POST', '/api/hello', { 'content-type': 'application/json' }, '{"nonce":"x"}')).status, 400);
+  assert.equal((await call('POST', '/api/hello', { ...page() }, JSON.stringify({ nonce }))).status, 403, 'never for a browser');
+});
+
+test('W5: a session reads and closes only its own lane\'s requests (the caller\'s folder decides)', async () => {
+  const id = JSON.parse((await call('POST', '/api/requests', page(), JSON.stringify({ lane: 'project:myapp', text: 'take TASK-9' }))).body).id;
+  await call('POST', '/api/claim', agent(), JSON.stringify({ cwd: '/code/myapp', by: 'w5', nonce: 'w'.repeat(20) }));
+  for (const verb of ['show', 'progress', 'done', 'fail']) {
+    const other = await call('POST', `/api/requests/${id}/${verb}`, agent(), JSON.stringify({ cwd: '/elsewhere', text: 'x', result: 'x' }));
+    assert.equal(other.status, 403, `${verb} from the cockpit`);
+    assert.match(JSON.parse(other.body).error, /belongs to the project:myapp lane/);
+    assert.equal((await call('POST', `/api/requests/${id}/${verb}`, agent(), JSON.stringify({ text: 'x' }))).status, 400, `${verb} without a cwd`);
+  }
+  assert.equal((await call('POST', `/api/requests/${id}/show`, agent(), JSON.stringify({ cwd: '/code/myapp' }))).status, 200);
+  assert.equal((await call('POST', `/api/requests/${id}/fail`, agent(), JSON.stringify({ cwd: '/code/myapp', result: 'no' }))).status, 200);
+});
+
+test('W3: the page\'s Ask needs Sec-Fetch-Site same-origin; W7: a null or list body is a 400, never a 500', async () => {
+  const { 'sec-fetch-site': _, ...noSite } = page();
+  assert.equal((await ask(noSite)).status, 403, 'a forged Origin without Fetch Metadata');
+  assert.equal((await call('POST', '/api/requests', page(), 'null')).status, 400);
+  assert.equal((await call('POST', '/api/requests', page(), '[1]')).status, 400);
+  assert.equal((await call('POST', '/api/claim', agent(), 'null')).status, 400);
+  assert.equal((await call('POST', '/api/hello', { 'content-type': 'application/json' }, '7')).status, 400);
+});
+
+test('W8: state and the request list are never read by another site', async () => {
+  for (const p of ['/api/state', '/api/requests']) {
+    assert.equal((await call('GET', p, { 'sec-fetch-site': 'cross-site' })).status, 403, p);
+    assert.equal((await call('GET', p, { 'sec-fetch-site': 'same-site' })).status, 403, p);
+    assert.equal((await call('GET', p, { origin: 'https://evil.example' })).status, 403, `${p}: a browser without Fetch Metadata`);
+    assert.equal((await call('GET', p, { 'sec-fetch-site': 'same-origin' })).status, 200, p);
+    assert.equal((await call('GET', p)).status, 200, `${p}: a local tool (the CLI)`);
+  }
+});
+
+test('W6: inherited names are never commands, files or features', async () => {
+  for (const p of ['/__proto__', '/constructor', '/jobs/__proto__', '/jobs/vendor/__proto__']) assert.notEqual((await call('GET', p)).status, 500, p);
+  const { spawnSync } = await import('node:child_process');
+  for (const cmd of ['constructor', '__proto__', 'toString']) {
+    const r = spawnSync(process.execPath, [join(import.meta.dirname, '..', 'src', 'cli.ts'), cmd], { encoding: 'utf8', env: { ...process.env, CREWDECK_HOME: mkdtempSync(join(tmpdir(), 'cdh-')) } });
+    assert.equal(r.status, 1, cmd);
+    assert.match(r.stdout, /usage: crewdeck/);
+  }
 });

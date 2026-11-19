@@ -81,6 +81,7 @@ function App() {
     onSkip: (role, reason, titleWords) => run('notInterested', { role, reason, titleWords }, 'Skipped. Your reason is remembered.').then(() => setSelected(null)),
     onApply: (role) => run('approve', { role }, (r) => (r.mode === 'copy' ? 'This site takes answers you copy in' : 'Sent to Claude')),
     onMarkApplied: (role) => run('markApplied', { role }, 'Marked applied'),
+    onCancel: (request) => run('cancel', { request }, 'Cancelled'),
     onReveal: (role) => run('reveal', { role }),
     onSetup: () => run('setup', {}, 'Claude will start the setup in the chat'),
     onNotes: openNotes,
@@ -100,7 +101,7 @@ function App() {
   else if (screen === 'applications') body = html`<${Applications} data=${d} />`;
   else if (screen === 'knowledge') body = html`<${Knowledge} data=${d} onTab=${setTab} onNotes=${openNotes} />`;
   else if (screen === 'preferences') body = html`<${Preferences} key=${JSON.stringify(d.values)} data=${d} onNotes=${openNotes} onSave=${(changes) => run('prefs', { changes }, (r) => (r.ok ? 'Saved to jobs/search.md' : null))} />`;
-  else body = html`<${Settings} data=${d} onSet=${(name, value) => run('feature', { name, value }, `${name.replace(/_/g, ' ')}: ${value === true ? 'on' : value === false ? 'off' : value}`)} />`;
+  else body = html`<${Settings} data=${d} onSet=${(name, value) => run('feature', { name, value }, (r) => (r.ok ? `${name.replace(/_/g, ' ')}: ${value === true ? 'on' : value === false ? 'off' : value}` : null))} />`;
 
   // A link Claude couldn't pick (cooldown, already applied): offer the user's override, set by this click only.
   const warned = (state?.agent?.recent ?? []).find((r) => r.kind === 'link' && sentLinks.current.has(r.id) && /warning|cooldown|already|in progress/i.test(r.result ?? ''));

@@ -103,7 +103,11 @@ export function applyMode(ctx: Ctx, r: { url: string; apply_url?: string | null 
   const urls = [r.apply_url, r.url].filter(Boolean) as string[];
   const host = urls.map((u) => copyOnlyHost(u, profile.copy_only_hosts)).find(Boolean);
   if (host) return { mode: 'copy', reason: `${host} doesn't allow automated filling` };
-  if (isLinkedinHost(hostOf(r.apply_url ?? r.url)) && !(ctx.features.easy_apply && ctx.features.daily_quick_apply > 0)) return { mode: 'copy', reason: 'Easy Apply filling is off (Jobs → Settings)' };
+  if (isLinkedinHost(hostOf(r.apply_url ?? r.url))) {
+    if (!ctx.features.easy_apply) return { mode: 'copy', reason: 'Easy Apply filling is off (Jobs → Settings)' };
+    // On, but allowed 0 forms a day: say so, rather than "off" (review C11).
+    if (!(ctx.features.daily_quick_apply > 0)) return { mode: 'copy', reason: 'Easy Apply filling is on, but its forms per day is 0 (Jobs → Settings)' };
+  }
   return { mode: 'fill' };
 }
 

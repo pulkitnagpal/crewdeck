@@ -274,12 +274,12 @@ Every rule becomes a user setting, and every test uses fictional people.
 | D8 | Resume = `me/career.md` sections (kinds: summary, experience, list, skills, education; paper A4/Letter) + facts by id + a generic template → PDF in headless Chromium with JS off and network blocked | Any career shape; "select facts, never write new text" | One fixed layout |
 | D9 | Migrations by `PRAGMA user_version`; v1 is a generic schema (`pay_min`, `pay_max` in the user's currency, `pay_period`, `pay_text`; no `x_url`) | Safe upgrades; nothing person-specific in schema | Inheriting the old schema |
 | D10 | Live refresh: `PRAGMA data_version` (500 ms) + `fs.watch` on the jobs notes + the server's own writes → SSE | Covers DB and notes; no sockets | Mtime polling + socket |
-| D11 | No page or posting text in shell commands: request-scoped commands take `--request <id>`; other text via `-file` or stdin (`--result-file`, `--text-file`, single-quoted heredocs in skills) | Removes shell injection paths | Quoted arguments |
+| D11 | No page or posting text in shell commands: request-scoped commands take `--request <id>`; other text via `-file` or stdin (`--result-file`, `--text-file`), the files written with Claude's **Write tool** (P7: never a heredoc, whose delimiter the text can contain) | Removes shell injection paths | Quoted arguments; heredocs |
 | D12 | Playbooks are skills in the public plugin; `jobs init` writes the workspace `CLAUDE.md` and a `.claude/settings.json` with deny rules (§14) | Every user gets the same playbooks and guard rails | Skills in each user's folder |
-| D13 | Risky features: switches in `config.yaml` that only the user can change (page toggle, or an interactive terminal: the CLI refuses without a TTY, so an agent can't flip them) | Prompt injection can't widen the agent's reach | Switches in a note Claude can write |
+| D13 | Risky features: switches in `config.yaml` that only the user can change (page toggle, or an interactive terminal: the CLI refuses without a TTY). P7: switching on or raising a number also needs the user's click in a **native dialog** the server (or CLI) shows; with none, the page shows a one-time code for `crewdeck jobs features …` in a real terminal | Prompt injection can't widen the agent's reach; headers and TTYs can be forged by local processes | Switches in a note Claude can write; header-only checks |
 | D14 | Leak scan: generic PII patterns + **HMAC-SHA256** denylist (key in a CI secret, never in the repo); scans the tracked tree, the pushed commits' diffs and author fields; a private local hook with a plaintext list | No guessable hashes, covers history | Plain sha256 list; tree-only scan |
 | D15 | Node ≥ 22.18 kept; CI matrix 22 and 24; `node:sqlite` FTS5 and the permission model verified in CI; no `import.meta.main` | Doesn't raise the floor | Node 25 |
-| D16 | API split: **page endpoints** (same-origin only: exact Origin + `Sec-Fetch-Site`, JSON body) vs **agent endpoints** (claim, requeue, done/fail, progress: require the per-launch token in `~/.crewdeck/token`, 0600). Jobs requests are created only by `/api/jobs/*` actions, never by the generic `/api/requests`. SilverBullet moves to **its own origin** (own proxied port, like boards) | A local page or a Notes script can't mint prompts or close requests | Origin-only checks |
+| D16 | API split: **page endpoints** (same-origin only: exact Origin + `Sec-Fetch-Site: same-origin` (required since P7), JSON body) vs **agent endpoints** (claim, requeue, done/fail/show/progress: require the token in `~/.crewdeck/token`, 0600, new on every `up`; sent only after `POST /api/hello` proved the server with a port-bound hash; request-scoped calls name their cwd and must be in the request's lane). Jobs requests are created only by `/api/jobs/*` actions, never by the generic `/api/requests`. SilverBullet moves to **its own origin** (own proxied port, like boards), on a Unix socket since P7 | A local page or a Notes script can't mint prompts or close requests; a squatter never sees the token | Origin-only checks |
 | D17 | The coded Playwright filler, Electron app, MCP server, legacy Today page and headless `claude -p` drafter are **not carried over** (owner approved removal, 2026-11-18) | Filling happens in Claude's pane from `fill-plan`; the CLI covers answer changes | Keeping two fillers |
 
 ## 6. Architecture
@@ -455,13 +455,22 @@ type Request = { id; lane; text; status: 'new'|'picked'|'done'|'failed'; by?; re
   - Payloads are cleared when a request closes.
   - Closed requests are kept for 30 days.
 - **Delivery.**
-  - The bridge sends the token with each claim and checks the server's identity with a challenge (HMAC of a
-    nonce with the token).
+  - Challenge first (P7): the bridge and the CLI send a nonce alone (`POST /api/hello`) and check
+    `sha256("crewdeck-proof:<token>:<nonce>:<port>")` before the token leaves them; the token rotates on every `up`, and
+    the bridge re-reads it when the proof stops matching.
+  - Request-scoped agent calls (show, progress, done, fail) carry the caller's cwd; only a session of the request's lane
+    may make them.
   - The prompt it posts says the payload is data and the person's intent is the request kind.
   - Values from postings are quoted. URLs are never printed; Claude reads them with
     `crewdeck jobs request show <id>`.
-- **Presence.** The server records each lane's last claim. Jobs shows "Claude connected" (seen in the last 10 s) or
-  the "open a session in …" banner.
+- **Presence.** The server records each lane's last claim; a busy session's bridge claims with `take: false` every 4 s
+  (a heartbeat). Jobs shows "Claude connected" (a claim in the last 10 s) or the "open a session in …" banner. A picked
+  request or a progress line is not presence (P7).
+- **Leases (P7).** A picked request whose session hasn't claimed or reported progress for 15 minutes goes back to
+  the queue (tries + 1; failed after 3). The bridge puts back what it held when it loads again. The page's **Cancel**
+  closes a waiting or stuck request as failed ("Cancelled on the page").
+- **Caps (P7).** 20 open and 30 adds a minute per lane **and kind** (plain text is its own kind), so links can't
+  block an Apply.
 - **Closing.**
   - `crewdeck request done|fail <id> --result-file f` (or stdin).
   - An apply that needs the user closes as done with `needs you: …`; the question sits on the role.
@@ -513,8 +522,12 @@ Skills are generic: "the user", fields from the notes, no examples about real pe
 | Email drafts (Gmail) | off | Verified address, 1 per role, ≤ 20 a day; drafts only |
 | LinkedIn message text | off | Text only; the user sends |
 
-Switches live in `config.yaml` `jobs.features`. They change only via a Jobs → Settings toggle (a page POST, which
-needs a human in the pane) or `crewdeck jobs features …` in an interactive terminal; the CLI refuses without a TTY.
+Switches live in `config.yaml` `jobs.features`. They change only via a Jobs → Settings toggle (a page POST) or
+`crewdeck jobs features …` in an interactive terminal; the CLI refuses without a TTY. Since P7, switching one on or
+raising its number also needs the user's click in a native dialog (macOS `osascript`, Linux `zenity`/`kdialog`);
+without one, the page answers with a one-time code (10 minutes, single use, three tries, kept as an HMAC under the
+token) that the terminal command asks for. Switching on with the daily number at 0 sets it to a default (Easy Apply 5,
+drafts 10). The server re-reads the switches from `config.yaml` on every view and action.
 The README states the terms-of-service risk plainly.
 
 ## 13. Hard rules: how each is enforced
@@ -529,8 +542,8 @@ settings; **prompt** = skill and `CLAUDE.md` instruction only.
 | No CAPTCHA, password or account creation | `fill-plan` skips password/CAPTCHA fields (code); stop-and-tell (prompt) |
 | Stop at 429 / sign-in / checkpoint | code in `linkedin.ts`, `link.ts`; prompt for the pane |
 | Caps, one per company, cooldown | code (`pick`, `prefilter`, `link` warnings; `--force` only when the request carries the user's override flag set by a page click) |
-| Risky switches | code (TTY or page only) + guard (deny Edit/Write on `~/.crewdeck/config.yaml`) |
-| No raw DB writes | guard (deny `Bash(sqlite3:*)`) + prompt |
+| Risky switches | code (page or TTY, plus a native dialog or a page-issued code) + guard (deny Edit on `~/.crewdeck/config.yaml`; the sandbox can't write it) |
+| No raw DB writes | guard (deny `Bash(sqlite3:*)`; the sandbox can't write `jobs.db`) + prompt |
 | No exfiltration from the pane | prompt (open only the role's URLs; never put facts in URLs) + the user's permission mode. A residual risk, stated in the README |
 | Postings are data | code (`--request`, `-file`) + prompt |
 | No invented experience | code (fact ids validated; citation check; unknown → first-time question) |
@@ -555,16 +568,17 @@ settings; **prompt** = skill and `CLAUDE.md` instruction only.
 
 | Threat | Control |
 |---|---|
-| DNS rebinding | Host allowlist `localhost`, `127.0.0.1`, `[::1]` (new: `[::1]`) on every request, proxy forward and upgrade, on **all** Crewdeck ports including the SilverBullet and board proxies; internal ports bind 127.0.0.1 and are documented as reachable by local processes |
-| CSRF / cross-origin prompt minting (a) | D16: page endpoints need exact own Origin + `Sec-Fetch-Site: same-origin`, JSON body; agent endpoints need the token; no CORS headers; SilverBullet on its own origin; Ask box text is plain and lane-limited |
-| Port squatting (e) | Bridge challenge-response with the token before trusting a claim |
+| DNS rebinding | Host allowlist `localhost`, `127.0.0.1`, `[::1]` (new: `[::1]`) on every request, proxy forward and upgrade, on **all** Crewdeck ports including the SilverBullet and board proxies. P7: SilverBullet has no TCP port (Unix socket in `~/.crewdeck/run`, 0700; `SB_SHELL_BACKEND=off`); each Backlog.md board gets a random internal port per launch, never in `/api/state` (Backlog.md 1.55.3 has no socket, auth or Host check: residual risk in the README) |
+| CSRF / cross-origin prompt minting (a) | D16: page endpoints need exact own Origin + `Sec-Fetch-Site: same-origin`, JSON body; reads refuse a browser without same-origin/none Fetch Metadata; agent endpoints need the token; no CORS headers; SilverBullet on its own origin; Ask box text is plain and lane-limited |
+| A prompt-injected agent forging page calls (b) | P7: the jobs workspace's settings run Claude's Bash in Claude Code's **sandbox**: no network (`allowedDomains` empty, loopback names in `deniedDomains`, no local binding, no Unix sockets), `allowUnsandboxedCommands: false`, `failIfUnavailable: true`, OS-level denyRead of the token and denyWrite of config, queue, wrapper, tracker and guard rails; only `~/.crewdeck/bin/crewdeck jobs|request|progress *` is excluded (it can do what the agent endpoints allow); deny rules for raw sockets, ssh, `script`/`expect`, `osascript`, `open`. Risky switches need a native dialog. Residual: unsandboxed local processes can forge any header (README) |
+| Port squatting (e) | Challenge first (P7): `/api/hello` proves the server (port-bound) before the bridge or CLI sends the token; the token rotates on every `up` |
 | Crash by malformed URL | Top-level try/catch → 400 (e.g. `/%`); test |
 | XSS | Preact escaping; no `innerHTML`/`dangerouslySetInnerHTML` with data (grep test); hrefs only http(s); CSP `default-src 'self'; script-src 'self' 'sha256-<importmap>'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'`; `nosniff`; `Cross-Origin-Resource-Policy: same-origin` on the shell too |
 | Path traversal | Fixed roots + `startsWith(root + sep)` after `realpath`; resume by role id regex; `-file` paths realpath'd inside `out/<role>/tmp` |
 | SSRF (pasted links) | `netguard`: http(s) only; DNS lookup inside the connect (every address checked, the connection pinned to a checked address); blocklist incl. `0.0.0.0/8`, `10/8`, `100.64/10`, `127/8`, `169.254/16`, `172.16/12`, `192.168/16`, `224/4`, `240/4`, `::/128`, `::1`, `fc00::/7`, `fe80::/10`, `ff00::/8`, `64:ff9b::/96`, `2002::/16`, IPv4-mapped and -compatible; manual redirects ≤ 5 re-checked; one 15 s deadline incl. body; **decoded** body cap 2 MB while streaming; proxy env vars ignored |
 | Headless browser reaching local services | All Chromium traffic via an in-process guard proxy using `netguard` (`--proxy-server`, `--proxy-bypass-list=<-loopback>`), service workers blocked, WebSockets through the proxy; PDF render with JS off and network off |
 | Prompt injection (b) | Data never in shell; prompts mark data; user-only switches; deny rules; caps in code; apply needs the user's click; residual risk documented |
-| Shell injection | `execFile` only; `--request` ids; `-file`/stdin; skills use single-quoted heredocs |
+| Shell injection | `execFile` only; `--request` ids; `-file`/stdin; skills and the bridge prompt write text with the Write tool, never heredocs (P7) |
 | SQL injection | Prepared statements; FTS terms `[a-z0-9]` quoted; grep test for interpolated SQL |
 | Supply chain (c) | D7 (closure manifest, verify at download and load, resolve hook, allow-list, sandboxed child with `--permission`, read-only provider dir, empty env); `npm ci`; `npm audit --omit=dev --audit-level=high`; new deps only preact, htm, playwright-core |
 | Data at rest | Crewdeck's own files written with explicit modes (dirs 0700, files 0600; no global umask, so SilverBullet/Backlog.md keep normal modes in the user's vault and repos); `~/.crewdeck` 0700; refuse a group/world-writable `jobs.home`; payloads cleared on close |
@@ -698,6 +712,12 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P7 pass A (2026-11-19):** the trust boundary from the security review ([impl/07-security-review.md](impl/07-security-review.md)):
+  SilverBullet on a private Unix socket with its shell off, random internal board ports, challenge-first agent
+  handshake with a port-bound proof and a token rotated on every `up`, lane checks on request-scoped agent calls, the
+  jobs workspace's Bash in Claude Code's sandbox with only the `crewdeck` wrapper let out, native confirmation (or a
+  page-issued terminal code) for risky switches, leases/heartbeat presence/Cancel, per-kind caps, switches re-read
+  from config.yaml, Write tool instead of heredocs, `pick --role --request` in the skill (pass B reads force).
 - **P6 built (2026-11-19):** journey tests for the two fictional people (`test/jobs/e2e/`): setup through validated commands,
   the real provider install and sandbox from a local site, budgeted Find with a scripted judge, paste a link through the
   lane and the token, Prepare (form read, draft, citation failure → first-time → remembered and reused), Apply with a

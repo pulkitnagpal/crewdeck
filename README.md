@@ -174,15 +174,44 @@ Add this to `.claude/launch.json` in any folder you open in Claude Code, then as
 
 ## Security
 
-- Everything binds to `127.0.0.1`. Every Crewdeck port (the page, Notes, each board) refuses requests whose `Host`
-  isn't `localhost`, `127.0.0.1` or `[::1]`, which blocks DNS-rebinding pages.
-- Notes and each board run behind their own proxy port, so each is its own origin: a note's scripts can't call the
-  Crewdeck page's API. Through a proxy, only that tool's own pages (or a non-browser client) can change anything.
-- The page's API only takes requests from the page itself (exact origin, same-origin fetch, JSON). The endpoints
-  your Claude sessions use need the token in `~/.crewdeck/token` (0600). No endpoint sends CORS headers.
-- `~/.crewdeck` is private (0700). Requests are capped (20 open per lane, 30 a minute).
-- SilverBullet and Backlog.md listen on internal ports behind the proxies with no accounts, because only your
-  machine can reach them. Other programs on your machine can; don't expose the ports.
+Crewdeck runs on your machine for you alone. What it defends against, and what it can't:
+
+- **Other web pages.** Everything binds to `127.0.0.1`. Every Crewdeck port (the page, Notes, each board) refuses
+  requests whose `Host` isn't `localhost`, `127.0.0.1` or `[::1]` (DNS rebinding). Notes and each board run behind their
+  own proxy port, so each is its own origin; through a proxy only that tool's own pages (or a non-browser client) can
+  change anything. The page's API takes changes only from the page itself (exact origin, `Sec-Fetch-Site: same-origin`,
+  a JSON body) and reads only from the page or the address bar. No endpoint sends CORS headers.
+- **Notes (SilverBullet)** listens on a Unix socket in `~/.crewdeck/run/` (0700), with no TCP port at all, and with its
+  shell backend off (`SB_SHELL_BACKEND=off`): no page and no other user can reach it, and nothing can run commands
+  through it. The Notes proxy is the only door.
+- **Boards (Backlog.md)** can only listen on a TCP port, with no login and no Host or Origin check (checked in
+  Backlog.md 1.55.3). Crewdeck gives each board a random internal port on every start and never shows it to pages.
+  **Residual risk:** a malicious web page that sprays requests at every local port could still create or change a task
+  on a board while Crewdeck runs (browsers increasingly block public sites from reaching `127.0.0.1`; Chrome asks
+  first). Other programs running as you can reach that port too. Treat board tasks as text from the web: agents read
+  them as data.
+- **Your Claude sessions** talk to Crewdeck with the token in `~/.crewdeck/token` (0600). Before sending it, the bridge
+  and the CLI ask the server to prove it knows the token (a nonce answered with a hash bound to the port), so a program
+  squatting Crewdeck's port never sees it; the token is new on every `crewdeck up`. A session reads and closes only the
+  requests of its own lane (its folder decides).
+- **The jobs workspace runs Claude's shell in Claude Code's sandbox.** Its managed `.claude/settings.json` turns the
+  sandbox on with no network (loopback names denied outright), no unsandboxed retry, and Crewdeck's own files
+  (token, config, queue, tracker, the guard rails) unreadable or unwritable at the OS level. The one command let out is
+  `~/.crewdeck/bin/crewdeck jobs|request|progress …`, which can do only what the agent endpoints allow. On Linux the
+  sandbox needs `bubblewrap` and `socat`; without them Claude Code refuses to run Bash there rather than run it
+  unsandboxed. For a hard block of every unlisted host (instead of a permission prompt), also set
+  `"sandbox": { "network": { "strictAllowlist": true } }` in your own `~/.claude/settings.json` (Claude Code ignores it
+  in a project's settings).
+- **Risky Jobs switches** (LinkedIn, Easy Apply, email drafts) change only in Jobs → Settings or `crewdeck jobs
+  features` in your terminal, and switching one on (or raising its daily number) also needs your click in your
+  computer's own dialog (macOS; zenity or kdialog on Linux). Without a dialog, the page shows a one-time code to type
+  into `crewdeck jobs features …` in a real terminal. Switching off never asks.
+- **What stays possible** (residual risk): any program already running as you can do anything you can, including
+  forging the page's headers; the controls above stop web pages and a prompt-injected Claude session in the jobs
+  workspace, not malware. Claude sessions outside the jobs workspace have no sandbox from Crewdeck. Claude drives the
+  browser pane, so "never submit" and "open only the role's pages" are prompt-level rules there.
+- `~/.crewdeck` is private (0700). Requests are capped (20 open per lane and kind, 30 a minute); a request whose
+  session stops answering for 15 minutes goes back to the queue, and the page can cancel it.
 - The repo is scanned for personal data on every test run and in CI (`scripts/leak-scan.mjs`).
 - Agents edit your notes and tickets; review what they change like any other code (your vault and repos are git-friendly).
 

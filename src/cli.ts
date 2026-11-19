@@ -5,7 +5,8 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parse } from 'yaml';
-import { CONFIG_PATH, HOME, REPO, SB_VERSION, TOKEN_PATH, defaults, ensureHome, ensureToken, expand, loadConfig, readToken, saveConfig, type Config } from './config.ts';
+import { CONFIG_PATH, HOME, REPO, SB_VERSION, TOKEN_PATH, defaults, ensureHome, ensureToken, expand, loadConfig, readToken, rotateToken, saveConfig, writeCliWrapper, type Config } from './config.ts';
+import { freePort, notesSocketPath, silverbulletService } from './services.ts';
 import { supervise, silverbulletBin, backlogBin } from './supervisor.ts';
 import { createProxy } from './proxy.ts';
 import { createShell } from './server.ts';
@@ -88,23 +89,28 @@ function addProject(args: string[]) {
 async function up() {
   const c = loadConfig();
   ensureHome();
-  const token = ensureToken();
-  // The jobs workspace's CLAUDE.md and deny rules are managed: rewritten on every start, so they follow this Crewdeck.
+  // A fresh token every start: one that leaked stops working (the bridge re-reads it when the proof stops matching).
+  const token = rotateToken();
+  writeCliWrapper();
+  // The jobs workspace's CLAUDE.md and sandbox settings are managed: rewritten on every start, so they follow this Crewdeck.
   if (c.jobs.enabled) (await import('./jobs/setup.ts')).writeWorkspaceFiles(c);
   const theme = readFileSync(join(REPO, 'themes', 'backlog.css'), 'utf8');
   // Notes follows Crewdeck's appearance through a managed vault page (SilverBullet's own light/dark switch).
   mkdirSync(join(c.vault, 'Library', 'Crewdeck'), { recursive: true });
   writeFileSync(join(c.vault, 'Library', 'Crewdeck', 'Appearance.md'), notesAppearancePage(c.appearance));
+  // SilverBullet on a private Unix socket (no TCP port); each board on a random internal port. Only the public proxy
+  // ports (their own origins, Host/Origin checks) are documented; internal ports are never shown (design §14, W1/W2).
+  const socket = notesSocketPath(HOME);
+  const boards = await Promise.all(c.projects.map(async (p) => ({ p, internal: await freePort() })));
   const services = [
-    // SilverBullet on an internal port; the public Notes port is a Crewdeck proxy (its own origin, Host/Origin checks).
-    { name: 'silverbullet', cmd: silverbulletBin(), args: ['--single', '-L', '127.0.0.1', '-p', String(c.silverbullet.port + 100), c.vault] },
-    ...c.projects.map((p) => ({ name: `board-${p.name}`, cmd: backlogBin(), args: ['browser', '-p', String(p.boardPort! + 100), '--no-open'], cwd: p.path })),
+    silverbulletService(silverbulletBin(), c.vault, socket),
+    ...boards.map(({ p, internal }) => ({ name: `board-${p.name}`, cmd: backlogBin(), args: ['browser', '-p', String(internal), '--no-open'], cwd: p.path })),
     ...c.apps.filter((a) => a.command).map((a) => ({ name: `app-${a.name}`, cmd: a.command!, args: a.args ?? [], cwd: a.cwd })),
   ];
   supervise(services);
-  createProxy({ target: { host: '127.0.0.1', port: c.silverbullet.port + 100 }, injectHead: notesHead(c.appearance), injectAt: 'end' }).listen(c.silverbullet.port, '127.0.0.1');
-  for (const p of c.projects) {
-    createProxy({ target: { host: '127.0.0.1', port: p.boardPort! + 100 }, injectHead: boardHead(c.appearance, theme) })
+  createProxy({ target: { socketPath: socket }, injectHead: notesHead(c.appearance), injectAt: 'end' }).listen(c.silverbullet.port, '127.0.0.1');
+  for (const { p, internal } of boards) {
+    createProxy({ target: { host: '127.0.0.1', port: internal }, injectHead: boardHead(c.appearance, theme) })
       .listen(p.boardPort!, '127.0.0.1');
   }
   createShell(c, undefined, { token }).listen(c.port, '127.0.0.1', () => say(`Crewdeck on http://localhost:${c.port}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));
@@ -174,5 +180,5 @@ const [cmd, ...rest] = process.argv.slice(2);
 // Jobs loads only when used.
 const jobs = (a: string[]) => import('./jobs/cli.ts').then((m) => m.main(a));
 const run: Record<string, (a: string[]) => unknown> = { init, up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, progress: progressCmd, jobs };
-if (!cmd || !run[cmd]) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>'); process.exit(cmd ? 1 : 0); }
+if (!cmd || !Object.hasOwn(run, cmd)) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>'); process.exit(cmd ? 1 : 0); }
 Promise.resolve(run[cmd](rest)).catch((e) => { console.error(e?.message ?? e); process.exit(1); });

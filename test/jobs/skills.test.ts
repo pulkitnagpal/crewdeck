@@ -165,11 +165,11 @@ test('every crewdeck command in the skills, the generated workspace CLAUDE.md an
 
 // ---- the plugin ----
 
-test('the plugin is named crewdeck (0.3.0) everywhere; the bridge keeps its token and proof', () => {
+test('the plugin is named crewdeck (0.4.0) everywhere; the bridge keeps its token and proof', () => {
   const p = JSON.parse(read('plugin', '.claude-plugin', 'plugin.json'));
   assert.equal(p.name, 'crewdeck');
   assert.equal(p.displayName, 'Crewdeck');
-  assert.equal(p.version, '0.3.0');
+  assert.equal(p.version, '0.4.0');
   const m = JSON.parse(read('.claude-plugin', 'marketplace.json'));
   assert.deepEqual(m.plugins.map((x: any) => x.name), ['crewdeck']);
   const reg = read('plugin', 'hooks', 'register.tsx');
@@ -177,4 +177,34 @@ test('the plugin is named crewdeck (0.3.0) everywhere; the bridge keeps its toke
   assert.match(reg, /plugin: 'crewdeck', key: 'busy'/);
   assert.match(reg, /x-crewdeck-token/);
   assert.match(reg, /crewdeck-proof:/);
+});
+
+test('W4/C4: the bridge challenges before its token leaves, binds the proof to the port, beats while busy, puts back on start', () => {
+  const reg = read('plugin', 'hooks', 'register.tsx');
+  assert.match(reg, /'\/api\/hello', \{ nonce: n \}, false\)/, 'hello is sent without the token');
+  assert.match(reg, /crewdeck-proof:\$\{token\}:\$\{n\}:\$\{port\}/, 'the proof names the port');
+  const post = reg.slice(reg.indexOf('async function post('), reg.indexOf('let lastBeat'));
+  assert.match(post, /if \(!\(await verified\(\$, port\)\)\) return null[\s\S]*curl\(\$, port, path, body, true\)/, 'the token is sent only after the proof');
+  assert.match(reg, /take: false/, 'a busy session keeps its presence and leases');
+  const begin = reg.slice(reg.indexOf('async function begin('));
+  assert.match(begin, /'\/api\/requeue', \{ ids: held/, 'what a previous load held goes back on start');
+});
+
+test('E3: no heredoc or echo carries untrusted text in the skills, the bridge prompt or the managed CLAUDE.md; C9: the override comes from the request', () => {
+  const c = defaults();
+  c.vault = '/vault';
+  c.jobs = { ...c.jobs, home: '/jobs-home', workspace: '/jobs-home' };
+  const texts: [string, string][] = [
+    ...skillNames().map((n): [string, string] => [n, read('plugin', 'skills', n, 'SKILL.md')]),
+    ['register.tsx', read('plugin', 'hooks', 'register.tsx')], ['workspace CLAUDE.md', workspaceClaudeMd(c)], ['vault CLAUDE.md', read('vault-template', 'CLAUDE.md')],
+  ];
+  for (const [where, t] of texts) {
+    assert.doesNotMatch(t, /<<-?\s*'?EOF|cat > |echo .*>/, `${where}: no heredoc or echo into a file`);
+    assert.doesNotMatch(t, /single-quoted heredoc/, `${where}: no heredoc advice`);
+  }
+  assert.match(read('plugin', 'hooks', 'register.tsx'), /with the Write tool/);
+  const ws = read('plugin', 'skills', 'jobs-workspace', 'SKILL.md');
+  assert.match(ws, /crewdeck jobs pick --role <role id> --request <id>/, 'pick reads the user\'s override from the request (pass B reads force)');
+  assert.doesNotMatch(ws, /pick --role [^`]*--force/);
+  assert.doesNotMatch(ws, /\$T\b|mkdir -p/, 'literal paths: the sandbox lets only a plain crewdeck call out');
 });
