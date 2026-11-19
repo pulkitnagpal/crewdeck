@@ -8,9 +8,11 @@ export const SCREENS = [['today', 'Today'], ['applications', 'Applications'], ['
 export function agentLine(agent) {
   if (!agent) return { dot: 'off', head: 'Connecting…', text: '' };
   const working = agent.working?.[0];
-  const what = (r) => `${r.label}${r.role ? ` · ${r.role.company}` : ''}`;
-  if (working) return { dot: 'busy', head: 'Claude is working:', text: `${what(working)}${working.last ? ` · ${working.last.text}` : ''}` };
   const waiting = agent.waiting ?? [];
+  const what = (r) => `${r.label}${r.role ? ` · ${r.role.company}` : ''}`;
+  // What waits behind the work in hand goes in the head, which the narrow pane never cuts off: a link pasted or a Find
+  // clicked while Claude applies must still show that it was queued.
+  if (working) return { dot: 'busy', head: waiting.length ? `Claude is working (${waiting.length} waiting):` : 'Claude is working:', text: `${what(working)}${working.last ? ` · ${working.last.text}` : ''}` };
   if (waiting.length && !agent.connected) return { dot: 'off', head: 'No Claude session:', text: `${plural(waiting.length, 'request')} waiting` };
   if (waiting.length) return { dot: 'wait', head: 'Waiting for Claude:', text: `${what(waiting[0])}${waiting.length > 1 ? ` (+${waiting.length - 1})` : ''}` };
   if (!agent.connected) return { dot: 'off', head: 'No Claude session', text: 'on Jobs' };

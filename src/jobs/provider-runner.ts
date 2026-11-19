@@ -144,7 +144,7 @@ async function main(dir: string) {
     },
   });
 
-  // 3. fetch through the parent: the answers come back on fd 3, one JSON line each.
+  // 3. fetch through the parent: asks go out on fd 3, the answers come back on fd 4, one JSON line each.
   let seq = 0, buf = '';
   const waiting = new Map<number, (a: FetchAnswer) => void>();
   // A socket on its own fd (not a thread-pool read, which would hold up the exit; not fd 3, which must stay blocking).

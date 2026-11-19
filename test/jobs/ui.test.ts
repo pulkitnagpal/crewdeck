@@ -150,6 +150,8 @@ test('first run, banners and the top bar', async () => {
   assert.match(bar, /No Claude session/);
   assert.equal(agentLine({ connected: true, working: [{ label: 'Apply to a role', role: { company: 'Example Labs' }, last: { text: 'Step 1 of 3' } }], waiting: [] }).head, 'Claude is working:');
   assert.equal(agentLine({ connected: false, working: [], waiting: [{ label: 'Find jobs' }] }).text, '1 request waiting');
+  // P8 (visual check): a link pasted while Claude applies was queued but the strip showed only the work in hand.
+  assert.equal(agentLine({ connected: true, working: [{ label: 'Apply to a role', role: { company: 'Example Labs' } }], waiting: [{ label: 'Add a link' }, { label: 'Find jobs' }] }).head, 'Claude is working (2 waiting):');
   assert.equal(agentLine({ connected: true, working: [], waiting: [{ label: 'Find jobs', role: null }] }).dot, 'wait');
 });
 

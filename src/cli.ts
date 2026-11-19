@@ -12,7 +12,7 @@ import { createProxy } from './proxy.ts';
 import { createShell } from './server.ts';
 import { boardHead, notesAppearancePage, notesHead } from './appearance.ts';
 import { findBrowser, installHint } from './jobs/browser.ts';
-import { agentCall } from './agent-client.ts';
+import { agentCall, localRead } from './agent-client.ts';
 import { checkedPath, notCrewdeckFile } from './files.ts';
 
 const say = (s: string) => console.log(s);
@@ -163,10 +163,11 @@ async function progressCmd(args: string[]) {
 /** What the running Crewdeck says about the jobs lane (a page read; never starts or stops anything). */
 async function jobsPresence(c: Config) {
   try {
-    const r = await fetch(`http://127.0.0.1:${c.port}/api/jobs/state`, { signal: AbortSignal.timeout(2000) });
+    // A local tool's read (no Fetch Metadata): Node's fetch would be refused as a browser (W8).
+    const r = await localRead(c.port, '/api/jobs/state', 2000);
     if (r.status === 404) return { jobs: false as const };
-    if (!r.ok) return null;
-    const s = await r.json() as any;
+    if (r.status !== 200) return null;
+    const s = r.json;
     return { jobs: true as const, connected: !!s?.agent?.connected, seen: s?.agent?.seen ?? null };
   } catch { return null; }
 }

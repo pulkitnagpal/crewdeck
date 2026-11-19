@@ -2,7 +2,7 @@
 // through the shell (design D11).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { currentAnswers } from '../../src/jobs/kb/ops.ts';
 import { jobsServer, preparedRole, TOKEN } from './api-helpers.ts';
@@ -110,4 +110,23 @@ test('C9/C2: pick --role --request takes "Add it anyway" from the link request\'
   assert.equal(statusOf(chosen), 'picked');
   assert.match((s.w.ctx.db.prepare('select status_reason from roles where id=?').get(chosen) as any).status_reason, /chosen by the user despite/);
   assert.equal(statusOf(busy), 'picked');
+});
+
+test('P8: the CLI reads the running server as a local tool (requests, doctor), not as a browser', async () => {
+  // Node's fetch sends Sec-Fetch-Mode: cors, which the server's reads refuse as a browser without Sec-Fetch-Site (W8).
+  assert.equal((await fetch(`http://127.0.0.1:${s.port}/api/requests`, { headers: { host: `localhost:${s.port}` } })).status, 403);
+  const id = (await s.action('addLink', { url: 'https://jobs.example.com/roles/p8' })).json.request;
+  const list = await crewdeck(['requests']);
+  assert.equal(list.code, 0, list.err);
+  assert.match(list.out, new RegExp(`^${id}\\tnew\\tjobs\\tlink`, 'm'));
+  // doctor reads the Jobs state the same way (it said "Crewdeck isn't running" while it was).
+  const cfg = join(s.w.home, 'config.yaml'), before = readFileSync(cfg, 'utf8');
+  writeFileSync(cfg, before.replace(/^jobs:\n/m, `jobs:\n  enabled: true\n  workspace: ${s.workspace}\n`));
+  try {
+    const doc = await crewdeck(['doctor']);
+    assert.doesNotMatch(doc.out, /isn't running/);
+    assert.match(doc.out, /no Claude session works Jobs/);
+    await s.claim();
+    assert.match((await crewdeck(['doctor'])).out, /a Claude session works the jobs lane/);
+  } finally { writeFileSync(cfg, before); }
 });
