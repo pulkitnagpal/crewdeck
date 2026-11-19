@@ -128,6 +128,17 @@ Machine state is in `~/.crewdeck/jobs/` (private, 0700): `jobs.db` (roles, answe
 (tailored resume PDFs, scratch files), `providers/` (the pinned job-board code). Your risky switches are in
 `~/.crewdeck/config.yaml`. A complete fictional example is in [examples/jobs/](examples/jobs/).
 
+**Where your job sources live.** Three places, each with one owner:
+- **Your choice:** which sources, in which order, your employers' careers pages and any web address you added. It
+  lives in the vault note `jobs/sources.md`, which you can read and edit in Notes.
+- **Everything Crewdeck can fetch:** each board's kind, regions, fields and limits. It is a read-only catalog shipped in
+  this repo (`src/jobs/data/sources-catalog.yaml`), updated only with the pinned providers.
+- **What happened at the last fetch:** counts, errors and when. It is machine state in `~/.crewdeck/jobs/state/`.
+
+LinkedIn can sit in your list like any other source, but switching it on stays yours alone (Jobs → Settings, with your
+computer's confirmation dialog). Design v0.4 adds a Sources screen over these: see
+[docs/jobs/design.md](docs/jobs/design.md) §24.
+
 ## Presets
 
 `crewdeck jobs init --preset <name>` seeds `jobs/search.md` and `jobs/sources.md` (only notes you haven't changed).

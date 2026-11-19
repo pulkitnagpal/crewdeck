@@ -1,0 +1,2491 @@
+# Crewdeck Jobs — job-source catalog (design draft; no code reads this file yet).
+#
+# What it is: a read-only description of every job-source "provider" Crewdeck ships, so the setup interview can
+# propose sources from a user's profile (country, field, workplace) and the UI can filter them. It is shipped in the
+# repo and never edited per user: the user's own selection lives in their vault note `jobs/sources.md`.
+#
+# Where the providers come from: career-ops (https://github.com/career-ops-hq/career-ops, MIT), pinned at commit
+# f3b043d3dd212f04d2dabdb0d8e5c4b288a5c50d (see providers.manifest.json). Descriptions follow upstream
+# docs/SUPPORTED_JOB_BOARDS.md and each provider's own header comment and config/resolve code.
+#
+# Entry fields (one entry per provider id, sorted by id):
+#   id          career-ops provider id (= file name minus .mjs)
+#   name        human name of the board / ATS / employer
+#   kind        one of `kinds` below
+#   needs       one of `needs` below: what an entry must carry before the provider returns anything useful
+#   config      option keys the provider reads that matter for targeting (dotted = nested block, e.g. amazon.loc_query)
+#   detect      true when the provider is in manifest.detectors (a pasted careers_url auto-routes to it)
+#   regions     where the jobs are: region ids and lowercase ISO 3166-1 alpha-2 countries from places.yaml
+#   families    role families from `families` below; ATSes are [any] (or their sector) plus a `note` on typical employers
+#   workplace   which of onsite / hybrid / remote it mostly carries
+#   languages   posting languages (ISO 639-1)
+#   seniority   any | entry | experienced
+#   runnable    false for manifest.excluded providers (cannot run in Crewdeck's sandbox); `why` says why
+#   retired     true when the upstream provider is kept only so old configs fail loudly: its fetch() always throws
+#   coverage    one factual line on limits (caps, truncation, required keys, blocking)
+#   note        (ATS only) what kinds of employers typically use it
+#   confidence  high = doc + code are explicit; medium = partly inferred (usually regions/families); low = a guess
+#   unsure      what could not be confirmed from the local doc and code
+#
+# Region/family claims for ATSes and remote boards are about the vendor's typical customers or the board's typical
+# mix, not measured from live data (nothing here was fetched); `unsure` says so wherever it matters.
+
+families:
+  engineering-it: "Software, IT, infrastructure, security."
+  data: "Data, analytics, ML/AI."
+  product-project: "Product management and project/programme management."
+  design: "UX/UI, graphic and product design."
+  creative-media: "Writing, content, translation, media, arts."
+  marketing: "Marketing, growth, communications."
+  sales: "Sales, business development, account management."
+  customer-service: "Customer support and service."
+  finance-accounting: "Finance, accounting, audit, banking roles."
+  legal: "Legal and compliance."
+  people-hr: "HR, recruiting, people operations."
+  office-admin: "Administration, reception, office and executive support."
+  operations: "General operations and supply-chain management."
+  healthcare: "Clinical roles: nursing, medicine, allied health, pharmacy."
+  care-social: "Social work, care work, childcare."
+  education: "Schools, higher education, training."
+  science-research: "Laboratory, academic and industrial research."
+  engineering-physical: "Mechanical, civil, electrical and manufacturing engineering."
+  trades-construction: "Skilled trades and construction."
+  manufacturing-production: "Factory and production work."
+  logistics-transport: "Warehouse, driving, delivery, rail and transport."
+  retail: "Store and retail roles."
+  hospitality-food: "Hotels, restaurants, catering, food service."
+  public-sector: "Government and public employers, any field."
+  any: "A general board or ATS that carries every field."
+
+kinds:
+  board: "A job board, read board-wide (many employers in one entry)."
+  aggregator: "Re-lists other boards' or companies' postings (VC portfolio boards, cross-tenant feeds)."
+  ats: "An applicant-tracking system: one entry = one employer's careers page; needs that employer's careers_url."
+  national: "A government / public employment service."
+  field: "A board for one field or sector (education, a tech niche, crypto, a programming language)."
+  employer: "One specific company's own careers site."
+  feed: "A generic reader (sitemap, WordPress feed, Telegram channel, Notion page, local parser)."
+
+needs:
+  none: "Runs from `provider: <id>` alone."
+  careers_url: "Needs a URL: an employer's careers page (ATS, employer) or a search/board URL on the board's host."
+  config: "Board-wide, but returns nothing (or the wrong slice) without keys such as keywords, queries or a filter block; `config` names them."
+
+# Crewdeck's own LinkedIn source. Not a career-ops provider and not in providers.manifest.json.
+linkedin:
+  id: linkedin
+  name: LinkedIn (Crewdeck)
+  kind: board
+  needs: none
+  config: []
+  detect: false
+  regions: [world]
+  families: [any]
+  workplace: [onsite, hybrid, remote]
+  languages: [en]
+  seniority: [any]
+  runnable: true
+  switch: [linkedin_search, linkedin_links, easy_apply]
+  default_on: false
+  coverage: "Crewdeck's own source. A user-only risky switch, off by default: only the user can turn it on, never setup or Claude on its own."
+  confidence: high
+  unsure: "Posting languages follow the user's market; [en] is a placeholder."
+
+sources:
+  - id: 4dayweek
+    name: 4 Day Week
+    kind: board
+    needs: none
+    config: [max_pages]
+    detect: true
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service]
+    workplace: [remote, hybrid, onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Only 4-day-week / reduced-hours employers; default 3 pages x 25 = about 75 newest postings (cap 50 pages)."
+    confidence: medium
+    unsure: "Field and country mix not measured; looks startup/tech-heavy, US/UK-heavy."
+
+  - id: a16z-speedrun-talent
+    name: a16z speedrun talent network
+    kind: aggregator
+    needs: none
+    config: [q, keywords, max_pages]
+    detect: true
+    regions: [us, world]
+    families: [engineering-it, data, product-project, design, marketing, sales, operations]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "a16z speedrun and portfolio startups (~200 companies, ~17k postings); default 3 pages x 50 = 150 unless q: narrows it or max_pages is raised."
+    confidence: medium
+    unsure: "Country split not measured; assumed mostly US startup hubs."
+
+  - id: adp-myjobs
+    name: ADP Recruiting Management (myjobs)
+    kind: ats
+    needs: careers_url
+    config: [adpMyjobs.orgoid, adpMyjobs.fetchDetails, max_pages]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "ADP payroll customers: mid-size and large US employers across healthcare, retail, manufacturing, services."
+    coverage: "One career site per entry (myjobs.adp.com/<site>/cx/...); list has no description or date unless fetchDetails is set."
+    confidence: medium
+    unsure: "Employer mix and country spread inferred from ADP's market, not from the code."
+
+  - id: adp-workforcenow
+    name: ADP Workforce Now
+    kind: ats
+    needs: careers_url
+    config: [adpWorkforcenow.fetchDetails, max_pages]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Small and mid-size US employers on ADP payroll: clinics, nonprofits, local manufacturers, dealerships, services."
+    coverage: "One tenant per entry (workforcenow.adp.com recruitment.html?cid=...&ccId=...); no JD text unless fetchDetails is set."
+    confidence: medium
+    unsure: "Employer mix inferred from ADP's market."
+
+  - id: agentic-jobs
+    name: Agentic Engineering Jobs
+    kind: field
+    needs: none
+    config: []
+    detect: true
+    regions: [world]
+    families: [engineering-it, data]
+    workplace: [remote, hybrid, onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Niche board for AI/agentic engineering roles; reads up to 40 pages / 2000 postings."
+    confidence: high
+    unsure: ""
+
+  - id: aldi-nord
+    name: ALDI Nord
+    kind: employer
+    needs: careers_url
+    config: [aldi_nord.categories, aldi_nord.locales, max_pages]
+    detect: true
+    regions: [de, nl, be, lu, fr, es, pt, pl]
+    families: [retail, logistics-transport, office-admin, engineering-it, finance-accounting, people-hr, operations]
+    workplace: [onsite, hybrid]
+    languages: [de, nl, fr, es, pt, pl]
+    seniority: [any]
+    runnable: true
+    coverage: "One country site per entry (www.aldi-nord.de, aldi.nl/.be/.lu/.fr/.es/.pt/.pl); fetch throws without one of those hosts; no descriptions."
+    confidence: high
+    unsure: "Family mix inferred (store, warehouse and head-office roles); ALDI Sud (UK, US, AT, CH, IT) is a different company and not covered."
+
+  - id: alibaba
+    name: Alibaba Group Careers
+    kind: employer
+    needs: none
+    config: [keywords, max_pages]
+    detect: true
+    regions: [cn, world]
+    families: [engineering-it, data, product-project, design, marketing, sales, operations]
+    workplace: [onsite, hybrid]
+    languages: [zh]
+    seniority: [experienced]
+    runnable: true
+    coverage: "Whole group board (~4,100 postings) in zh-CN; each keyword is a separate server-side query."
+    confidence: medium
+    unsure: "Seniority 'experienced' assumed from the off-campus (social hiring) channel; non-China share not measured."
+
+  - id: amazon
+    name: Amazon / AWS
+    kind: employer
+    needs: config
+    config: [amazon.loc_query, amazon.base_query, amazon.category]
+    detect: true
+    regions: [world]
+    families: [engineering-it, data, product-project, logistics-transport, operations, customer-service, sales, finance-accounting, people-hr, marketing, legal]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "100k+ global postings; not enforced, but without amazon.loc_query/base_query it returns only the newest slice (cap 100 pages / 10,000)."
+    confidence: high
+    unsure: "Warehouse/hourly roles may live on a separate Amazon hiring site and not appear here."
+
+  - id: apple
+    name: Apple
+    kind: employer
+    needs: config
+    config: [apple.queries, apple.teams, apple.location, max_pages]
+    detect: true
+    regions: [us, world]
+    families: [engineering-it, data, design, product-project, retail, customer-service, operations, marketing, finance-accounting, legal]
+    workplace: [onsite, hybrid]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Throws without apple.queries or apple.teams; location defaults to the US; default 2 pages x 20 per query (cap 50)."
+    confidence: high
+    unsure: "Whether Apple Store retail roles show under the same search was not checked."
+
+  - id: applicantpro
+    name: ApplicantPro (isolved Talent Acquisition)
+    kind: ats
+    needs: careers_url
+    config: [applicantpro.domainId, applicantpro.fetchDetails]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US small and mid-size employers: local government, school districts, credit unions, clinics, manufacturers."
+    coverage: "One tenant (<tenant>.applicantpro.com) per entry; whole inventory in one request; no tenant discovery."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: applitrack
+    name: Frontline AppliTrack
+    kind: ats
+    needs: careers_url
+    config: [default_location]
+    detect: true
+    regions: [us]
+    families: [education, public-sector]
+    workplace: [onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US K-12 school districts: teachers, plus paraprofessionals, bus drivers, custodians, food service and office staff."
+    coverage: "One district per entry (applitrack.com/<district>/onlineapp/); location is often a school name, so set default_location."
+    confidence: high
+    unsure: ""
+
+  - id: arbeitnow
+    name: Arbeitnow
+    kind: board
+    needs: none
+    config: [max_pages]
+    detect: false
+    regions: [de, dach, europe]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [de, en]
+    seniority: [any]
+    runnable: true
+    coverage: "Whole board newest-first; default 3 pages x 100 = 300 newest postings."
+    confidence: medium
+    unsure: "Field mix not measured; English-language and tech roles look over-represented."
+
+  - id: arbeitsagentur
+    name: Bundesagentur für Arbeit (Jobsuche)
+    kind: national
+    needs: config
+    config: [arbeitsagentur.keywords, arbeitsagentur.wo, arbeitsagentur.umkreis, arbeitsagentur.days, arbeitsagentur.size, arbeitsagentur.angebotsart]
+    detect: false
+    regions: [de]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [de]
+    seniority: [any]
+    runnable: true
+    coverage: "Throws without arbeitsagentur.keywords; at most 100 results per keyword (size 1-100), nationwide unless wo: + umkreis are set."
+    confidence: high
+    unsure: ""
+
+  - id: ashby
+    name: Ashby
+    kind: ats
+    needs: careers_url
+    config: [ashby.embed, ashby.board]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Tech startups and scale-ups, mostly US and Europe."
+    coverage: "One board (jobs.ashbyhq.com/<slug>) per entry; whole board in one response."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: atlassian
+    name: Atlassian
+    kind: employer
+    needs: none
+    config: []
+    detect: true
+    regions: [world, au, us, in]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, legal]
+    workplace: [remote, hybrid, onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Whole board (~290 postings) in one request; no posting dates."
+    confidence: medium
+    unsure: "Country list inferred from Atlassian's main offices."
+
+  - id: avature
+    name: Avature
+    kind: ats
+    needs: careers_url
+    config: [api, offset_param, max_pages]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large enterprises: banks, consultancies, retailers, universities."
+    coverage: "One tenant per entry; 6 results per page, default 50 pages = about 300 postings; branded domains need api: on the avature.net origin."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: bamboohr
+    name: BambooHR
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [us, world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Small and mid-size companies of every kind, US-heavy."
+    coverage: "One tenant (<tenant>.bamboohr.com) per entry; list has no dates or descriptions."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: beesite
+    name: BeeSite (milch & zucker)
+    kind: ats
+    needs: careers_url
+    config: [beesite.languageCode, beesite.searchCriteria, max_pages]
+    detect: true
+    regions: [de, dach]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [de, en]
+    seniority: [any]
+    runnable: true
+    note: "Large German employers behind branded portals (e.g. Mercedes-Benz)."
+    coverage: "One tenant (<tenant>.app.beesite.de) per entry; branded portals need careers_url/api on the beesite host."
+    confidence: medium
+    unsure: "Tenant list beyond Mercedes-Benz not known."
+
+  - id: breezy
+    name: Breezy HR
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [us, world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Small businesses and startups, US-heavy; includes restaurants, clinics and agencies."
+    coverage: "One tenant (<tenant>.breezy.hr) per entry; whole board in one request."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: builtin
+    name: Built In
+    kind: board
+    needs: config
+    config: [builtin.queries, builtin.categories, builtin.host, builtin.scope, max_pages]
+    detect: true
+    regions: [us]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, operations]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "US tech companies only (builtin.com plus 8 city hosts); with no queries: or categories: it scans nothing; default 3 pages per query."
+    confidence: high
+    unsure: "Manifest marks it a detector although the doc says it has no detect(); not checked further."
+
+  - id: bulldogjob
+    name: Bulldogjob
+    kind: field
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [pl]
+    families: [engineering-it, data]
+    workplace: [onsite, hybrid, remote]
+    languages: [pl, en]
+    seniority: [any]
+    runnable: true
+    coverage: "Polish IT board (~930 postings); careers_url is a bulldogjob.pl/companies/jobs search URL (bare one = whole board); default 25 pages; no dates."
+    confidence: high
+    unsure: ""
+
+  - id: bwi
+    name: BWI GmbH
+    kind: employer
+    needs: none
+    config: [bwi.fetchDetails, bwi.detailLimit]
+    detect: true
+    regions: [de]
+    families: [engineering-it, data, product-project, operations]
+    workplace: [onsite, hybrid]
+    languages: [de]
+    seniority: [any]
+    runnable: true
+    coverage: "German armed forces' IT provider, ~270 roles; titles come from URL slugs and location is empty unless fetchDetails is set."
+    confidence: high
+    unsure: ""
+
+  - id: careerviet
+    name: CareerViet
+    kind: board
+    needs: none
+    config: [searchKeywords, searchLocation, max_pages]
+    detect: true
+    regions: [vn]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [vi, en]
+    seniority: [any]
+    runnable: true
+    coverage: "Broad Vietnamese board; default 10 pages (cap 50); searchLocation verified only for Ho Chi Minh City."
+    confidence: high
+    unsure: ""
+
+  - id: clearcompany
+    name: ClearCompany
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US mid-size employers (healthcare groups, schools, services)."
+    coverage: "One siteId per entry (careers-api.clearcompany.com/v1/<siteId> or the embed script URL); a branded careers page is not detected; email-to-apply postings skipped."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: collage
+    name: Collage HR
+    kind: ats
+    needs: careers_url
+    config: [api]
+    detect: true
+    regions: [ca]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Canadian small and mid-size businesses."
+    coverage: "One job site per entry (api.collage.co/v1/positions/<address> or a Collage careers URL); never guesses a slug."
+    confidence: low
+    unsure: "Neither doc nor code names a country; Canada is from knowledge of the vendor."
+
+  - id: comeet
+    name: Comeet / Spark Hire Recruit
+    kind: ats
+    needs: careers_url
+    config: [api]
+    detect: true
+    regions: [il, us, europe]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, he]
+    seniority: [any]
+    runnable: true
+    note: "Tech companies, Israel-heavy."
+    coverage: "Needs the full careers-api URL with company uid and token (not derivable from a branded page)."
+    confidence: low
+    unsure: "Region and employer mix are from knowledge of the vendor, not the doc."
+
+  - id: computrabajo
+    name: Computrabajo
+    kind: board
+    needs: careers_url
+    config: [max_pages, max_jobs]
+    detect: true
+    regions: [latam, co, mx, ar, pe, cl, ec]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [es]
+    seniority: [any]
+    runnable: true
+    coverage: "Hard cap 3 pages / 15 postings per entry (can only be lowered); careers_url is a <country>.computrabajo.com search URL; only the Colombian host was measured."
+    confidence: medium
+    unsure: "Which country hosts exist beyond co/mx is from knowledge, not the doc; paid featured cards take part of the 15."
+
+  - id: consider
+    name: Consider (VC talent networks)
+    kind: aggregator
+    needs: careers_url
+    config: [consider_size, consider_board, max_pages]
+    detect: true
+    regions: [europe, us]
+    families: [engineering-it, data, product-project, design, marketing, sales, operations]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "One VC portfolio board per entry (e.g. Balderton, Creandum, Lightspeed); careers_url is the board's /jobs page."
+    confidence: medium
+    unsure: "Field mix assumed startup-typical."
+
+  - id: cryptocurrencyjobs
+    name: CryptocurrencyJobs
+    kind: field
+    needs: none
+    config: []
+    detect: false
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, legal]
+    workplace: [remote, onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Web3/crypto employers only; one RSS feed (about 60 items when measured)."
+    confidence: medium
+    unsure: "Feed size taken from a test note (62 titles), not a documented cap."
+
+  - id: csod
+    name: Cornerstone OnDemand
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large enterprises, hospitals and health systems, banks, public bodies."
+    coverage: "One career site per entry (<tenant>.csod.com/ux/ats/careersite/...)."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: darwinbox
+    name: Darwinbox
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [in, south-asia, southeast-asia]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large Indian employers: conglomerates, banks, insurers, retail chains, manufacturers, pharma."
+    coverage: "One tenant per entry; URL must carry the company id (/ms/candidatev2/<id>/careers); default 20 pages x 50."
+    confidence: high
+    unsure: "Southeast Asia from knowledge of the vendor."
+
+  - id: dassault
+    name: Dassault Systèmes
+    kind: employer
+    needs: none
+    config: []
+    detect: true
+    regions: [fr, world]
+    families: [engineering-it, data, engineering-physical, sales, marketing, product-project, finance-accounting]
+    workplace: [onsite, hybrid]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "English copies of the global board (~445 postings), cap 1,000."
+    confidence: high
+    unsure: ""
+
+  - id: deel
+    name: Deel job board
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [remote, hybrid, onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Tech scale-ups with global hiring (e.g. Klarna)."
+    coverage: "One tenant (jobs.deel.com/<slug>) per entry; whole inventory with descriptions in one page; no salary."
+    confidence: medium
+    unsure: "Tenant mix beyond the named examples unknown."
+
+  - id: deutschebahn
+    name: Deutsche Bahn (db.jobs)
+    kind: employer
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [de]
+    families: [logistics-transport, trades-construction, engineering-physical, engineering-it, customer-service, office-admin, operations, education]
+    workplace: [onsite, hybrid]
+    languages: [de]
+    seniority: [any]
+    runnable: true
+    coverage: "Needs a db.jobs URL (falls back to the default search id); newest first, cap 1,000 postings."
+    confidence: medium
+    unsure: "Family list inferred (train drivers, mechanics, apprenticeships, IT); apprenticeship share unknown."
+
+  - id: dover
+    name: Dover
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US tech startups."
+    coverage: "One board (app.dover.com/<Company>/careers/<uuid>) per entry; no dates or descriptions."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: echojobs
+    name: EchoJobs
+    kind: aggregator
+    needs: none
+    config: []
+    detect: true
+    regions: [world]
+    families: [engineering-it, data]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    retired: true
+    coverage: "Retired upstream (2026-08-20): the feed sits behind bot protection and fetch() always throws. Do not propose."
+    confidence: high
+    unsure: ""
+
+  - id: eightfold
+    name: Eightfold AI
+    kind: ats
+    needs: careers_url
+    config: [domain, eightfold_host, max_pages]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large enterprises (Bayer, Vodafone, PepsiCo, Micron) and some US health systems."
+    coverage: "One tenant (<tenant>.eightfold.ai) per entry; 10 rows per page, default 200 pages; branded hosts need eightfold_host."
+    confidence: medium
+    unsure: "Health-system usage is from knowledge of the vendor, not the doc."
+
+  - id: eploy
+    name: Eploy
+    kind: ats
+    needs: careers_url
+    config: [eploy.fetchDetails, eploy.detailLimit]
+    detect: true
+    regions: [gb]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "UK employers: councils, housing associations, charities, universities, retailers."
+    coverage: "One tenant per entry (branded domain, explicit provider: eploy); titles come from URL slugs, no location unless fetchDetails is set."
+    confidence: low
+    unsure: "UK focus and employer mix are from knowledge of the vendor; the doc names only Specsavers (as not supported)."
+
+  - id: factorial
+    name: Factorial
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [es, pt, europe, latam]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [es, pt, en]
+    seniority: [any]
+    runnable: true
+    note: "Small and mid-size companies in Spain, Portugal and Latin America."
+    coverage: "One tenant (<tenant>.factorialhr.* / factorial.*) per entry; location is the office name, often a city without country; no dates."
+    confidence: medium
+    unsure: "Region inferred from the vendor's domains (.es, .pt) and market."
+
+  - id: feishu-jobs
+    name: Feishu Jobs (ByteDance and tenants)
+    kind: ats
+    needs: careers_url
+    config: [keywords, max_pages]
+    detect: true
+    regions: [cn, world]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [zh, en]
+    seniority: [any]
+    runnable: true
+    note: "Chinese tech companies (ByteDance, MiniMax and other jobs.feishu.cn tenants)."
+    coverage: "One tenant per entry (jobs.bytedance.com or *.jobs.feishu.cn); each keyword a separate query; default 200 pages x 100."
+    confidence: high
+    unsure: ""
+
+  - id: flowxtra
+    name: Flowxtra
+    kind: aggregator
+    needs: none
+    config: [max_pages]
+    detect: false
+    regions: [dach, europe]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [de, en]
+    seniority: [any]
+    runnable: true
+    coverage: "Cross-tenant feed of every company on the Flowxtra ATS; default 3 pages (newest)."
+    confidence: low
+    unsure: "Neither doc nor code says where Flowxtra's customers are; DACH is a guess from the vendor's origin."
+
+  - id: garena
+    name: Garena
+    kind: employer
+    needs: none
+    config: [garena.office]
+    detect: true
+    regions: [sg, southeast-asia, tw]
+    families: [engineering-it, data, product-project, design, marketing, operations, creative-media]
+    workplace: [onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Whole board (~98 postings) in one request; office does not filter."
+    confidence: medium
+    unsure: "Country list inferred from Garena's offices."
+
+  - id: gem
+    name: Gem
+    kind: ats
+    needs: careers_url
+    config: [api]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US tech companies."
+    coverage: "One board (jobs.gem.com/<boardId>, or api: for the REST board API) per entry."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: generalist-world
+    name: Generalist World
+    kind: field
+    needs: none
+    config: []
+    detect: true
+    regions: [world, gb, us, europe]
+    families: [operations, product-project, office-admin, marketing, sales, finance-accounting]
+    workplace: [remote, hybrid, onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Curated generalist/operator roles (chief of staff, founder's associate); one page, about 140 postings; no dates."
+    confidence: high
+    unsure: ""
+
+  - id: germantechjobs
+    name: GermanTechJobs
+    kind: field
+    needs: none
+    config: []
+    detect: true
+    regions: [de]
+    families: [engineering-it, data]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, de]
+    seniority: [any]
+    runnable: true
+    coverage: "German IT roles with salary; whole board in one RSS feed, but no location on any posting (strict location filters drop everything)."
+    confidence: high
+    unsure: ""
+
+  - id: getonbrd
+    name: Get on Board
+    kind: field
+    needs: none
+    config: [category, categories, max_pages]
+    detect: false
+    regions: [latam, cl, co, mx, pe, ar, world]
+    families: [engineering-it, data, design, product-project, marketing, sales, customer-service]
+    workplace: [remote, hybrid, onsite]
+    languages: [es, en, pt]
+    seniority: [any]
+    runnable: true
+    coverage: "Category defaults to programming only; default 3 pages per category (up to 12 categories)."
+    confidence: medium
+    unsure: "Non-tech category list and Chile-heaviness from knowledge, not the doc."
+
+  - id: getro
+    name: Getro (VC talent networks)
+    kind: aggregator
+    needs: careers_url
+    config: [getro_max_pages, getro_max_age_days, getro_collection]
+    detect: true
+    regions: [europe, us]
+    families: [engineering-it, data, product-project, design, marketing, sales, operations]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "One VC portfolio board per entry (Atomico, Point Nine, HV Capital...); default 40 pages, postings up to 90 days old."
+    confidence: medium
+    unsure: "Field mix assumed startup-typical."
+
+  - id: glints
+    name: Glints
+    kind: board
+    needs: none
+    config: [countryCode, searchKeywords, maxPages, pageSize]
+    detect: true
+    regions: [id, sg, my, vn]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, id, vi]
+    seniority: [any]
+    runnable: true
+    coverage: "countryCode defaults to ID (Indonesia); default 3 pages x 30 = 90 postings; reverse-engineered GraphQL that may change."
+    confidence: medium
+    unsure: "Manifest marks it a detector although the code says auto-detection is not supported."
+
+  - id: google
+    name: Google Careers
+    kind: employer
+    needs: config
+    config: [google.queries, google.location, max_pages]
+    detect: true
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, finance-accounting, legal, people-hr, operations]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Without google.queries it runs 5 built-in business-strategy queries in the United States; default 10 pages x 20 per query; also lists YouTube/DeepMind."
+    confidence: high
+    unsure: ""
+
+  - id: greenhouse
+    name: Greenhouse
+    kind: ats
+    needs: careers_url
+    config: [api, greenhouse.fetchDetails, greenhouse.detailLimit]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Tech companies and scale-ups, plus some media, fintech and health-tech; US and Europe heavy."
+    coverage: "One board (boards.greenhouse.io/<slug>) per entry; full descriptions unless the board is too large."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: gupy
+    name: Gupy
+    kind: board
+    needs: config
+    config: [gupy.keywords, gupy.since_days, gupy.workplace_types, gupy.job_types, gupy.state, max_pages]
+    detect: false
+    regions: [br]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [pt]
+    seniority: [any]
+    runnable: false
+    why: "Imports _profile-keywords.mjs, which needs the npm package js-yaml."
+    coverage: "Board-wide search over thousands of Brazilian employers on the Gupy ATS; keyword sweep (falls back to profile.yml target roles)."
+    confidence: high
+    unsure: ""
+
+  - id: hackernews
+    name: Hacker News (Who is hiring?)
+    kind: board
+    needs: none
+    config: []
+    detect: false
+    regions: [world, us]
+    families: [engineering-it, data, product-project, design]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Current monthly thread only; free-form comments, so company/location are often blank."
+    confidence: high
+    unsure: ""
+
+  - id: hecklerkoch
+    name: Heckler & Koch
+    kind: employer
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [de]
+    families: [engineering-physical, manufacturing-production, engineering-it, operations, office-admin]
+    workplace: [onsite]
+    languages: [de]
+    seniority: [any]
+    runnable: true
+    coverage: "Tiny board (~32 roles in Oberndorf / Vohringen); needs the heckler-koch.com vacancy URL; no location."
+    confidence: medium
+    unsure: "Family list inferred from a defence manufacturer's typical roles."
+
+  - id: hibob
+    name: HiBob careers
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [gb, il, europe, us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Mid-size tech and services companies, UK/Israel/Europe-heavy."
+    coverage: "One tenant (<tenant>.careers.hibob.com) per entry; whole board in one request, with dates and pay when stated."
+    confidence: low
+    unsure: "Region and employer mix are from knowledge of the vendor."
+
+  - id: higheredjobs
+    name: HigherEdJobs
+    kind: field
+    needs: none
+    config: [cat_id]
+    detect: true
+    regions: [us]
+    families: [education, science-research]
+    workplace: [onsite, hybrid]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "One RSS category per entry (cat_id, default 68 'Higher Education'); some networks get a bot-challenge page and the scan errors."
+    confidence: medium
+    unsure: "How much admin/staff (IT, HR, finance at colleges) the default category carries is not known; RSS item cap unknown."
+
+  - id: himalayas
+    name: Himalayas
+    kind: board
+    needs: none
+    config: [max_pages]
+    detect: true
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, operations]
+    workplace: [remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Remote jobs only; default 10 pages x 20 = 200 newest postings (cap 50 pages), warns when cut."
+    confidence: medium
+    unsure: "Field mix not measured; tech/marketing/support likely dominate."
+
+  - id: hirehive
+    name: HireHive
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [ie, gb, europe]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Small and mid-size employers, Ireland and UK."
+    coverage: "One tenant (<tenant>.hirehive.com) per entry; descriptions, dates and salary included."
+    confidence: low
+    unsure: "Region is from knowledge of the vendor (Irish), not the doc."
+
+  - id: hiringroom
+    name: HiringRoom
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [ar, latam]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [es]
+    seniority: [any]
+    runnable: true
+    note: "Companies in Argentina and Latin America."
+    coverage: "One tenant (<company>.hiringroom.com) per entry; newer tenants need careers_url at /portal/jobs; one request, no pagination."
+    confidence: high
+    unsure: ""
+
+  - id: homerun
+    name: Homerun
+    kind: ats
+    needs: careers_url
+    config: [api]
+    detect: true
+    regions: [nl, europe]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, nl]
+    seniority: [any]
+    runnable: true
+    note: "Small creative and tech companies, Netherlands-heavy."
+    coverage: "One tenant (<slug>.homerun.co or its feed) per entry; branded domains need api: on feed.homerun.co."
+    confidence: low
+    unsure: "Region is from knowledge of the vendor (Dutch), not the doc."
+
+  - id: ibm
+    name: IBM Careers
+    kind: employer
+    needs: none
+    config: [ibm.country, ibm.categories, max_pages]
+    detect: false
+    regions: [world, us, in]
+    families: [engineering-it, data, product-project, design, sales, marketing, finance-accounting, people-hr, science-research]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Global board; default 20 pages x 30 = 600 postings unless ibm.country/categories narrow it."
+    confidence: medium
+    unsure: "India share inferred from IBM's workforce."
+
+  - id: icims
+    name: iCIMS
+    kind: ats
+    needs: careers_url
+    config: [fallback_urls]
+    detect: true
+    regions: [us, world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large US employers: hospitals and health systems, retailers, logistics firms, banks, universities."
+    coverage: "One portal (*.icims.com) per entry; fixed 30-page cap (~600 postings); no dates on list pages."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: inrecruiting
+    name: InRecruiting (Zucchetti)
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [it]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [it, en]
+    seniority: [any]
+    runnable: true
+    note: "Italian employers of all sizes."
+    coverage: "One tenant (<tenant>.intervieweb.it) per entry; 15 per page, default 40 pages; no dates."
+    confidence: high
+    unsure: ""
+
+  - id: itviec
+    name: ITviec
+    kind: field
+    needs: none
+    config: [searchKeywords, searchLocation, max_pages]
+    detect: true
+    regions: [vn]
+    families: [engineering-it, data]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, vi]
+    seniority: [any]
+    runnable: true
+    coverage: "Vietnam's largest IT board; default 10 pages (cap 50); cities Ho Chi Minh / Hanoi / Da Nang."
+    confidence: high
+    unsure: ""
+
+  - id: jazzhr
+    name: JazzHR (ApplyToJob)
+    kind: ats
+    needs: careers_url
+    config: [jazzhr.fetchDetails, jazzhr.detailLimit]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US small businesses of every kind (clinics, agencies, trades, nonprofits)."
+    coverage: "One tenant (*.applytojob.com) per entry."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: jibeapply
+    name: JibeApply
+    kind: ats
+    needs: careers_url
+    config: [api, page_size, max_pages]
+    detect: true
+    regions: [us, world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large employers (iCIMS-owned): retailers, hospitals, banks."
+    coverage: "One tenant (<slug>.jibeapply.com/jobs or a branded /jobs with api:) per entry; default 50 pages (~500 postings)."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: jobbankca
+    name: Job Bank Canada
+    kind: national
+    needs: config
+    config: [jobbankca.keywords, max_pages]
+    detect: false
+    regions: [ca]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, fr]
+    seniority: [any]
+    runnable: false
+    why: "Imports _profile-keywords.mjs, which needs the npm package js-yaml."
+    coverage: "Canada's federal job bank; keyword search, 100 per page, default 5 pages, 5 s crawl delay."
+    confidence: high
+    unsure: ""
+
+  - id: jobicy
+    name: Jobicy
+    kind: board
+    needs: none
+    config: [geo, industry, tag, max_pages]
+    detect: true
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, creative-media]
+    workplace: [remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Remote jobs, 7-day window (~1,400 postings); geo: and industry: are server-side filters."
+    confidence: high
+    unsure: ""
+
+  - id: jobscz
+    name: Jobs.cz
+    kind: board
+    needs: config
+    config: [jobscz.keywords, max_pages]
+    detect: false
+    regions: [cz]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [cs]
+    seniority: [any]
+    runnable: false
+    why: "Imports _profile-keywords.mjs, which needs the npm package js-yaml."
+    coverage: "Czech general board; keyword search, 30 per page, default 10 pages."
+    confidence: high
+    unsure: ""
+
+  - id: jobspresso
+    name: Jobspresso
+    kind: board
+    needs: none
+    config: [posts_per_page]
+    detect: true
+    regions: [world]
+    families: [engineering-it, design, marketing, customer-service, product-project, sales, creative-media]
+    workplace: [remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Remote board; one request of up to 100 newest feed items."
+    confidence: medium
+    unsure: "Field mix from knowledge of the board."
+
+  - id: jobstreet
+    name: Jobstreet / SEEK / JobsDB
+    kind: board
+    needs: none
+    config: [api, siteKey, searchKeywords, searchLocation, pageSize, max_pages, appendWorkType]
+    detect: true
+    regions: [id, sg, my, hk, au, nz]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, id]
+    seniority: [any]
+    runnable: true
+    coverage: "Defaults to Indonesia (id.jobstreet.com, ID-Main); other markets need api: + siteKey; no Philippines or Thailand host is allowed."
+    confidence: high
+    unsure: ""
+
+  - id: jobvite
+    name: Jobvite
+    kind: ats
+    needs: careers_url
+    config: [company_eid, api]
+    detect: true
+    regions: [us, world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Mid-size and large employers, US-heavy (tech, healthcare, hospitality, retail)."
+    coverage: "One tenant (jobs.jobvite.com/<slug>) per entry; whole feed with descriptions; host rate-limits (429, Retry-After 30)."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: join
+    name: JOIN (join.com)
+    kind: ats
+    needs: careers_url
+    config: [company_id, max_pages]
+    detect: true
+    regions: [de, dach, europe]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [de, en]
+    seniority: [any]
+    runnable: true
+    note: "German and European SMEs, including trades, care and hospitality businesses."
+    coverage: "One company (join.com/companies/<slug>) per entry; 100 per request, default 50 pages."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: joinup
+    name: joinup.ch
+    kind: board
+    needs: none
+    config: []
+    detect: true
+    regions: [ch]
+    families: [engineering-it, data, product-project, design, marketing, sales, operations]
+    workplace: [onsite, hybrid, remote]
+    languages: [de, en, fr]
+    seniority: [any]
+    runnable: true
+    coverage: "Swiss startup board (~1,000 jobs) but only the newest server-rendered page is read."
+    confidence: medium
+    unsure: "Page size of the newest page not stated; field mix assumed startup-typical."
+
+  - id: justjoin
+    name: Just Join IT
+    kind: field
+    needs: careers_url
+    config: [city_radius, currency, page_size, max_pages]
+    detect: true
+    regions: [pl, europe]
+    families: [engineering-it, data, product-project, design]
+    workplace: [onsite, hybrid, remote]
+    languages: [pl, en]
+    seniority: [any]
+    runnable: true
+    coverage: "Board-wide, but fetch throws without a justjoin.it careers_url or api (any /job-offers URL); default 50 pages."
+    confidence: high
+    unsure: ""
+
+  - id: kalibrr
+    name: Kalibrr
+    kind: board
+    needs: none
+    config: [searchKeywords, max_pages, pageSize]
+    detect: true
+    regions: [id, ph, th]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, id]
+    seniority: [any]
+    runnable: true
+    coverage: "Indonesia-heavy (99 of first 100 rows), then Philippines and Thailand; default 20 pages x 100; no salary."
+    confidence: high
+    unsure: ""
+
+  - id: kariyer
+    name: Kariyer.net
+    kind: board
+    needs: none
+    config: [kariyer.fetchDetails, kariyer.detailLimit, max_pages]
+    detect: true
+    regions: [tr]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [tr]
+    seniority: [any]
+    runnable: true
+    coverage: "Whole Turkish board (~23k postings) in pages of 2,000; no JD text unless fetchDetails is set."
+    confidence: high
+    unsure: ""
+
+  - id: keka
+    name: Keka
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [in]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Mid-size Indian employers (IT services, startups, manufacturers)."
+    coverage: "One tenant (<tenant>.keka.com/careers) per entry; whole board in one request."
+    confidence: high
+    unsure: ""
+
+  - id: landingjobs
+    name: Landing.jobs
+    kind: field
+    needs: none
+    config: []
+    detect: false
+    regions: [pt, europe]
+    families: [engineering-it, data, product-project, design]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "European tech roles, Portugal-heavy; whole active set in one call; company name guessed from the URL slug."
+    confidence: medium
+    unsure: "Portugal focus is from knowledge of the board; the doc says only 'tech, Europe'."
+
+  - id: larajobs
+    name: LaraJobs
+    kind: field
+    needs: none
+    config: []
+    detect: true
+    regions: [world]
+    families: [engineering-it]
+    workplace: [remote, hybrid, onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Laravel / PHP developer jobs only; one RSS feed."
+    confidence: high
+    unsure: ""
+
+  - id: lever
+    name: Lever
+    kind: ats
+    needs: careers_url
+    config: [api]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Tech companies and scale-ups, US and Europe heavy."
+    coverage: "One board (jobs.lever.co/<slug> or jobs.eu.lever.co) per entry; whole board with descriptions."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: local-parser
+    name: Local parser command
+    kind: feed
+    needs: config
+    config: [parser.command, parser.script]
+    detect: false
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: false
+    why: "Runs local commands (child_process.execFile)."
+    coverage: "Runs a custom in-repo extractor for one page; nothing by itself."
+    confidence: high
+    unsure: ""
+
+  - id: magneto
+    name: Magneto365
+    kind: board
+    needs: careers_url
+    config: [max_pages, max_jobs]
+    detect: true
+    regions: [co]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [es]
+    seniority: [any]
+    runnable: true
+    coverage: "Colombian general board; careers_url is a magneto365.com search URL; default 5 pages / 100 jobs (caps 20 / 500)."
+    confidence: high
+    unsure: ""
+
+  - id: manfred
+    name: getManfred
+    kind: field
+    needs: none
+    config: [lang]
+    detect: true
+    regions: [es, europe]
+    families: [engineering-it, data, product-project, design]
+    workplace: [onsite, hybrid, remote]
+    languages: [es, en]
+    seniority: [experienced]
+    runnable: true
+    coverage: "Spanish tech board; whole catalogue in one call but only ~24 ACTIVE offers when measured (1,600 closed ones are dropped)."
+    confidence: medium
+    unsure: "'experienced' is from knowledge of the board, not the doc."
+
+  - id: meituan
+    name: Meituan Careers
+    kind: employer
+    needs: none
+    config: [keywords, max_pages]
+    detect: true
+    regions: [cn]
+    families: [engineering-it, data, product-project, design, operations, marketing, sales, logistics-transport]
+    workplace: [onsite]
+    languages: [zh]
+    seniority: [experienced]
+    runnable: true
+    coverage: "Social-hiring (experienced) board in zh-CN; whole board when keywords is omitted; sporadic rate limits."
+    confidence: medium
+    unsure: "Family list inferred; delivery-rider roles likely not on this site."
+
+  - id: mokahr
+    name: MokaHR
+    kind: ats
+    needs: careers_url
+    config: [keywords, max_pages]
+    detect: true
+    regions: [cn]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [zh]
+    seniority: [any]
+    runnable: true
+    note: "Chinese tech companies and AI labs (DeepSeek, Moonshot AI, Zhipu AI)."
+    coverage: "One tenant per entry (app.mokahr.com or hire-r1.mokahr.com); default 10 pages x 50 per keyword."
+    confidence: high
+    unsure: ""
+
+  - id: mycareersfuture
+    name: MyCareersFuture
+    kind: national
+    needs: config
+    config: [mycareersfuture.keywords, max_pages]
+    detect: false
+    regions: [sg]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: false
+    why: "Imports _profile-keywords.mjs, which needs the npm package js-yaml."
+    coverage: "Singapore's national job bank; keyword search, 100 per page, default 5 pages (cap 20)."
+    confidence: high
+    unsure: ""
+
+  - id: neogov
+    name: GovernmentJobs / SchoolJobs (NEOGOV)
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [us]
+    families: [public-sector, education, healthcare, any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US cities, counties, state agencies, school districts, community colleges; public health departments and some public hospitals."
+    coverage: "One agency per entry (www.governmentjobs.com or www.schooljobs.com /careers/<agency>); fetch throws without it; default 30 pages x 10."
+    confidence: high
+    unsure: "Hospitals rarely; the healthcare share is from knowledge of public-sector hiring."
+
+  - id: nodesk
+    name: NoDesk
+    kind: board
+    needs: none
+    config: []
+    detect: true
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, customer-service, sales]
+    workplace: [remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Remote board; one RSS feed."
+    confidence: medium
+    unsure: "Feed size and field mix not measured."
+
+  - id: nofluffjobs
+    name: No Fluff Jobs
+    kind: board
+    needs: careers_url
+    config: [region, language, search, currency, max_pages]
+    detect: true
+    regions: [pl, cz, sk, hu]
+    families: [engineering-it, data, product-project, design, marketing, sales, finance-accounting, people-hr, customer-service]
+    workplace: [onsite, hybrid, remote]
+    languages: [pl, en]
+    seniority: [any]
+    runnable: true
+    coverage: "Board-wide, but fetch throws without a nofluffjobs.com careers_url or api; region defaults to pl; default 5 pages."
+    confidence: medium
+    unsure: "Other region codes (cz, sk, hu) and non-IT categories are from knowledge of the board; only pl is in the code."
+
+  - id: notion
+    name: Notion careers page
+    kind: feed
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Startups that publish their openings as a public Notion page or database."
+    coverage: "One public <workspace>.notion.site page per entry (URL must carry the page id); undocumented endpoints; no descriptions; dates are page creation times."
+    confidence: high
+    unsure: ""
+
+  - id: occ
+    name: OCC Mundial
+    kind: board
+    needs: config
+    config: [queries, states, max_pages]
+    detect: true
+    regions: [mx]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [es]
+    seniority: [any]
+    runnable: true
+    coverage: "Throws without queries:; default 3 pages (cap 10) per query; Cloudflare blocks non-Mexican IPs, so it works only from Mexico."
+    confidence: high
+    unsure: ""
+
+  - id: oraclecloud
+    name: Oracle Recruiting Cloud
+    kind: ats
+    needs: careers_url
+    config: [siteNumber, locationId, max_pages]
+    detect: true
+    regions: [world, us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large enterprises: banks (JPMorgan Chase, BNY, American Express), industrials, hospitals and universities."
+    coverage: "One tenant (<tenant>.fa.*.oraclecloud.com) per entry; up to 100 pages / ~20,000 jobs."
+    confidence: medium
+    unsure: "Hospital/university usage is from knowledge of the vendor."
+
+  - id: pageup
+    name: PageUp
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [au, us, hk, gb, nz]
+    families: [education, science-research, public-sector, any]
+    workplace: [onsite, hybrid]
+    languages: [en, zh]
+    seniority: [any]
+    runnable: true
+    note: "Universities (US, Australia, Hong Kong), public bodies and banks."
+    coverage: "One tenant on careers.pageuppeople.com per entry (branded domains not detected); no location or posting date in the list."
+    confidence: medium
+    unsure: "UK and NZ tenants are from knowledge of the vendor; the doc names US/AU/HK."
+
+  - id: paylocity
+    name: Paylocity
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US small and mid-size employers: healthcare providers, nonprofits, manufacturers, restaurants."
+    coverage: "One board (recruiting.paylocity.com/Recruiting/Jobs/All/<guid>) per entry; whole list in one page."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: peoplesoft
+    name: PeopleSoft Fluid Candidate Gateway
+    kind: ats
+    needs: careers_url
+    config: [peoplesoft.fetchDetails, peoplesoft.detailLimit, max_pages]
+    detect: true
+    regions: [ca, us]
+    families: [education, public-sector, any]
+    workplace: [onsite, hybrid]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Universities and public agencies (Western, TMU, McMaster, WSIB)."
+    coverage: "One institution per entry (the Fluid HRS_CG_SEARCH_FL path on its own domain); stateful scrape, may be marked incomplete."
+    confidence: high
+    unsure: "US use is from knowledge of PeopleSoft's market."
+
+  - id: personio
+    name: Personio
+    kind: ats
+    needs: careers_url
+    config: [personio]
+    detect: true
+    regions: [de, dach, europe]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [de, en, es]
+    seniority: [any]
+    runnable: true
+    note: "Small and mid-size companies across DACH and Europe, of every kind."
+    coverage: "One tenant (<slug>.jobs.personio.de/.com) per entry; branded iframe pages need personio: <slug>."
+    confidence: high
+    unsure: ""
+
+  - id: phenom
+    name: Phenom People
+    kind: ats
+    needs: careers_url
+    config: [phenom.country, phenom.lang, max_pages]
+    detect: false
+    regions: [world, us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large enterprises: insurers (e.g. Allianz), hospitals and health systems, retailers, manufacturers."
+    coverage: "One branded host per entry with explicit provider: phenom (not auto-detected); default 20 pages x 100."
+    confidence: medium
+    unsure: "Employer mix beyond Allianz is from knowledge of the vendor."
+
+  - id: pinpoint
+    name: Pinpoint
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [gb, us, europe]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Mid-size employers, UK-heavy."
+    coverage: "One tenant (<slug>.pinpointhq.com) per entry; whole board in one request."
+    confidence: low
+    unsure: "Region is from knowledge of the vendor (UK), not the doc."
+
+  - id: platsbanken
+    name: Platsbanken (Arbetsförmedlingen)
+    kind: national
+    needs: config
+    config: [platsbanken.keywords, max_pages]
+    detect: false
+    regions: [se]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [sv]
+    seniority: [any]
+    runnable: false
+    why: "Imports _profile-keywords.mjs, which needs the npm package js-yaml."
+    coverage: "Sweden's public employment service; API stops at offset 2,000, so at most ~2,100 rows per keyword; default 5 pages."
+    confidence: high
+    unsure: ""
+
+  - id: polymer
+    name: Polymer
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US startups and small businesses."
+    coverage: "One board (jobs.polymer.co/<slug>) per entry; no descriptions or salary."
+    confidence: low
+    unsure: "Region and employer mix are from knowledge of the vendor."
+
+  - id: pracecz
+    name: Prace.cz
+    kind: board
+    needs: config
+    config: [pracecz.keywords, max_pages]
+    detect: false
+    regions: [cz]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [cs]
+    seniority: [any]
+    runnable: false
+    why: "Imports _profile-keywords.mjs, which needs the npm package js-yaml."
+    coverage: "Czech general board; keyword search, 40 per page, default 10 pages."
+    confidence: high
+    unsure: ""
+
+  - id: prevueaps
+    name: PrevueAPS
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [ca]
+    families: [public-sector, education, finance-accounting, any]
+    workplace: [onsite, hybrid]
+    languages: [en, fr]
+    seniority: [any]
+    runnable: true
+    note: "Canadian credit unions, colleges and public-sector employers."
+    coverage: "One tenant (<tenant>.prevueaps.ca) per entry; two requests."
+    confidence: high
+    unsure: ""
+
+  - id: pythonorg
+    name: Python.org Jobs
+    kind: field
+    needs: none
+    config: []
+    detect: true
+    regions: [world]
+    families: [engineering-it, data]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Python developer jobs only; one RSS feed, low volume."
+    confidence: medium
+    unsure: "Volume is from knowledge of the board."
+
+  - id: radancy
+    name: Radancy (TalentBrew)
+    kind: ats
+    needs: careers_url
+    config: [max_pages, max_jobs]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, de]
+    seniority: [any]
+    runnable: true
+    note: "Large employers' branded career sites (Munich Re/ERGO, retailers, hospitals, banks)."
+    coverage: "One branded career site per entry ({origin}/{lang}/search-jobs)."
+    confidence: medium
+    unsure: "Employer mix beyond Munich Re is from knowledge of the vendor."
+
+  - id: recruitee
+    name: Recruitee
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [europe, nl]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, nl, de]
+    seniority: [any]
+    runnable: true
+    note: "Small and mid-size European companies."
+    coverage: "One tenant (<slug>.recruitee.com) per entry; descriptions, dates and salary in one request."
+    confidence: medium
+    unsure: "Region is from knowledge of the vendor (Dutch)."
+
+  - id: redrover
+    name: Red Rover K12
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [us]
+    families: [education, public-sector]
+    workplace: [onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US K-12 school districts (teachers, substitutes, support staff)."
+    coverage: "One district (jobs.redroverk12.com/org/<id>) per entry; boards past 500 postings fail loudly; internal-only postings dropped."
+    confidence: high
+    unsure: ""
+
+  - id: remote-com
+    name: Remote (remote.com, the company)
+    kind: employer
+    needs: none
+    config: []
+    detect: true
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, legal, people-hr]
+    workplace: [remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Only Remote's own job openings (the employer-of-record company); not a remote-jobs board."
+    confidence: high
+    unsure: ""
+
+  - id: remoteok
+    name: Remote OK
+    kind: board
+    needs: none
+    config: []
+    detect: false
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service]
+    workplace: [remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Remote jobs; only the latest ~100 postings per run."
+    confidence: high
+    unsure: "Field mix not measured; tech-heavy."
+
+  - id: remotive
+    name: Remotive
+    kind: board
+    needs: none
+    config: []
+    detect: false
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr]
+    workplace: [remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Remote jobs; the whole public feed in one request."
+    confidence: medium
+    unsure: "Feed size and any delay of the public API are not stated."
+
+  - id: remotli
+    name: Remotli
+    kind: board
+    needs: none
+    config: [max_pages]
+    detect: true
+    regions: [ch]
+    families: [engineering-it, data, product-project, design, marketing]
+    workplace: [remote, hybrid]
+    languages: [en, de]
+    seniority: [any]
+    runnable: true
+    coverage: "Remote roles at Swiss companies paid in CHF; default 20 pages x 50."
+    confidence: medium
+    unsure: "Field mix and residency requirements not measured."
+
+  - id: rexx
+    name: rexx systems
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [de, dach]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [de]
+    seniority: [any]
+    runnable: true
+    note: "German mid-size employers, including manufacturers, hospitals and municipal companies."
+    coverage: "One branded portal per entry with explicit provider: rexx; careers_url must be the job list page."
+    confidence: medium
+    unsure: "Employer mix is from knowledge of the vendor."
+
+  - id: rheinmetall
+    name: Rheinmetall
+    kind: employer
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [de, world]
+    families: [engineering-physical, manufacturing-production, engineering-it, trades-construction, operations, finance-accounting, office-admin]
+    workplace: [onsite, hybrid]
+    languages: [de, en]
+    seniority: [any]
+    runnable: true
+    coverage: "Needs the rheinmetall.com/<lang>/career/vacancies URL; ~1,350 postings, cap 1,500."
+    confidence: medium
+    unsure: "Family list inferred from a defence manufacturer's typical roles."
+
+  - id: rippling
+    name: Rippling ATS
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US startups and small businesses."
+    coverage: "One board (ats.rippling.com/<slug>/jobs) per entry; 1,000 per page."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: schoolspring
+    name: SchoolSpring
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [us]
+    families: [education, public-sector]
+    workplace: [onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US K-12 school districts."
+    coverage: "One district (<district>.schoolspring.com) per entry; default 20 pages x 100; no pay or description."
+    confidence: high
+    unsure: "Which states it is strongest in is not known."
+
+  - id: senjob
+    name: Senjob
+    kind: board
+    needs: none
+    config: [max_pages]
+    detect: true
+    regions: [sn]
+    families: [any]
+    workplace: [onsite]
+    languages: [fr]
+    seniority: [any]
+    runnable: true
+    coverage: "Senegalese board (Dakar and regions); default 10 pages (cap 50); no employer names."
+    confidence: high
+    unsure: ""
+
+  - id: sitemap
+    name: Employer job sitemap
+    kind: feed
+    needs: config
+    config: [sitemap.url, sitemap.job_path, sitemap.index_filter, sitemap.fetchDetails, sitemap.max_sitemaps]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Any employer whose own site publishes a job sitemap (reference: ServiceNow)."
+    coverage: "One employer per entry; needs sitemap.url and a job_path regex with a (?<slug>) group; titles from slugs unless fetchDetails."
+    confidence: high
+    unsure: "Manifest marks it a detector although the doc says explicit-only."
+
+  - id: smartrecruiters
+    name: SmartRecruiters
+    kind: ats
+    needs: careers_url
+    config: [smartrecruiters.fetchDetails, max_pages]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large and mid-size employers, including retail, hospitality and restaurant chains, manufacturers and consultancies."
+    coverage: "One company (careers/jobs.smartrecruiters.com/<slug>) per entry; no description unless fetchDetails."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: softgarden
+    name: softgarden
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [de, dach]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [de, en]
+    seniority: [any]
+    runnable: true
+    note: "German mid-size employers (industry, healthcare, services)."
+    coverage: "One tenant (<tenant>.softgarden.io/<lang>/widgets/jobs) per entry; whole list in one page."
+    confidence: medium
+    unsure: "Employer mix is from knowledge of the vendor."
+
+  - id: solidjobs
+    name: SolidJobs
+    kind: board
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [pl]
+    families: [engineering-it, engineering-physical, marketing, sales, people-hr, logistics-transport, finance-accounting]
+    workplace: [onsite, hybrid, remote]
+    languages: [pl]
+    seniority: [any]
+    runnable: true
+    coverage: "One division per entry (solid.jobs/public-api/offers/<it|engineering|marketing|sales|hr|logistics|finances|other>); throws without careers_url."
+    confidence: high
+    unsure: ""
+
+  - id: startup-jobs
+    name: Startup Jobs
+    kind: board
+    needs: none
+    config: [startup_jobs.role, startup_jobs.workplace]
+    detect: true
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, operations]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Only the ~50 most recent postings per feed (a few hours unscoped); add one entry per startup_jobs.role slug."
+    confidence: high
+    unsure: ""
+
+  - id: successfactors
+    name: SAP SuccessFactors (Recruiting Marketing)
+    kind: ats
+    needs: careers_url
+    config: [api, sfVariant, max_pages, max_jobs]
+    detect: true
+    regions: [world, de]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, de]
+    seniority: [any]
+    runnable: true
+    note: "Large enterprises: German industrials (SAP, ZF, Schaeffler), retailers, hospitals, utilities."
+    coverage: "One branded board per entry (provider: successfactors + api: origin); default 40 tile pages / 1,000 postings, warns when capped."
+    confidence: medium
+    unsure: "Non-German employer mix is from knowledge of the vendor."
+
+  - id: taleez
+    name: Taleez
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [fr]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [fr]
+    seniority: [any]
+    runnable: true
+    note: "French startups and SMEs."
+    coverage: "One tenant (<tenant>.taleez.com) per entry; whole list in one request."
+    confidence: high
+    unsure: ""
+
+  - id: talentlink
+    name: TalentLink (Lumesse / Cornerstone)
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [gb, europe, world]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large employers in the UK and Europe, including public bodies and universities."
+    coverage: "One FO-widget career site per entry (<tenant>.recruitmentplatform.com); 100 per request, default 20 pages."
+    confidence: low
+    unsure: "Region and employer mix are from knowledge of the vendor."
+
+  - id: taleo
+    name: Taleo Enterprise Edition
+    kind: ats
+    needs: careers_url
+    config: [fetchDetails, detailLimit, max_pages]
+    detect: true
+    regions: [us, world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large employers: hospitals and health systems, universities, retailers, government contractors, banks."
+    coverage: "One public career section (*.taleo.net/careersection/<section>/jobsearch.ftl) per entry; Taleo Business Edition not supported."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: teamtailor
+    name: Teamtailor
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [nordics, europe]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, sv, no, da, fi]
+    seniority: [any]
+    runnable: true
+    note: "Small and mid-size companies, Nordic and European, of every kind."
+    coverage: "One tenant (<slug>.teamtailor.com, or a branded host with provider: teamtailor) per entry; one RSS feed."
+    confidence: medium
+    unsure: "Region is from knowledge of the vendor (Swedish)."
+
+  - id: techinasia
+    name: Tech in Asia
+    kind: board
+    needs: none
+    config: [techinasia.appId, techinasia.apiKey, max_pages]
+    detect: true
+    regions: [id, sg, my, vn, ph, jp, southeast-asia]
+    families: [engineering-it, data, product-project, design, marketing, sales, operations]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Startup board, ~300 postings (273 Indonesian when sampled) in one request."
+    confidence: high
+    unsure: ""
+
+  - id: telegram-channel
+    name: Telegram public channel
+    kind: feed
+    needs: config
+    config: [channel, since_days, max_pages]
+    detect: false
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [ru, en]
+    seniority: [any]
+    runnable: true
+    coverage: "One public channel per entry (t.me/s/<channel>); keeps only posts naming an employer and a vacancy link; cap 10 pages / 30 days."
+    confidence: high
+    unsure: "The parser is tuned on RU/CIS and EN channels; other languages untested."
+
+  - id: tencent
+    name: Tencent Careers
+    kind: employer
+    needs: none
+    config: [keywords, max_pages]
+    detect: true
+    regions: [cn, world]
+    families: [engineering-it, data, product-project, design, marketing, sales, operations]
+    workplace: [onsite, hybrid]
+    languages: [zh]
+    seniority: [any]
+    runnable: true
+    coverage: "Whole board (~2,260 postings) in zh-CN when keywords is omitted."
+    confidence: medium
+    unsure: "Non-China share not measured."
+
+  - id: tes
+    name: Tes
+    kind: field
+    needs: none
+    config: [keywords, max_pages]
+    detect: true
+    regions: [gb, world]
+    families: [education]
+    workplace: [onsite]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "UK and international schools; also teaching assistants and some support staff."
+    coverage: "Whole board (~5,700 postings) at 50 per page, default 150 pages; keywords: searches server-side; no location filter server-side."
+    confidence: high
+    unsure: "Share of non-teaching school roles not measured."
+
+  - id: thehub
+    name: The Hub
+    kind: board
+    needs: none
+    config: [thehub.countryCode, thehub.includeRemote, max_pages]
+    detect: false
+    regions: [nordics, dk, se, no, fi, europe]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, operations]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, da, sv, no, fi]
+    seniority: [any]
+    runnable: true
+    coverage: "Nordic startups; countryCode defaults to EU; default 3 pages; no posting dates."
+    confidence: medium
+    unsure: "Page size not stated; field mix startup-typical."
+
+  - id: themuse
+    name: The Muse
+    kind: board
+    needs: none
+    config: [query, location, category, remote, posted, max_pages]
+    detect: false
+    regions: [us, world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Cloudflare challenged every request on 2026-11-15 (US and Canada egress), so it currently fails with an error; 20 cards per page."
+    confidence: medium
+    unsure: "Whether residential egress outside North America still works is unknown; field mix from knowledge (corporate, many fields)."
+
+  - id: tkms
+    name: TKMS (thyssenkrupp Marine Systems)
+    kind: employer
+    needs: careers_url
+    config: [tkms.subclient, tkms.locale, max_pages]
+    detect: true
+    regions: [de]
+    families: [engineering-physical, manufacturing-production, trades-construction, engineering-it, operations]
+    workplace: [onsite]
+    languages: [de, en]
+    seniority: [any]
+    runnable: true
+    coverage: "Needs the jobs.tkmsgroup.com URL; cap 1,000 postings."
+    confidence: medium
+    unsure: "Family list inferred from a shipbuilder's typical roles."
+
+  - id: torre
+    name: Torre
+    kind: board
+    needs: none
+    config: [search, experience, remote_only]
+    detect: true
+    regions: [latam, world]
+    families: [engineering-it, data, product-project, design]
+    workplace: [remote]
+    languages: [en, es]
+    seniority: [any]
+    runnable: true
+    retired: true
+    coverage: "Retired upstream (2026-10-08): the search API answers HTTP 400 and fetch() always throws. Do not propose."
+    confidence: high
+    unsure: ""
+
+  - id: trakstar
+    name: Trakstar Hire (Recruiterbox)
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US small and mid-size employers."
+    coverage: "One client (<client>.hire.trakstar.com or .recruiterbox.com) per entry; no posting dates."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: turbohire
+    name: TurboHire
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [in]
+    families: [any]
+    workplace: [onsite, hybrid]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Indian employers, including banks, insurers and large groups with subsidiaries."
+    coverage: "One tenant (<tenant>.turbohire.co) per entry; whole public page in one response; branded domains not detected."
+    confidence: low
+    unsure: "India focus is from knowledge of the vendor; the doc does not name a country."
+
+  - id: ultipro
+    name: UKG Pro / UltiPro Recruiting
+    kind: ats
+    needs: careers_url
+    config: [ultipro.fetchDetails, ultipro.detailLimit, max_pages]
+    detect: true
+    regions: [us, ca]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "US and Canadian mid-size and large employers: healthcare, retail, hospitality, manufacturing, nonprofits."
+    coverage: "One board ({host}/{tenant}/JobBoard/{boardId}) per entry; default 100 pages x 50; brief description unless fetchDetails."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: vdab
+    name: VDAB
+    kind: national
+    needs: config
+    config: [vdab.keywords, vdab.fetchDetails, vdab.detailLimit]
+    detect: false
+    regions: [be]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [nl]
+    seniority: [any]
+    runnable: false
+    why: "Imports _profile-keywords.mjs, which needs the npm package js-yaml."
+    coverage: "Flanders' public employment service (Belgium); keyword search."
+    confidence: high
+    unsure: ""
+
+  - id: weworkremotely
+    name: We Work Remotely
+    kind: board
+    needs: none
+    config: []
+    detect: true
+    regions: [world]
+    families: [engineering-it, design, product-project, marketing, sales, customer-service, finance-accounting]
+    workplace: [remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Remote jobs; one RSS feed (all categories)."
+    confidence: medium
+    unsure: "Feed item cap not stated; field mix from knowledge of the board."
+
+  - id: workable
+    name: Workable
+    kind: ats
+    needs: careers_url
+    config: []
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Small and mid-size companies of every kind, worldwide (incl. hospitality, retail, healthcare)."
+    coverage: "One account (apply.workable.com/<slug>) per entry; full list with descriptions in one request."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: workday
+    name: Workday
+    kind: ats
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [world, us]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Large employers: hospitals and health systems, universities, retailers, banks, logistics firms, public bodies."
+    coverage: "One tenant (<tenant>.wdN.myworkdayjobs.com/<site>) per entry; default 100 pages, warns when capped; dates are relative labels."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market."
+
+  - id: workingnomads
+    name: Working Nomads
+    kind: board
+    needs: none
+    config: []
+    detect: false
+    regions: [world]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, education]
+    workplace: [remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    coverage: "Remote jobs; one JSON feed."
+    confidence: medium
+    unsure: "Feed size and field mix not measured."
+
+  - id: wp-job-manager
+    name: WP Job Manager (any WordPress board)
+    kind: feed
+    needs: careers_url
+    config: [max_pages]
+    detect: true
+    regions: [world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Any niche or local job board built on the WP Job Manager plugin."
+    coverage: "One WordPress board per entry (root install only); 100 per page, default 20 pages."
+    confidence: high
+    unsure: "Region, field and language depend entirely on the board chosen."
+
+  - id: wttj
+    name: Welcome to the Jungle
+    kind: board
+    needs: config
+    config: [wttj.filters, wttj.queries, wttj.max_hits]
+    detect: true
+    regions: [fr, europe, us]
+    families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, legal, operations, creative-media]
+    workplace: [onsite, hybrid, remote]
+    languages: [fr, en, es, cs]
+    seniority: [any]
+    runnable: true
+    coverage: "Throws without a wttj: block (filters such as offices.country_code:FR, or queries); default 100 hits per query (1,000 with filters)."
+    confidence: medium
+    unsure: "Country and language list beyond France are from knowledge of the board."
+
+  - id: yourator
+    name: Yourator
+    kind: board
+    needs: none
+    config: [max_pages]
+    detect: false
+    regions: [tw]
+    families: [engineering-it, data, product-project, design, marketing, sales]
+    workplace: [onsite, hybrid, remote]
+    languages: [zh]
+    seniority: [any]
+    runnable: true
+    coverage: "Taiwanese startup/digital board (~1,760 postings); walks every page; no posting dates."
+    confidence: high
+    unsure: ""
+
+  - id: zoho-recruit
+    name: Zoho Recruit
+    kind: ats
+    needs: careers_url
+    config: [zohoRecruit.fetchDetails, zohoRecruit.detailLimit]
+    detect: true
+    regions: [in, world]
+    families: [any]
+    workplace: [onsite, hybrid, remote]
+    languages: [en]
+    seniority: [any]
+    runnable: true
+    note: "Small and mid-size companies and staffing agencies; India, US, Middle East."
+    coverage: "One tenant (<tenant>.zohorecruit.<tld>) per entry; whole board in one request; legacy Portal.na sites not supported."
+    confidence: medium
+    unsure: "Employer mix inferred from the vendor's market and regional domains."
