@@ -1,6 +1,6 @@
 # Crewdeck Jobs: design
 
-Status: **draft v0.2 for owner review** (2026-11-18). Nothing in this doc is built yet.
+Status: **built** (P0–P8, 2026-11-19), awaiting the owner's acceptance run as a new user (§19).
 Branch: `feat/jobs-module` (off `main` @ `2261134`). Changelog at the end.
 
 This is the living design for the Jobs module. Small implementer docs (`docs/jobs/impl/NN-*.md`) are written
@@ -725,7 +725,7 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 | P5 | `05-sources.md` | Providers manifest, download/verify, sandboxed runner, scheduled fetch, code ranking, budgeted early-stop judging with a light model (§2.4), LinkedIn (gated), find/daily | Sandbox tests; sourcing on fixtures |
 | P6 | `06-e2e.md` | Journey tests for two fictional people | E2E green with outputs |
 | P7 | `07-security-review.md` | `/security-review`, multi-lens review on the diff, fixes | Findings + fixes + tests |
-| P8 | `08-docs-visual.md` | README (setup, safety, terms of service), `docs/design.md`, CHANGELOG, roadmap, screenshots | Owner sign-off; PR opened, no push without asking |
+| P8 | `08-docs-visual.md` | README (setup, safety, terms of service), `docs/design.md`, CHANGELOG, roadmap, screenshots | Owner sign-off; PR description ready, no push or PR without asking. **Done** (2026-11-19), awaiting the owner's acceptance run |
 
 ## 23. Open questions for the owner
 
@@ -733,6 +733,16 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P8 (2026-11-19):** docs for a brand-new user ([impl/08-docs-visual.md](impl/08-docs-visual.md)): README rewritten
+  (features, requirements with Node 25 for sourcing, quick start, plugin install from a local checkout or GitHub and
+  removing `crewdeck-bridge`, where knowledge lives, presets, daily use, preferences, sources, custom rules, risky
+  switches, appearance, safety and terms of service, security and residual risks, troubleshooting),
+  [first-run.md](first-run.md), top-level `docs/design.md` as the architecture overview, `CHANGELOG.md`,
+  `docs/roadmap.md`, the example's README; the repo validated as a plugin marketplace (`claude plugin validate`, an
+  install into a throwaway Claude config). Visual check in the real shell and the browser pane, light and dark: the Jobs
+  top bar no longer wraps Find onto a row of its own when Claude's status or the sources line is long (a browser layout
+  test), and the "your turn" panel no longer repeats the skill's stock sentence. Screenshots refreshed; a fresh clone
+  passes on Node 25 and 22.18. Package version 0.3.0.
 - **P7 pass B (2026-11-19):** the pipeline and sources from the security review ([impl/07-security-review.md](impl/07-security-review.md)):
   the provider sandbox has no network (Node ≥ 25 required for sourcing; older Node refuses with the reason), its fetches
   made by the parent through netguard over fd 3, protocol lines with a per-run nonce on fd 3, `getBuiltinModule` frozen

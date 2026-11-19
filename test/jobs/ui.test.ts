@@ -72,6 +72,12 @@ test('apply panel: every state, as design §2.3a describes it', async () => {
   const turn = show(P(req('done', 'Stopped at Review; the resume upload is yours.')));
   assert.match(turn, /Your turn: review the form tab and click Submit/);
   assert.match(turn, /I submitted it/);
+  // The skill's stock sentence is the panel's own title: shown once, with only what is left for the user after it.
+  const stock = P(req('done', 'Your turn: review the form tab and click Submit, then I submitted it'));
+  assert.equal(stock.reason, undefined);
+  assert.equal((show(stock).match(/review the form tab and click Submit/g) ?? []).length, 1);
+  assert.equal(P(req('done', 'Your turn: review the form tab and click Submit, then I submitted it (the resume upload is yours)')).reason, 'the resume upload is yours');
+  assert.equal(P(req('done', 'Your turn: review the form tab and click Submit. The cover letter field was skipped: no letter yet.')).reason, 'The cover letter field was skipped: no letter yet.');
   assert.match(show(P(req('done', 'submitted: The page says thanks for applying'))), /Claude sees the confirmation page.*thanks for applying.*Mark applied/);
   const stopped = show(P(req('failed', 'The site asks you to sign in again.')));
   assert.match(stopped, /Claude stopped.*sign in again.*Try again.*I submitted it/);

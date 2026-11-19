@@ -14,6 +14,8 @@ export type Panel = {
 
 export const NEEDS_YOU = /^needs you:\s*/i;
 export const SUBMITTED = /^submitted:\s*/i;
+/** The skill's stock "your turn" sentence, which the panel already says in its title: only what follows is shown. */
+export const YOUR_TURN = /^your turn:\s*review the form tab and click submit(?:,?\s*then (?:click )?["“]?i submitted it["”]?)?\s*[.;:,]?\s*/i;
 
 export function applyPanel(i: {
   status: string; apply: { mode: 'fill' | 'copy'; reason?: string }; applied?: string | null;
@@ -32,6 +34,6 @@ export function applyPanel(i: {
     default:
       if (NEEDS_YOU.test(result)) return { ...base, state: 'needs_you', question: result.replace(NEEDS_YOU, '').trim() || 'a question on the form' };
       if (SUBMITTED.test(result)) return { ...base, state: 'confirmation', seen: result.replace(SUBMITTED, '').trim() };
-      return { ...base, state: 'your_turn', reason: result || undefined };
+      return { ...base, state: 'your_turn', reason: result.replace(YOUR_TURN, '').replace(/^\(|\)$/g, '').trim() || undefined };
   }
 }
