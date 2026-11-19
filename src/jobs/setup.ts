@@ -4,7 +4,7 @@
 // .claude/settings.json (§14) that runs Claude's Bash in Claude Code's sandbox (no network, no loopback, no writes to
 // Crewdeck's own files), lets only the `crewdeck` wrapper out, and adds deny rules. Running it again changes nothing but
 // those managed files.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { type Config, CLI_WRAPPER, CONFIG_PATH, HOME, REPO, TOKEN_PATH, ensureHome, expand, loadConfig, setJobsSettings, writeCliWrapper } from '../config.ts';
@@ -362,6 +362,7 @@ export function removeOldWorkspaceFiles(c: Config, oldWs: string): string[] {
     const cur = readFileSync(f.path, 'utf8');
     if (cur.startsWith(MANAGED) || cur === f.text) { rmSync(f.path); removed.push(f.path); }
   }
+  try { rmdirSync(join(oldWs, '.claude')); } catch {} // only when nothing else is in it
   return removed;
 }
 

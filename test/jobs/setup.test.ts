@@ -254,6 +254,7 @@ test('a workspace in the hidden jobs home (before 0.3.0) moves to the visible fo
   assert.equal(parse(readFileSync(join(s.home, 'config.yaml'), 'utf8')).jobs.workspace, s.ws);
   assert.ok(existsSync(join(s.ws, 'CLAUDE.md')));
   assert.ok(!existsSync(join(s.jobsHome, 'CLAUDE.md')), 'the old managed CLAUDE.md is gone (a session there would act as the jobs session)');
+  assert.ok(!existsSync(join(s.jobsHome, '.claude')), 'its empty .claude folder too');
   assert.equal(readFileSync(join(s.jobsHome, 'notes.txt'), 'utf8'), 'mine\n', 'anything else is left');
   assert.match(r.out, /removed the old managed/);
 
