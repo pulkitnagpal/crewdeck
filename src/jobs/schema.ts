@@ -4,6 +4,7 @@
 import { lookupPlace } from './places.ts';
 import { CURRENCIES } from './pay.ts';
 import { LEVELS_WANTED, MATCH_MODES, type LevelWanted, type MatchMode } from './titles.ts';
+import { keyClass } from './form-terms.ts';
 import { readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { join as pathJoin } from 'node:path';
@@ -46,6 +47,12 @@ export const TRAVEL = ['off', 'occasional', 'frequent'] as const;
 export const SHIFTS = ['day', 'evening', 'night', 'weekend', 'rotating', 'on-call'] as const;
 export const PAY_PERIODS = ['year', 'month', 'week', 'day', 'hour'] as const;
 export const COOLDOWN_SCOPES = ['company', 'role'] as const;
+/** The opt-in personal block on a resume (D33): values from standard_answers (languages also from jobs/search.md). */
+export const PERSONAL = ['date_of_birth', 'place_of_birth', 'nationality', 'marital_status', 'driving_licence', 'languages'] as const;
+export const HEADINGS = ['summary', 'experience', 'education', 'skills', 'personal', 'languages'] as const;
+const LANG = /^[a-z]{2}$/;
+const LANG_HINT = 'a two-letter language code (en, de, es …)';
+const MONTH = /^\d{4}(-(0[1-9]|1[0-2]))?$/;
 export const SECTION_KINDS = ['summary', 'experience', 'list', 'skills', 'education'] as const;
 export const MEMORY_KINDS = ['answer', 'fact', 'preference', 'style', 'avoid', 'company_rule'] as const;
 export const RULE_NAMES = ['title_gate', 'title_exclude', 'remote_words', 'hybrid_words', 'onsite_words', 'place_excluded',
@@ -82,18 +89,34 @@ export const SCHEMAS: Record<string, Schema> = {
     }),
     standard_answers: map({ t: 'scalar' }, SNAKE, 'lowercase words joined by _ (e.g. notice_period)'),
     education: list(obj({ school: str(), degree: str(), discipline: str(), start_year: num({ int: true, min: 1900, max: 2100 }), end_year: num({ int: true, min: 1900, max: 2100 }) }, { required: ['school'] })),
+    // D35: people who agreed to be referees. Other people's details: fill reference questions only, never drafted.
+    references: list(obj({ name: str({ required: true }), role: str(), org: str(), email: str({ check: emailCheck }), phone: str({ check: phoneCheck }), relationship: str() }, { required: ['name'] })),
     // Sites whose terms forbid automated filling: Claude shows the answers to copy instead.
     copy_only_hosts: list(str({ required: true, check: hostCheck })),
   }),
   career: obj({
-    resume: obj({ file_name: str({ check: fileNameCheck }), paper: oneOf(['A4', 'Letter']), max_pages: num({ int: true, min: 1, max: 5 }) }),
+    resume: obj({
+      file_name: str({ check: fileNameCheck }), paper: oneOf(['A4', 'Letter']), max_pages: num({ int: true, min: 1, max: 5 }),
+      // D33: the language it renders in (facts' approved translations), its headings, an opt-in personal block, and the
+      // word the Jobs page uses for it.
+      language: str({ pattern: LANG, hint: LANG_HINT }), headings: map(str({ required: true }), new RegExp(`^(${HEADINGS.join('|')})$`), HEADINGS.join(', ')),
+      personal: list(oneOf(PERSONAL)), word: oneOf(['resume', 'CV']),
+    }),
+    // The language the facts are written in (D33): answers in another language cite a fact through its approved translation.
+    language: str({ pattern: LANG, hint: LANG_HINT }),
     sections: list(obj({
       id: str({ pattern: SECTION_ID, hint: 'lowercase letters, digits, - and _ (e.g. example-gmbh)' }), kind: oneOf(SECTION_KINDS),
       title: str(), org: str(), where: str(), dates: str(), max_bullets: num({ int: true, min: 1, max: 20 }), required: bool(),
       // A career break (§24.10): an experience entry with no organisation.
       break: bool(),
+      // D35: when it started and ended (YYYY-MM; end empty while it goes on), for "Add another employment" blocks.
+      start: str({ pattern: MONTH, hint: 'YYYY-MM, e.g. 2019-03' }), end: str({ pattern: MONTH, hint: 'YYYY-MM, e.g. 2023-06 (leave it out while it goes on)' }),
     }, { required: ['id', 'kind'] })),
-    facts: list(obj({ id: str({ pattern: FACT_ID, hint: '<section id>.<slug>, e.g. example-gmbh.dashboards' }), text: str({ required: true }), tags: list(str()) }, { required: ['id', 'text'] })),
+    facts: list(obj({
+      id: str({ pattern: FACT_ID, hint: '<section id>.<slug>, e.g. example-gmbh.dashboards' }), text: str({ required: true }), tags: list(str()),
+      // D33 (owner question 5): translations the user approved word for word, by language.
+      tr: map(str({ required: true }), LANG, LANG_HINT),
+    }, { required: ['id', 'text'] })),
     skills: list(str()),
     // Extra names the citation check treats as claims (tools, certifications) on top of the built-in list.
     terms: obj({ extra: list(str({ required: true })) }),
@@ -285,6 +308,8 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
   profile(d, add) {
     const country = o(d.identity).country;
     if (typeof country === 'string' && country && !lookupPlace(country)) add('warning', 'identity.country', `"${country}" is not a country Crewdeck knows`, 'write its English name, e.g. Germany');
+    // D32: ID, bank and tax numbers are never stored, so never used: the user types them into forms themselves.
+    for (const k of Object.keys(o(d.standard_answers))) if (keyClass(k) === 'never_fill') add('error', `standard_answers.${k}`, 'is an ID, bank or tax number: Crewdeck never stores or fills these', 'remove it from me/profile.md and type it into forms yourself');
   },
   career(d, add) {
     const sections = arr(d.sections).filter(isObj);
@@ -295,6 +320,13 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
       if (s.kind === 'experience') for (const k of s.break === true ? ['title'] : ['title', 'org']) if (!s[k]) add('error', `sections[${i}].${k}`, `is missing (experience sections need a title and org${k === 'org' ? '; a career break is break: true without one' : ''})`, `add ${k}: …`);
       if (s.kind === 'list' && !s.title) add('error', `sections[${i}].title`, 'is missing (list sections need a title)', 'add title: …');
     });
+    sections.forEach((s, i) => { if (typeof s.start === 'string' && typeof s.end === 'string' && s.end < s.start) add('error', `sections[${i}].end`, `${s.end} is before the start ${s.start}`, 'check both dates'); });
+    const base = typeof d.language === 'string' ? d.language : null, out = typeof o(d.resume).language === 'string' ? o(d.resume).language : null;
+    arr(d.facts).filter(isObj).forEach((f, i) => { if (base && isObj(f.tr) && f.tr[base] !== undefined) add('warning', `facts[${i}].tr.${base}`, `is the facts' own language (language: ${base})`, 'remove it'); });
+    if (out && base && out !== base) {
+      const missing = arr(d.facts).filter((f) => isObj(f) && !(isObj(f.tr) && typeof f.tr[out] === 'string' && f.tr[out])).length;
+      if (missing) add('warning', 'resume.language', `${missing} fact${missing === 1 ? ' has' : 's have'} no approved ${out} translation: they render in ${base}`, `approve a translation with the user, then add it as facts[n].tr.${out}`);
+    }
     const citable = sections.filter((s) => ['summary', 'experience', 'list'].includes(s.kind)).map((s) => s.id);
     const facts = new Set<string>();
     arr(d.facts).filter(isObj).forEach((f, i) => {
@@ -341,6 +373,7 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
     });
     items.forEach((m, i) => {
       if (m.kind === 'answer' && !m.key) add('error', `items[${i}].key`, 'is missing (answers need the question key)', 'add key: e.g. notice_period');
+      if (typeof m.key === 'string' && keyClass(m.key) === 'never_fill' && !m.superseded_by) add('error', `items[${i}]`, 'is an ID, bank or tax number: Crewdeck never stores or fills these', 'retire it (crewdeck jobs remember --retire …) and type it into forms yourself');
       if (m.scope === 'company' && !m.company) add('error', `items[${i}].company`, 'is missing (scope is company)', 'add company: … or set scope: all');
       if (m.kind === 'company_rule' && m.scope !== 'company') add('error', `items[${i}].scope`, 'a company_rule must have scope: company', 'set scope: company and company: …');
       if (m.title_words && m.kind !== 'avoid') add('warning', `items[${i}].title_words`, 'only avoid items use title words', 'remove it');
@@ -399,9 +432,16 @@ export type Profile = {
   standard_answers: Record<string, string>;
   education: { school: string; degree?: string; discipline?: string; start_year?: number; end_year?: number }[];
   copy_only_hosts: string[];
+  references: Reference[];
 };
-export type Section = { id: string; kind: (typeof SECTION_KINDS)[number]; title?: string; org?: string; where?: string; dates?: string; max_bullets?: number; required?: boolean; break?: boolean };
-export type Career = { resume: { file_name: string; paper: 'A4' | 'Letter'; max_pages: number }; sections: Section[]; facts: { id: string; text: string; tags: string[] }[]; skills: string[]; terms: { extra: string[] } };
+export type Reference = { name: string; role?: string; org?: string; email?: string; phone?: string; relationship?: string };
+export type Section = { id: string; kind: (typeof SECTION_KINDS)[number]; title?: string; org?: string; where?: string; dates?: string; max_bullets?: number; required?: boolean; break?: boolean; start?: string; end?: string };
+export type Fact = { id: string; text: string; tags: string[]; tr: Record<string, string> };
+export type Career = {
+  resume: { file_name: string; paper: 'A4' | 'Letter'; max_pages: number; language: string; headings: Record<string, string>; personal: (typeof PERSONAL)[number][]; word: 'resume' | 'CV' };
+  /** The facts' own language ('' when not said). */ language: string;
+  sections: Section[]; facts: Fact[]; skills: string[]; terms: { extra: string[] };
+};
 export type Licence = { name: string; where?: string };
 export type Shift = (typeof SHIFTS)[number];
 export type Search = {
@@ -452,14 +492,22 @@ export const normalise = {
       standard_answers: Object.fromEntries(Object.entries(o(x.standard_answers)).filter(([, v]) => v !== null && v !== '').map(([k, v]) => [k, String(v)])),
       education: arr(x.education).filter(isObj) as Profile['education'],
       copy_only_hosts: strs(x.copy_only_hosts).map((h) => h.toLowerCase()),
+      references: arr(x.references).filter((r) => isObj(r) && typeof r.name === 'string' && r.name.trim()).map((r) => Object.fromEntries(['name', 'role', 'org', 'email', 'phone', 'relationship'].filter((k) => typeof r[k] === 'string' && r[k].trim()).map((k) => [k, r[k].trim()])) as Reference),
     };
   },
   career(d: unknown): Career {
     const x = o(d), r = o(x.resume);
+    const word = r.word === 'CV' ? 'CV' : 'resume';
+    const lang = (v: unknown) => (typeof v === 'string' && LANG.test(v) ? v : '');
     return {
-      resume: { file_name: s_(r.file_name, '{first_name} {last_name} Resume.pdf'), paper: r.paper === 'Letter' ? 'Letter' : 'A4', max_pages: typeof r.max_pages === 'number' ? r.max_pages : 2 },
+      resume: {
+        file_name: s_(r.file_name, `{first_name} {last_name} ${word === 'CV' ? 'CV' : 'Resume'}.pdf`), paper: r.paper === 'Letter' ? 'Letter' : 'A4', max_pages: typeof r.max_pages === 'number' ? r.max_pages : 2,
+        language: lang(r.language), headings: Object.fromEntries(Object.entries(o(r.headings)).filter(([k, v]) => (HEADINGS as readonly string[]).includes(k) && typeof v === 'string' && v.trim())) as Record<string, string>,
+        personal: strs(r.personal).filter((p): p is (typeof PERSONAL)[number] => (PERSONAL as readonly string[]).includes(p)), word,
+      },
+      language: lang(x.language),
       sections: arr(x.sections).filter(isObj) as Section[],
-      facts: arr(x.facts).filter(isObj).map((f) => ({ id: String(f.id), text: String(f.text ?? ''), tags: strs(f.tags) })),
+      facts: arr(x.facts).filter(isObj).map((f) => ({ id: String(f.id), text: String(f.text ?? ''), tags: strs(f.tags), tr: Object.fromEntries(Object.entries(o(f.tr)).filter(([k, v]) => LANG.test(k) && typeof v === 'string' && v.trim())) as Record<string, string> })),
       skills: strs(x.skills),
       terms: { extra: strs(o(x.terms).extra) },
     };

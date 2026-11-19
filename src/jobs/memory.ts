@@ -10,6 +10,7 @@ import { closeSync, mkdirSync, openSync, statSync, unlinkSync, writeSync } from 
 import { basename, dirname, join } from 'node:path';
 import { isMap, isSeq, parseDocument, type Document, type YAMLMap, type YAMLSeq } from 'yaml';
 import { readNote, renderNote, writeAtomic } from './notes.ts';
+import { keyClass } from './form-terms.ts';
 import { type MemoryItem, MEMORY_KINDS, validate } from './schema.ts';
 
 export type MemoryInput = {
@@ -99,6 +100,8 @@ function check(input: MemoryInput) {
   }
   if (input.key !== undefined && !/^[a-z][a-z0-9_]*$/.test(input.key)) throw new Error('--key must be lowercase words joined by _ (e.g. notice_period)');
   if (input.kind === 'answer' && !input.key) throw new Error('an answer needs --key (the question it answers, e.g. notice_period)');
+  // D32: ID, bank and tax numbers are never remembered: the user types them into the form.
+  if (input.key && keyClass(input.key) === 'never_fill') throw new Error(`"${input.key}" is an ID, bank or tax number: Crewdeck never stores these (the user types it into the form)`);
   const scope = input.scope ?? (input.kind === 'company_rule' ? 'company' : 'all');
   if (scope !== 'all' && scope !== 'company') throw new Error('--scope must be all or company');
   if (input.kind === 'company_rule' && scope !== 'company') throw new Error('a company_rule is about one company: use --scope company --company-file <file>');

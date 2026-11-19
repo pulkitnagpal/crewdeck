@@ -23,7 +23,8 @@ the scratch folder `<jobs home>/out/tmp`, written out in full. Write `Ada` to `<
 crewdeck jobs me set identity.first_name --value-file <T>/value.txt
 ```
 - `crewdeck jobs me set <path> --value-file <f>` writes `me/profile.md` (`identity.*`, `standard_answers.*`, `education`,
-  `copy_only_hosts`) or `me/career.md` (`resume.*`, `sections`, `facts`, `skills`, `terms.extra`).
+  `references`, `copy_only_hosts`) or `me/career.md` (`language`, `resume.*`, `sections`, `facts`, `skills`,
+  `terms.extra`).
 - `crewdeck jobs pref set <path> --value-file <f> --because-file <f>` writes `jobs/search.md`; the because-file holds the
   user's own words, logged under `## Changes`.
 - Lists are one YAML **flow** list in the file (it may span lines; `- item` block lists are refused):
@@ -62,20 +63,41 @@ country, links (LinkedIn, GitHub, portfolio, website), education (school, degree
 standard answers forms keep asking: current title, years of experience, notice period or earliest start, **right to
 work** ("I can work in the US without sponsorship", in their words: `standard_answers.work_authorization`), and anything
 else they want answered the same way every time (`standard_answers.<snake_case_key>`). Sensitive ones (salary
-expectations, visa details, demographic questions) only in their words, and only if they want them stored. Write each
-with `me set`.
+expectations, visa details, date of birth, nationality, family details, demographic questions) only in their words, and
+only if they want them stored; a remembered sensitive answer is reused for the same company only, unless they say to use
+it everywhere. Write each with `me set`.
+- **Never store** government ID, bank or tax numbers (social security, National Insurance, Aadhaar, PAN, Steuer-ID, DNI,
+  IBAN, account numbers …), even if they offer one: say Crewdeck never stores or fills them, and they type them into the
+  form themselves. `crewdeck jobs check` refuses one found in a note.
+- **Referees** (forms in teaching, care and the public sector ask for them): `references`, a list of
+  `{ name, role, org, email, phone, relationship }`. These are other people's details: ask the user to check with each
+  person first. They fill reference questions only and are never drafted.
 
 ## 3. Their career (`me/career.md`)
-1. Propose **sections** in page order, each `{ id, kind, title?, org?, where?, dates?, max_bullets?, required? }`:
+1. Propose **sections** in page order, each `{ id, kind, title?, org?, where?, dates?, start?, end?, max_bullets?, required? }`:
    `summary`, one `experience` per role (id = a short slug of the organisation, e.g. `example-gmbh`), `list` sections
-   (certifications, licences, projects, volunteering), `skills`, `education`.
+   (certifications, licences, projects, volunteering), `skills`, `education`. For each experience, propose `start` and
+   `end` as `YYYY-MM` from its dates (no `end` while it goes on) and confirm them: forms with "Add another employer"
+   blocks fill from these.
 2. Propose **facts** **word for word**: one per resume bullet (or per thing they told you they did), id
    `<section id>.<slug>`, the exact text (keep numbers, names and `**bold**`), optional `tags`. Never merge, polish or
    add. If something is unclear, ask.
 3. Propose **skills** as the resume lists them (or as they said them).
 4. Show the proposal (a compact list), let the user change, drop or add, and only then write:
-   `crewdeck jobs me set sections --value-file <T>/sections.yaml`, then `facts`, then `skills`. Ask for paper size
-   (A4 or Letter) and page limit: `resume.paper`, `resume.max_pages`.
+   `crewdeck jobs me set sections --value-file <T>/sections.yaml`, then `facts`, then `skills`. Write the language the
+   facts are in (`language`, e.g. `en`).
+5. **The resume's conventions**, proposed from where they apply and confirmed: paper (`resume.paper`: A4, or Letter in
+   the US and Canada), page limit (`resume.max_pages`: 1 in the US, 2 in the UK, Germany and India), the word they use
+   (`resume.word`: `CV` or `resume`), the language it is written in (`resume.language`, when they apply in another
+   language than their facts'), headings if they want their own (`resume.headings.experience`, e.g. `Beruflicher
+   Werdegang`; each language has defaults), and, only if they want it (common in Germany, Austria and Switzerland), a
+   personal block (`resume.personal: [date_of_birth, nationality, languages]`; the values come from `standard_answers`).
+   A photo isn't supported.
+6. **Translations** (only when they apply in another language): propose a translation of each fact they will use,
+   faithful and word for word (numbers, names and `**bold**` kept), show it next to the original, and write only the
+   ones they approve as written, one at a time: `crewdeck jobs me set facts.3.tr.de --value-file <T>/value.txt` (the
+   fact's place in the list). Answers in that language may cite a fact only through its approved translation; a fact
+   without one is shown in its own language on the resume, and `crewdeck jobs check` says how many are missing.
 
 ## 4. What they want, part one: the kinds of job, where, and how
 1. **The kinds of job.** Ask what they would call each kind of job they want, in their own words ("nurse on a ward",

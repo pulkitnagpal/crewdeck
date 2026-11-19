@@ -53,3 +53,11 @@ p.skills span + span::before { content: "·"; margin: 0 5pt; color: var(--muted)
 .edu .what { font-weight: 700; }
 .edu .where { font-style: italic; color: var(--muted); }
 .edu .dates { font-size: 9pt; color: var(--muted); white-space: nowrap; }
+/* The opt-in personal block (D33): label and value on one line. */
+dl.personal { margin: 0; display: grid; grid-template-columns: max-content 1fr; column-gap: 12pt; row-gap: 2pt; }
+dl.personal div { display: contents; }
+dl.personal dt { font-weight: 600; }
+dl.personal dd { margin: 0; }
+/* A cover letter (crewdeck jobs letter): the same type, a date line and paragraphs. */
+.letter .date { margin: 14pt 0 10pt; }
+.letter p.par { margin: 0 0 8pt; line-height: 1.45; }

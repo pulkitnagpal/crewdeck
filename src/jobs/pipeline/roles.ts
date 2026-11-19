@@ -30,6 +30,32 @@ export function addRole(ctx: Ctx, r: { url: string; title: string; company: stri
 }
 
 /** The application form's own address (the posting may link elsewhere). */
+/** How an employer takes applications (D35), recorded by Claude at Prepare. */
+export const APPLY_METHODS = ['form', 'email', 'document', 'walk_in', 'chatbot', 'account_needed'] as const;
+export type ApplyMethod = (typeof APPLY_METHODS)[number];
+
+/** Record the apply method (and a note from the posting: where and when to walk in, the address to email). */
+export function setApplyMethod(ctx: Ctx, id: string, method: string, note?: string) {
+  getRole(ctx.db, id);
+  if (!(APPLY_METHODS as readonly string[]).includes(method)) throw new Error(`--apply-method must be one of ${APPLY_METHODS.join(', ')}`);
+  const n = note === undefined ? null : String(note).replace(/\s+/g, ' ').trim().slice(0, 500) || null;
+  tx(ctx.db, () => {
+    ctx.db.prepare('update roles set apply_method=?, apply_note=coalesce(?, apply_note), updated_at=? where id=?').run(method, n, nowIso(ctx), id);
+    addEvent(ctx.db, id, 'apply_method', `${method}${n ? `: ${n}` : ''}`, nowIso(ctx));
+  });
+  return method as ApplyMethod;
+}
+
+/** The language of the role's application form (two letters), for drafting answers in it (D33). */
+export function setFormLang(ctx: Ctx, id: string, lang: string) {
+  getRole(ctx.db, id);
+  const m = /^([a-z]{2})(?:[-_][a-z0-9]{2,8})?$/.exec(String(lang ?? '').trim().toLowerCase());
+  if (!m) throw new Error('--lang must be a two-letter language code (en, de, es …)');
+  const l = m[1];
+  ctx.db.prepare('update roles set form_lang=? where id=?').run(l, id);
+  return l;
+}
+
 export function setApplyUrl(ctx: Ctx, id: string, url: string) {
   getRole(ctx.db, id);
   const clean = checkRoleUrl(url, ctx.features, 'apply URL');

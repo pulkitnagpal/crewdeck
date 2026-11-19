@@ -10,7 +10,7 @@ import { applyUrl, checkRoleUrl, copyOnlyHost, isLinkedinHost, hostOf } from './
 import { launchGuarded } from './browser.ts';
 import type { NetOptions } from './net/netguard.ts';
 import { type FormQuestion, cleanQuestions, storeFormFields } from './kb/questions.ts';
-import { setApplyUrl } from './pipeline/roles.ts';
+import { setApplyUrl, setFormLang } from './pipeline/roles.ts';
 
 type Raw = { label: string; kind: string; required: boolean; options: string[]; char_limit?: number; section?: string };
 type PageRead = { questions: Raw[]; password: boolean; captcha: boolean };
@@ -133,7 +133,7 @@ export async function readQuestions(page: Page): Promise<PageRead> {
   return all;
 }
 
-export type FormRead = { role: string; url: string; stored: number; questions: FormQuestion[]; notes: string[]; blocked: string[]; needs?: string };
+export type FormRead = { role: string; url: string; stored: number; questions: FormQuestion[]; notes: string[]; blocked: string[]; needs?: string; /** the page's lang (D33) */ lang?: string };
 export type ReadOptions = { url?: string; net?: NetOptions; browser?: string; timeoutMs?: number };
 
 const LIVE = 'Read it live instead: open it in a background tab of the browser pane, step through the pages (Next only, never Review or Submit), record each question with `crewdeck jobs learn <role> --label-file …`, then close the tab.';
@@ -168,6 +168,11 @@ export async function readForm(ctx: Ctx, roleId: string, o: ReadOptions = {}): P
     const questions = cleanQuestions(read.questions);
     if (!questions.filter((q) => q.kind !== 'file').length) return { ...base, questions, needs: `no questions could be read headlessly (the form may be built by clicks or behind "Apply"). ${LIVE}` };
     const stored = storeFormFields(ctx.db, roleId, profile, questions);
-    return { ...base, stored, questions };
+    // The form's language from the page (D33): answers are drafted in it. Claude sets it from the labels otherwise.
+    const lang = (/^([a-z]{2})(?:[-_]|$)/.exec(String(await page.evaluate(() => document.documentElement.lang || '').catch(() => '')).trim().toLowerCase()) ?? [])[1] ?? '';
+    if (/^[a-z]{2}$/.test(lang)) setFormLang(ctx, roleId, lang);
+    const left = questions.filter((q) => q.kind !== 'file').length - stored;
+    if (left > 0) base.notes.push(`${left} ID, bank or tax number question${left === 1 ? '' : 's'} not stored: the user types ${left === 1 ? 'it' : 'them'} in the form`);
+    return { ...base, stored, questions, ...(/^[a-z]{2}$/.test(lang) ? { lang } : {}) };
   } finally { await g.close(); }
 }

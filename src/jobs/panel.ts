@@ -6,10 +6,12 @@
 // and fails it with the reason when it had to stop (sign-in, CAPTCHA, restricted, a limit).
 import type { Progress, Request } from '../requests.ts';
 
-export type PanelState = 'ready' | 'copy' | 'waiting' | 'filling' | 'needs_you' | 'your_turn' | 'confirmation' | 'stopped' | 'applied';
+export type PanelState = 'ready' | 'copy' | 'walk_in' | 'waiting' | 'filling' | 'needs_you' | 'your_turn' | 'confirmation' | 'stopped' | 'applied';
 export type Panel = {
   state: PanelState; request: number | null; connected: boolean; progress: Progress[];
   question?: string; reason?: string; seen?: string; applied?: string | null; copyReason?: string;
+  /** D35: how the employer takes applications, and the note from the posting (where and when to walk in). */
+  method?: string | null; note?: string | null;
 };
 
 export const NEEDS_YOU = /^needs you:\s*/i;
@@ -18,12 +20,14 @@ export const SUBMITTED = /^submitted:\s*/i;
 export const YOUR_TURN = /^your turn:\s*review the form tab and click submit(?:,?\s*then (?:click )?["“]?i submitted it["”]?)?\s*[.;:,]?\s*/i;
 
 export function applyPanel(i: {
-  status: string; apply: { mode: 'fill' | 'copy'; reason?: string }; applied?: string | null;
+  status: string; apply: { mode: 'fill' | 'copy' | 'walk_in'; reason?: string; method?: string | null; note?: string | null }; applied?: string | null;
   request?: Request | null; connected: boolean;
 }): Panel {
   const r = i.request ?? null;
-  const base = { request: r?.id ?? null, connected: i.connected, progress: (r?.progress ?? []).slice(-15) };
+  const method = i.apply.method ?? null, note = i.apply.note ?? null;
+  const base = { request: r?.id ?? null, connected: i.connected, progress: (r?.progress ?? []).slice(-15), ...(method ? { method, note } : {}) };
   if (i.status === 'applied') return { ...base, state: 'applied', applied: i.applied ?? null };
+  if (i.apply.mode === 'walk_in') return { ...base, state: 'walk_in' };
   if (i.apply.mode === 'copy') return { ...base, state: 'copy', copyReason: i.apply.reason };
   if (!r) return { ...base, state: 'ready' };
   const result = String(r.result ?? '').trim();

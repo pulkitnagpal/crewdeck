@@ -2,7 +2,8 @@
 // Applications, and What Claude knows (Profile, Career, Search, Memory, Answers, each pointing at its note). Money uses
 // the user's pay.currency/pay.locale, dates their schedule.timezone; "applied today" is a local day, computed here.
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { letterPath } from './letter-path.ts';
 import { type Ctx, notesOf, todayBounds, tzOf } from './ctx.ts';
 import type { Db } from './db.ts';
 import { type JobNotes, NOTES } from './notes.ts';
@@ -100,7 +101,18 @@ function chipFor(db: Db, r: any, tz: string, locale?: string) {
 }
 
 /** How Apply works for a role: filled by Claude, or answers to copy (and why). */
-export function applyMode(ctx: Ctx, r: { url: string; apply_url?: string | null }, profile: Profile): { mode: 'fill' | 'copy'; reason?: string } {
+export type ApplyMode = { mode: 'fill' | 'copy' | 'walk_in'; reason?: string; method?: string | null; note?: string | null };
+/** What each apply method means on the page (D35): an email, a document or a chat assistant are filled by the user from the answers. */
+const METHOD_COPY: Record<string, string> = {
+  email: 'This employer takes applications by email: copy these answers into your email (Claude only drafts emails when you switched that on)',
+  document: 'This application is a document to fill in: copy these answers into it',
+  chatbot: 'This employer applies through a chat assistant: copy these answers into the chat',
+};
+
+export function applyMode(ctx: Ctx, r: { url: string; apply_url?: string | null; apply_method?: string | null; apply_note?: string | null }, profile: Profile): ApplyMode {
+  const method = r.apply_method ?? null, note = r.apply_note ?? null;
+  if (method === 'walk_in') return { mode: 'walk_in', reason: 'Apply in person', method, note };
+  if (method && METHOD_COPY[method]) return { mode: 'copy', reason: METHOD_COPY[method], method, note };
   const urls = [r.apply_url, r.url].filter(Boolean) as string[];
   const host = urls.map((u) => copyOnlyHost(u, profile.copy_only_hosts)).find(Boolean);
   if (host) return { mode: 'copy', reason: `${host} doesn't allow automated filling` };
@@ -109,7 +121,7 @@ export function applyMode(ctx: Ctx, r: { url: string; apply_url?: string | null 
     // On, but allowed 0 forms a day: say so, rather than "off" (review C11).
     if (!(ctx.features.daily_quick_apply > 0)) return { mode: 'copy', reason: 'Easy Apply filling is on, but its forms per day is 0 (Jobs → Settings)' };
   }
-  return { mode: 'fill' };
+  return { mode: 'fill', ...(method ? { method, note } : {}) };
 }
 
 /** Today: what still needs the user, plus what they applied to today (so "I submitted it" shows its result). */
@@ -140,6 +152,7 @@ export function todayView(ctx: Ctx, selected?: string) {
       apply: applyMode(ctx, r, notes.profile.data), approvable: canApprove(ctx.db, r.id),
       counts: { total: answers.length, known: answers.filter((a) => a.status === 'approved').length, drafted: answers.filter((a) => a.status === 'drafted').length, first: answers.filter((a) => a.status === 'first_time' && a.required).length },
       rows, resume: existsSync(pdf) ? { pdf, note: 'Tailored for this role' } : null, outreach,
+      resume_word: notes.career.data.resume.word, letter: existsSync(letterPath(ctx, r.id, notes)) ? basename(letterPath(ctx, r.id, notes)) : null,
       questions: questions.map((q) => ({ id: Number(q.id), text: q.text })),
       applied: r.status === 'applied' ? shortDay(appliedAt(ctx.db, r.id) ?? r.updated_at, tz, locale) : null,
     },

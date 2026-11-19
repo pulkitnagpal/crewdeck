@@ -70,7 +70,8 @@ Payload `{ url, force? }`. The user chose this role: it is not judged, it is add
 Every question on the application must be known before the user is asked to approve anything. Nothing is filled here.
 1. `crewdeck jobs view today --role <role id>` shows the role (`detail.url` is its application address, `detail.apply`
    says `fill` or `copy`).
-2. **Read the form headlessly:** `crewdeck jobs form <role id>`. It stores the questions and prints them. Exit code 2 with
+2. **Read the form headlessly:** `crewdeck jobs form <role id>`. It stores the questions, records the page's language
+   (`lang`) and prints them; ID, bank and tax number questions are never stored (the user types those). Exit code 2 with
    `needs` means it couldn't:
    - the site forbids automated use (copy-only) → don't open it; the user fills it by hand from the page's answers.
    - sign-in, password or account needed → don't sign in; say so in the result.
@@ -81,26 +82,47 @@ Every question on the application must be known before the user is asked to appr
      1. Open the application in a **new background tab** of the browser pane (never in Crewdeck's own tab).
      2. Follow the posting's "Apply" button to the form if needed. On each page, read every question: its label, its
         kind (`text`, `textarea`, `select`, `radio`, `checkbox`, `combobox`, `buttons`, `file`), whether it is required,
-        and its options.
+        and its options. Add `"sensitive": true` to a question that asks something personal its words don't show (family,
+        health, money, a photo); you may raise a question to sensitive, never lower one.
      3. Press **Next** only to reach another page of questions. Never Review, Submit, Send or Apply-to-finish. If Next
         won't move on without filled answers, stop reading there (Apply meets the rest).
      4. Write everything you read to `<T>/fields.json` with the Write tool, as
-        `[{ "label": …, "kind": …, "required": true, "options": […] }]`, and store it:
-        `crewdeck jobs form <role id> --fields-file <T>/fields.json`. If the form is on another address than the posting,
-        write that address to `<T>/apply-url.txt` and run `crewdeck jobs role <role id> --apply-url-file <T>/apply-url.txt`.
+        `[{ "label": …, "kind": …, "required": true, "options": […] }]`, and store it with the form's language (the page's
+        `lang`, else the language of its labels): `crewdeck jobs form <role id> --fields-file <T>/fields.json --lang de`.
+        If the form is on another address than the posting, write that address to `<T>/apply-url.txt` and run
+        `crewdeck jobs role <role id> --apply-url-file <T>/apply-url.txt`.
      5. Close the tab. Nothing is typed into the form during Prepare.
-3. **Answers:** `crewdeck jobs draft <role id> --brief <T>/brief.json` answers what the profile and memory already know
+3. **How they take applications:** record it from the posting and the page:
+   `crewdeck jobs role <role id> --apply-method form|email|document|walk_in|chatbot|account_needed`. For `walk_in`
+   (interviews in person) write where and when, from the posting, to `<T>/note.txt` and add
+   `--apply-note-file <T>/note.txt`; for `email`, the address to write to. The page then shows the answers to copy
+   (email, a document form, a chat assistant), where and when to go (walk-in), or "this site needs an account: create it
+   in the form tab, sign in, then Continue" (`account_needed`: never create the account yourself). Email stays a draft
+   unless the user switched outreach on.
+4. **Answers:** `crewdeck jobs draft <role id> --brief <T>/brief.json` answers what the profile and memory already know
    (stored as approved, with their sources) and writes a brief for the rest. If the brief lists fields for you, read it
    (`prompt`, `schema`, `posting`), follow its rules exactly, write `{ "answers": [ … ] }` matching `schema` to
-   `<T>/draft.json` and run `crewdeck jobs draft <role id> --answers <T>/draft.json`. The citation check stores what the
-   facts support and turns everything else into a **first-time question** for the user. Never guess to avoid a question.
-4. **Resume:** read `me/career.md` (sections, facts, skills) and the posting. Choose facts by id, most relevant first,
-   within each section's `max_bullets`, and write
+   `<T>/draft.json` and run `crewdeck jobs draft <role id> --answers <T>/draft.json`. Answer **in the form's language**;
+   when the facts are in another language, cite a fact only through the translation the user approved (`tr` in the brief):
+   for a fact without one, return null with the reason the brief gives, so the user can approve a translation. Mark a
+   question you find personal `"sensitive": true` (answer null). Referees' details are never drafted: they come from
+   `me/profile.md → references`. The citation check stores what the facts support and turns everything else into a
+   **first-time question** for the user. Never guess to avoid a question.
+5. **Resume:** skip it when the form has no resume upload and `me/career.md` has no experience facts (say so in the
+   result). Otherwise read `me/career.md` (sections, facts, skills) and the posting. Choose facts by id, most relevant
+   first, within each section's `max_bullets`, and write
    `{ "sections": { "<section id>": ["<fact id>", …] }, "skills": [ … ] }` to `<T>/variant.json`; then
-   `crewdeck jobs resume <role id> --variant-file <T>/variant.json`. On "N pages; max_pages … is M", drop the least
-   relevant facts and run it again; on validation errors, fix the ids it names. Facts are never reworded.
-5. One line on why it fits, in your words, to `<T>/why.txt`: `crewdeck jobs event add <role id> --kind why --detail-file <T>/why.txt`.
-6. `crewdeck jobs status <role id> prepared`.
+   `crewdeck jobs resume <role id> --variant-file <T>/variant.json`. It renders in `resume.language` with that language's
+   headings; `warnings` lists facts with no approved translation (shown in their own language: tell the user). On
+   "N pages; max_pages … is M", drop the least relevant facts and run it again; on validation errors, fix the ids it names.
+   Facts are never reworded.
+6. **Cover letter or statement** (when the form has an upload for one: cover letter, Anschreiben, supporting statement,
+   lettre de motivation, or the user asks): write it in the form's language, from facts only, to `<T>/letter.txt`, and
+   its claims to `<T>/letter-claims.json` (as for an answer), then
+   `crewdeck jobs letter <role id> --text-file <T>/letter.txt --claims-file <T>/letter-claims.json`. Refused claims: fix
+   or drop them. The fill plan then offers it for that upload.
+7. One line on why it fits, in your words, to `<T>/why.txt`: `crewdeck jobs event add <role id> --kind why --detail-file <T>/why.txt`.
+8. `crewdeck jobs status <role id> prepared`.
 
 ## apply: the user clicked Apply
 Payload `{ role }`; `context.role` has the company, title, `url`, `apply_url`, `apply_kind` and `apply` (`fill` or `copy`
@@ -115,14 +137,20 @@ with the reason). The click is the user's go-ahead to **fill this one form**; su
    - Asked again after `needs you`: the form tab is still open; continue from the page it is on.
 3. On each page of the form:
    1. Read every question (label, kind, required, options) and write them to `<T>/fields.json` with the Write tool as
-      `[{ "label": …, "type": …, "required": …, "options": […] }]`; write the tab's address to `<T>/page-url.txt`.
+      `[{ "label": …, "type": …, "required": …, "options": […] }]`; write the tab's address to `<T>/page-url.txt`. In a
+      repeated block (employment history, education, referees), add `"group": "employment" | "education" | "reference"`
+      and `"index"` (0 for the first block) to each field in it, and list its "Add another …" button with its `group`.
+      Add `"sensitive": true` to a personal question its words don't show.
    2. `crewdeck jobs fill-plan --request <id> --fields-file <T>/fields.json --page-url-file <T>/page-url.txt` prints
-      the plan: per label `fill`, `select`, `choose`, `upload` or `skip` (with a reason). A `copy` plan (the Easy Apply
-      daily cap, a copy-only host) → stop: `request fail` with its reason.
+      the plan: per label `fill`, `select`, `choose`, `upload`, `add` or `skip` (with a reason). A `copy` plan (the Easy
+      Apply daily cap, a copy-only host) → stop: `request fail` with its reason.
    3. Fill **exactly the plan**, nothing else: `fill` types the value, `select` picks the option, `choose` clicks the
-      option (radio or button), `skip` stays empty, `upload` is left for the user (the pane can't attach files; on Easy
-      Apply, choose a resume already uploaded to LinkedIn when its name matches the role's resume). For type-ahead
-      fields, type and then pick the suggestion that matches exactly, or leave it.
+      option (radio or button; for checkboxes the value may list several options as `A | B`: tick each), `skip` stays
+      empty, `upload` is left for the user (the pane can't attach files; on Easy Apply, choose a resume already uploaded to
+      LinkedIn when its name matches the role's resume), `add` presses the "Add another" button `times` times (at most 10
+      a page) and then you read the page again and ask for a new plan. For type-ahead fields, type and then pick the
+      suggestion that matches exactly, or leave it. ID, bank and tax numbers are always `skip`: the user types them.
+      Referees' details come from `me/profile.md`: say in the result that they are other people's details.
    4. Re-read the page and fix anything that didn't take, with the plan's values only.
    5. A **required** question the plan skips because it has no answer (one Prepare didn't see): write its label (and
       options) to files and record it with
@@ -132,7 +160,8 @@ with the reason). The click is the user's go-ahead to **fill this one form**; su
    6. Progress "Step 2 of 4: filled 6 fields".
    7. Press **Next** only when it leads to another page of questions.
 4. **Stop at the Review/Submit page and never click it.** Close `done` with the user's turn: "Your turn: review the form
-   tab and click Submit, then I submitted it" (add what is left for them: the resume upload, a field you skipped and why).
+   tab and click Submit, then I submitted it" (add what is left for them: the resume or letter upload, an ID number to
+   type, a field you skipped and why).
    The resume PDF is shown on the Jobs page (Reveal / Download).
 5. If you see the site's confirmation page (the user already submitted), close `done` with `submitted: <what the page
    says>`; the page offers Mark applied.
@@ -175,3 +204,6 @@ reason). The user wants this employer's open jobs read automatically.
 - "Not interested" said in chat about a role: write the user's words to a file and run
   `crewdeck jobs not-interested <role> --reason-file <T>/reason.txt` (optionally `--title-words-file`).
 - Anything the user asks you to remember: the **crewdeck-memory** skill.
+- A sensitive answer the user wants on every form ("use 60,000 everywhere"): write their words to files and run
+  `crewdeck jobs answer <role> --question Qn --text-file <T>/answer.txt --quote-file <T>/quote.txt --everywhere`;
+  without `--everywhere` it is kept for that company only.

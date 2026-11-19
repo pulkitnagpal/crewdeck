@@ -32,12 +32,16 @@ function altRe(a: string): string {
 export function entryRe(entry: string): string {
   const slots = String(entry).split(/\s\+\s/).map((s) => s.trim()).filter(Boolean);
   let out = '';
+  let seenRequired = false;
   slots.forEach((slot, i) => {
     const optional = slot.endsWith('?');
     const alts = (optional ? slot.slice(0, -1) : slot).split('|').map(altRe).filter(Boolean).sort((x, y) => y.length - x.length);
     const body = `(?:${alts.join('|')})`;
-    const sep = i < slots.length - 1 ? '\\s+' : '';
-    out += optional ? `(?:${body}${sep})?` : `${body}${sep}`;
+    // An optional slot takes its own space with it, so "a + b?" matches "a" alone and "a? + b" matches "b" alone: the
+    // slots before the first required one carry the space after them, the others the space before.
+    if (!seenRequired && optional && i < slots.length - 1) out += `(?:${body}\\s+)?`;
+    else if (!seenRequired) { out += body; seenRequired = true; }
+    else out += optional ? `(?:\\s+${body})?` : `\\s+${body}`;
   });
   return out;
 }

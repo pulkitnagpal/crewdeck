@@ -441,7 +441,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const asking = requests.ofLane(LANE, 'improve').filter((r) => isOpen(r) && r.ref === d.id).map((r) => Number(r.payload?.field_id));
     return {
       ...v, queue,
-      detail: { ...d, resume: pdf ? { file: basename(pdf), url: `/api/jobs/resume/${d.id}`, note: d.resume!.note } : null, copy: d.apply.mode === 'copy' ? copyModel(db, d.id).answers : null },
+      detail: { ...d, resume: pdf ? { file: basename(pdf), url: `/api/jobs/resume/${d.id}`, note: d.resume!.note } : null, copy: d.apply.mode !== 'fill' ? copyModel(db, d.id).answers : null },
       panel, asking, find, exclude_title_words,
     };
   }
@@ -512,7 +512,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       if (r.status === 'applied') throw new HttpError(400, 'already applied');
       if (r.status === 'skipped') throw new HttpError(400, 'you skipped this role');
       const mode = applyMode(ctx, r, notesOf(ctx).profile.data);
-      if (mode.mode === 'copy') return { ok: true, mode: 'copy', reason: mode.reason, answers: copyModel(db, r.id).answers };
+      if (mode.mode !== 'fill') return { ok: true, mode: mode.mode, reason: mode.reason, answers: copyModel(db, r.id).answers };
       if (!canApprove(db, r.id)) throw new HttpError(400, 'Answer the required first-time questions first');
       return { ...queueApply(r.id), mode: 'fill' };
     },

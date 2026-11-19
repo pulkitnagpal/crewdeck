@@ -7,7 +7,8 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { type Ctx, notesOf, nowIso } from './ctx.ts';
 import { ROLE_ID, addEvent, getRole } from './db.ts';
-import type { Career, Profile, Section } from './schema.ts';
+import type { Career, Profile, Search, Section } from './schema.ts';
+import { documentWords, languageName } from './form-terms.ts';
 import { renderPdf } from './browser.ts';
 import { resumeFileName } from './views.ts';
 
@@ -72,16 +73,38 @@ export type Block =
   | { kind: 'experience'; title: string; entries: { title: string; org: string; where: string; dates: string; bullets: string[] }[] }
   | { kind: 'list'; title: string; items: string[] }
   | { kind: 'skills'; title: string; items: string[] }
-  | { kind: 'education'; title: string; items: { what: string; where: string; dates: string }[] };
-export type ResumeModel = { name: string; contact: { text: string; href?: string }[]; paper: 'A4' | 'Letter'; blocks: Block[] };
+  | { kind: 'education'; title: string; items: { what: string; where: string; dates: string }[] }
+  | { kind: 'personal'; title: string; items: { label: string; value: string }[] };
+export type ResumeModel = {
+  name: string; contact: { text: string; href?: string }[]; paper: 'A4' | 'Letter'; blocks: Block[];
+  /** D33: the language it is written in, its document word ("Lebenslauf"), and what couldn't be in that language. */
+  lang: string; word: string; warnings: string[];
+};
 
 /** A link as people read it: no scheme, no "www.", no trailing slash. */
 export const displayLink = (u: string) => u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
 
-/** What goes on the page, in career.md order. Consecutive experience sections share one "Experience" heading. */
-export function resumeModel(career: Career, profile: Profile, v: Variant): ResumeModel {
-  const facts = new Map(career.facts.map((f) => [f.id, f.text]));
-  const pick = (s: Section) => (v.sections[s.id] ?? []).map((id) => facts.get(id) ?? '').filter(Boolean);
+/**
+ * What goes on the page, in career.md order. Consecutive experience sections share one "Experience" heading. In
+ * `resume.language` (D33) each fact uses its approved translation (`tr`); one without it stays in its own language and
+ * is listed in `warnings`. Headings come from `resume.headings`, else the language's defaults; the opt-in personal
+ * block (`resume.personal`) takes its values from standard_answers (languages also from jobs/search.md).
+ */
+export function resumeModel(career: Career, profile: Profile, v: Variant, o: { search?: Pick<Search, 'languages'> } = {}): ResumeModel {
+  const lang = career.resume.language || career.language || 'en';
+  const words = documentWords(lang);
+  const heading = (k: string, own?: string) => own || career.resume.headings[k] || words[k] || '';
+  const warnings: string[] = [];
+  const other = !!career.resume.language && career.resume.language !== (career.language || career.resume.language);
+  const facts = new Map(career.facts.map((f) => {
+    const t = career.resume.language ? f.tr[career.resume.language] : undefined;
+    return [f.id, { text: t ?? f.text, missing: other && !t }];
+  }));
+  const pick = (s: Section) => (v.sections[s.id] ?? []).map((id) => {
+    const f = facts.get(id);
+    if (f?.missing) warnings.push(`${id} has no approved ${languageName(lang)} translation: shown in ${languageName(career.language)}`);
+    return f?.text ?? '';
+  }).filter(Boolean);
   const id = profile.identity;
   const name = [id.first_name, id.last_name].filter(Boolean).join(' ') || id.preferred_name || 'Resume';
   const contact: ResumeModel['contact'] = [];
@@ -91,32 +114,42 @@ export function resumeModel(career: Career, profile: Profile, v: Variant): Resum
   if (place) contact.push({ text: place });
   for (const url of Object.values(id.links)) if (/^https?:\/\//i.test(url)) contact.push({ text: displayLink(url), href: url });
   const blocks: Block[] = [];
+  if (career.resume.personal.length) {
+    const sa = profile.standard_answers;
+    const items = career.resume.personal.map((k) => {
+      const value = sa[k] ?? (k === 'languages' ? (o.search?.languages ?? []).map((l) => `${l.name}${l.level ? ` (${l.level})` : ''}`).join(', ') : '');
+      if (!value) warnings.push(`resume.personal lists ${k}, but me/profile.md has no standard_answers.${k}`);
+      return { label: words[k] ?? k.replace(/_/g, ' '), value };
+    }).filter((x) => x.value);
+    if (items.length) blocks.push({ kind: 'personal', title: heading('personal'), items });
+  }
   for (const s of career.sections) {
     if (s.kind === 'summary') {
       const p = pick(s);
-      if (p.length) blocks.push({ kind: 'summary', title: s.title ?? '', paragraphs: [p.join(' ')] });
+      if (p.length) blocks.push({ kind: 'summary', title: s.title ?? career.resume.headings.summary ?? '', paragraphs: [p.join(' ')] });
     } else if (s.kind === 'experience') {
       const bullets = pick(s);
       if (!bullets.length) continue;
-      const entry = { title: s.title ?? '', org: s.org ?? '', where: s.where ?? '', dates: s.dates ?? '', bullets };
+      const dates = s.dates ?? (s.start ? `${s.start} – ${s.end ?? ''}`.trim() : '');
+      const entry = { title: s.title ?? '', org: s.org ?? '', where: s.where ?? '', dates, bullets };
       const last = blocks[blocks.length - 1];
       if (last?.kind === 'experience') last.entries.push(entry);
-      else blocks.push({ kind: 'experience', title: 'Experience', entries: [entry] });
+      else blocks.push({ kind: 'experience', title: heading('experience'), entries: [entry] });
     } else if (s.kind === 'list') {
       const items = pick(s);
       if (items.length) blocks.push({ kind: 'list', title: s.title ?? '', items });
     } else if (s.kind === 'skills') {
       const items = v.skills ? v.skills.map((k) => career.skills.find((x) => x.toLowerCase() === k.toLowerCase()) ?? k) : career.skills;
-      if (items.length) blocks.push({ kind: 'skills', title: s.title ?? 'Skills', items });
+      if (items.length) blocks.push({ kind: 'skills', title: heading('skills', s.title), items });
     } else if (s.kind === 'education') {
       const items = [...profile.education].sort((a, b) => (b.end_year ?? 0) - (a.end_year ?? 0)).map((e) => ({
         what: [e.degree, e.discipline].filter(Boolean).join(', ') || e.school, where: e.degree || e.discipline ? e.school : '',
         dates: e.start_year && e.end_year ? `${e.start_year} – ${e.end_year}` : String(e.end_year ?? e.start_year ?? ''),
       }));
-      if (items.length) blocks.push({ kind: 'education', title: s.title ?? 'Education', items });
+      if (items.length) blocks.push({ kind: 'education', title: heading('education', s.title), items });
     }
   }
-  return { name, contact, paper: career.resume.paper, blocks };
+  return { name, contact, paper: career.resume.paper, blocks, lang, word: career.resume.word === 'CV' ? words.cv : words.resume, warnings: [...new Set(warnings)] };
 }
 
 // ---- HTML ----
@@ -134,22 +167,24 @@ ${e.org || e.where ? `<div class="org">${esc([e.org, e.where].filter(Boolean).jo
 <ul class="bullets">${e.bullets.map((x) => `<li>${rich(x)}</li>`).join('')}</ul></div>`).join('')}</section>`;
   if (b.kind === 'list') return `<section class="block list">${h2}<ul class="bullets">${b.items.map((x) => `<li>${rich(x)}</li>`).join('')}</ul></section>`;
   if (b.kind === 'skills') return `<section class="block skills">${h2}<p class="skills">${b.items.map((x) => `<span>${esc(x)}</span>`).join('')}</p></section>`;
+  if (b.kind === 'personal') return `<section class="block personal">${h2}<dl class="personal">${b.items.map((x) => `<div><dt>${esc(x.label)}</dt><dd>${esc(x.value)}</dd></div>`).join('')}</dl></section>`;
   return `<section class="block education">${h2}${b.items.map((e) => `<div class="edu"><div><span class="what">${esc(e.what)}</span>${e.where ? ` <span class="where">— ${esc(e.where)}</span>` : ''}</div><span class="dates">${esc(e.dates)}</span></div>`).join('')}</section>`;
 }
 
-export function resumeHtml(m: ResumeModel): string {
+/** The page around a body (the resume's blocks, or a letter): the identity header, the language, the paper. */
+export function resumeHtml(m: ResumeModel, o: { body?: string; title?: string } = {}): string {
   const header = `<header class="identity"><h1>${esc(m.name)}</h1>${m.contact.length ? `<div class="contact">${m.contact.map((c) => {
     const href = c.href ? safeHref(c.href) : '';
     return `<span>${href ? `<a href="${href}">${esc(c.text)}</a>` : esc(c.text)}</span>`;
   }).join('')}</div>` : ''}</header>`;
   const fill: Record<string, string> = {
-    TITLE: esc(`${m.name} Resume`), PAGE_SIZE: m.paper, PAGE_MARGIN: m.paper === 'Letter' ? '0.6in 0.7in' : '15mm 17mm',
-    STYLE: readFileSync(join(DIR, 'style.css'), 'utf8'), HEADER: header, BODY: m.blocks.map(blockHtml).join('\n'),
+    TITLE: esc(o.title ?? `${m.name} ${m.word ?? 'Resume'}`), LANG: esc(m.lang ?? 'en'), PAGE_SIZE: m.paper, PAGE_MARGIN: m.paper === 'Letter' ? '0.6in 0.7in' : '15mm 17mm',
+    STYLE: readFileSync(join(DIR, 'style.css'), 'utf8'), HEADER: header, BODY: o.body ?? m.blocks.map(blockHtml).join('\n'),
   };
   return readFileSync(join(DIR, 'template.html'), 'utf8').replace(/\{\{(\w+)\}\}/g, (all, k) => fill[k] ?? all);
 }
 
-export type Rendered = { pdf: string; pages: number; facts: string[]; html: string };
+export type Rendered = { pdf: string; pages: number; facts: string[]; html: string; warnings: string[] };
 
 /**
  * Render the tailored resume for a role into <jobs.home>/out/<role>/: validated first, then printed offline. A PDF
@@ -169,7 +204,8 @@ export async function renderResume(ctx: Ctx, roleId: string, raw: unknown, o: { 
   chmodSync(out, 0o700);
   chmodSync(dir, 0o700);
   const html = join(dir, 'resume.html');
-  writeFileSync(html, resumeHtml(resumeModel(career, profile, v)), { mode: 0o600 });
+  const model = resumeModel(career, profile, v, { search: notes.search.data });
+  writeFileSync(html, resumeHtml(model), { mode: 0o600 });
   chmodSync(html, 0o600);
   const pdf = join(dir, resumeFileName(career, profile));
   const tmp = join(dir, `.resume-${randomBytes(6).toString('hex')}.pdf`);
@@ -179,7 +215,7 @@ export async function renderResume(ctx: Ctx, roleId: string, raw: unknown, o: { 
     chmodSync(tmp, 0o600);
     renameSync(tmp, pdf);
     const facts = Object.values(v.sections).flat();
-    addEvent(ctx.db, roleId, 'resume', `${r.pages} page${r.pages > 1 ? 's' : ''}, ${facts.length} facts`, nowIso(ctx));
-    return { pdf, pages: r.pages, facts, html };
+    addEvent(ctx.db, roleId, 'resume', `${r.pages} page${r.pages > 1 ? 's' : ''}, ${facts.length} facts${model.lang !== 'en' ? `, ${languageName(model.lang)}` : ''}`, nowIso(ctx));
+    return { pdf, pages: r.pages, facts, html, warnings: model.warnings };
   } finally { rmSync(tmp, { force: true }); }
 }

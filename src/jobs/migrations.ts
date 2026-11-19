@@ -86,8 +86,18 @@ update roles set applied_at = coalesce(
 PRAGMA user_version = 3;
 `;
 
+// v4 (D33, D35, P9h): how the employer takes applications (recorded at Prepare: form, email, document, walk_in, chatbot,
+// account_needed) with a note from the posting (where and when to walk in, the address to email), and the language of
+// the application form (answers are drafted in it).
+const V4 = `
+alter table roles add column apply_method text;
+alter table roles add column apply_note text;
+alter table roles add column form_lang text;
+PRAGMA user_version = 4;
+`;
+
 /** Every schema step, in order; step N leaves user_version = N. */
-export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }, { version: 2, sql: V2 }, { version: 3, sql: V3 }];
+export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }, { version: 2, sql: V2 }, { version: 3, sql: V3 }, { version: 4, sql: V4 }];
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
 const version = (db: DatabaseSync) => Number((db.prepare('PRAGMA user_version').get() as any).user_version);

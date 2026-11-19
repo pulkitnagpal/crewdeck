@@ -205,3 +205,32 @@ test('Preferences (P9g): the new fields with the keyboard only, saved to the not
   assert.match(note, /- \d{4}-\d{2}-\d{2}: work_pattern\.shifts: \(none\) → night\. "\(set on the Jobs page\)"/);
   await page.close();
 });
+
+test('the apply panel (P9h): walk-in shows where and when from the posting, account needed asks the user to sign up; D41 in light and dark', { skip: noBrowser, timeout: 90_000 }, async () => {
+  const { role } = await import('./helpers.ts');
+  const { setApplyMethod } = await import('../../src/jobs/pipeline/roles.ts');
+  const id = role(s.w.ctx, { company: 'Example Retail Pvt Ltd', title: 'Store Manager', location: 'Berlin' }, 'picked');
+  setApplyMethod(s.w.ctx, id, 'walk_in', 'Walk-in interviews, Monday to Saturday 10 am – 1 pm, Example Mall');
+  for (const scheme of ['light', 'dark'] as const) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: scheme });
+    await page.goto(`http://localhost:${s.port}/jobs/#today`);
+    await page.locator('.side .state .title', { hasText: 'Apply in person' }).waitFor({ timeout: 15_000 });
+    assert.match(await page.locator('.side').textContent() ?? '', /From the posting: Walk-in interviews, Monday to Saturday 10 am – 1 pm, Example Mall/);
+    const items = await audit(page, '.side');
+    assert.deepEqual(items.filter((x) => x.size < 14), [], 'nothing under 14 px');
+    assert.deepEqual(items.filter((x) => x.ratio < 4.5), [], 'AA contrast');
+    if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: join(SHOTS, `apply-walk-in-${scheme}.png`) }); }
+    await page.close();
+  }
+  setApplyMethod(s.w.ctx, id, 'account_needed');
+  s.w.ctx.db.prepare(`insert into form_fields(role_id, ord, label, kind, required) values (?, 0, 'First name', 'contact', 1)`).run(id);
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
+  await page.goto(`http://localhost:${s.port}/jobs/#today`);
+  await page.locator('.side .state .title', { hasText: 'This site needs an account' }).waitFor({ timeout: 15_000 });
+  assert.match(await page.locator('.side').textContent() ?? '', /Create it in the form tab \(Claude never creates accounts\), sign in, then click Continue/);
+  assert.equal(await page.getByRole('button', { name: 'Continue', exact: true }).count(), 1);
+  const items = await audit(page, '.side');
+  assert.deepEqual(items.filter((x) => x.size < 14), [], 'nothing under 14 px');
+  assert.deepEqual(items.filter((x) => x.ratio < 4.5), [], 'AA contrast');
+  await page.close();
+});

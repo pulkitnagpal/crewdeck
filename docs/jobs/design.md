@@ -1321,6 +1321,13 @@ placeable first, the preview shows the near misses, and Find returns N or explai
   career-ops; any provider is added only through the reviewed re-pin (§15), after checking the site's terms.
 
 ## Changelog
+- **P9h built (2026-11-20):** form terms per language (`form-terms.yaml`: profile fields, sensitive, never_fill for en,
+  de, fr, es, pt, it, nl and Indian and Philippine English); ID, bank and tax numbers never filled or stored; Claude may
+  raise a field to sensitive; sensitive answers kept per company unless "everywhere"; answers in the form's language
+  citing facts through approved translations (`facts[].tr`, `career.language`); the resume in `resume.language` with
+  localised headings, an opt-in personal block and `resume.word`; experience `start`/`end`, `profile.references`; the
+  fill plan's capped `add`, referees, availability grids; apply methods (DB v4); `crewdeck jobs letter`. Details:
+  [impl/09h-forms-any-language.md](impl/09h-forms-any-language.md).
 - **P9g built (2026-11-20):** pay periods year/month/week/day/hour converted at the user's hours and days, `pay.per_unit`
   as the judge's text (per-word postings kept as unclear); `work_pattern` (shifts, hours, term-time); freelance,
   fixed-term, seasonal and apprenticeship, with a structured employment type a hard drop; CEFR levels; licences with

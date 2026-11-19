@@ -15,7 +15,7 @@ import { learnField } from './kb/learn.ts';
 import type { Claim } from './kb/cite.ts';
 import { applyDraft, prepareDraft } from './draft/draft.ts';
 import { planForRole } from './plan.ts';
-import { addQuestion, addRole, addRoleEvent, setApplyUrl, setRoleStatus } from './pipeline/roles.ts';
+import { APPLY_METHODS, addQuestion, addRole, addRoleEvent, setApplyMethod, setApplyUrl, setFormLang, setRoleStatus } from './pipeline/roles.ts';
 import { refilter, runPrefilter } from './pipeline/prefilter.ts';
 import { candidates, cleanVerdict, dailyPicks, judge, pick, pickPasted } from './pipeline/pick.ts';
 import { markApplied, notInterested } from './pipeline/apply.ts';
@@ -73,7 +73,7 @@ async function withCtx<T>(fn: (ctx: Ctx) => T | Promise<T>): Promise<T> {
   try { return await fn(ctx); } finally { ctx.db.close(); }
 }
 
-const answerUsage = 'usage: crewdeck jobs answer <role> --question Qn --text-file <f> (--quote-file <the user\'s words> | --claims-file <f> [--instruction-file <f>])  |  answer --request <id> --text-file <f> --claims-file <f>';
+const answerUsage = 'usage: crewdeck jobs answer <role> --question Qn --text-file <f> (--quote-file <the user\'s words> [--everywhere] | --claims-file <f> [--instruction-file <f>])  |  answer --request <id> --text-file <f> --claims-file <f>';
 const answerCmd = (args: string[]) => withCtx((ctx) => {
   const usage = answerUsage;
   const role = roleArg(positional(args)[0], usage);
@@ -82,7 +82,8 @@ const answerCmd = (args: string[]) => withCtx((ctx) => {
   const value = text(flag(args, 'text-file'), '--text-file');
   const quote = optText(args, 'quote-file');
   if (quote !== undefined) {
-    const r = answerFirstTime(ctx, { role, question, value, quote });
+    // "use this everywhere" (D32): a sensitive answer is otherwise kept for this company only.
+    const r = answerFirstTime(ctx, { role, question, value, quote, everywhere: args.includes('--everywhere') });
     return json({ ok: true, answer: r.answer.text, remembered: r.remembered.id, also_filled: r.applied });
   }
   if (!flag(args, 'claims-file')) throw new Error(usage);
@@ -277,17 +278,25 @@ const cmds: Record<string, (args: string[]) => unknown> = {
   }),
 
   role: (args) => withCtx((ctx) => {
-    const usage = 'usage: crewdeck jobs role <id> --apply-url-file <f>';
+    const usage = `usage: crewdeck jobs role <id> [--apply-url-file <f>] [--apply-method ${APPLY_METHODS.join('|')} [--apply-note-file <f>]] [--lang <xx>]`;
     const role = roleArg(positional(args)[0], usage);
-    say(`apply URL set: ${setApplyUrl(ctx, role, text(flag(args, 'apply-url-file'), usage).trim())}`);
+    const url = flag(args, 'apply-url-file'), method = flag(args, 'apply-method'), lang = flag(args, 'lang');
+    if (!url && !method && !lang) throw new Error(usage);
+    if (url) say(`apply URL set: ${setApplyUrl(ctx, role, text(url, usage).trim())}`);
+    // D35: how the employer takes applications; the note (where and when to walk in, the address to email) from a file.
+    if (method) say(`apply method: ${setApplyMethod(ctx, role, method, optText(args, 'apply-note-file'))}`);
+    if (lang) say(`form language: ${setFormLang(ctx, role, lang)}`);
   }),
 
   form: (args) => withCtx(async (ctx) => {
-    const usage = 'usage: crewdeck jobs form <role> [--url-file <f with the form\'s address>] | --fields-file <f> ([{ label, kind, required?, options? }])';
+    const usage = 'usage: crewdeck jobs form <role> [--url-file <f with the form\'s address>] | --fields-file <f> ([{ label, kind, required?, options?, sensitive? }]) [--lang <xx>]';
     const role = roleArg(positional(args)[0], usage);
+    if (flag(args, 'lang')) say(`form language: ${setFormLang(ctx, role, flag(args, 'lang')!)}`);
     if (flag(args, 'fields-file')) {
-      const n = storeFormFields(ctx.db, role, notesOf(ctx).profile.data, cleanQuestions(jsonFile(flag(args, 'fields-file'), '--fields-file')));
-      return say(`${n} question${n === 1 ? '' : 's'} stored for ${role}`);
+      const fields = cleanQuestions(jsonFile(flag(args, 'fields-file'), '--fields-file'));
+      const n = storeFormFields(ctx.db, role, notesOf(ctx).profile.data, fields);
+      const left = fields.filter((f) => f.kind !== 'file' && f.label).length - n;
+      return say(`${n} question${n === 1 ? '' : 's'} stored for ${role}${left > 0 ? `; ${left} ID, bank or tax number question${left === 1 ? '' : 's'} not stored (the user types those)` : ''}`);
     }
     // Headless: the role's form through the guarded browser.
     const { readForm } = await import('./read-form.ts');
@@ -331,7 +340,16 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     if (!flag(args, 'variant-file')) throw new Error(usage);
     const { renderResume } = await import('./resume.ts');
     const r = await renderResume(ctx, role, jsonFile(flag(args, 'variant-file'), '--variant-file'), { browser: loadConfig().jobs.browser });
-    json({ pdf: r.pdf, pages: r.pages, facts: r.facts });
+    json({ pdf: r.pdf, pages: r.pages, facts: r.facts, ...(r.warnings.length ? { warnings: r.warnings } : {}) });
+  }),
+
+  letter: (args) => withCtx(async (ctx) => {
+    const usage = 'usage: crewdeck jobs letter <role> --text-file <f> --claims-file <f> [--lang <xx>]';
+    const role = roleArg(positional(args)[0], usage);
+    if (!flag(args, 'text-file') || !flag(args, 'claims-file')) throw new Error(usage);
+    const { renderLetter } = await import('./letter.ts');
+    const r = await renderLetter(ctx, role, text(flag(args, 'text-file'), '--text-file'), jsonFile(flag(args, 'claims-file'), '--claims-file') as Claim[], { browser: loadConfig().jobs.browser, lang: flag(args, 'lang') });
+    json({ pdf: r.pdf, pages: r.pages, lang: r.lang });
   }),
 
   draft: (args) => withCtx((ctx) => {
@@ -352,13 +370,14 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     return answerCmd(args);
   },
   learn: (args) => withCtx((ctx) => {
-    const usage = 'usage: crewdeck jobs learn <role> --label-file <f> [--answer-file f] [--quote-file f] [--options-file f] [--claims-file f] [--required]';
+    const usage = 'usage: crewdeck jobs learn <role> --label-file <f> [--answer-file f] [--quote-file f] [--options-file f] [--claims-file f] [--required] [--sensitive]';
     const role = roleArg(positional(args)[0], usage);
     const opts = optText(args, 'options-file');
     const options = opts === undefined ? undefined : opts.trim().startsWith('[') ? (JSON.parse(opts) as unknown[]).map(String) : opts.split('\n');
     const r = learnField(ctx, role, {
       label: text(flag(args, 'label-file'), '--label-file'), answer: optText(args, 'answer-file'), quote: optText(args, 'quote-file'), options,
       claims: flag(args, 'claims-file') ? jsonFile(flag(args, 'claims-file'), '--claims-file') : undefined, required: args.includes('--required') ? true : undefined,
+      sensitive: args.includes('--sensitive') ? true : undefined,
     });
     json(r);
     if (!r.ok) process.exitCode = 1;
@@ -438,7 +457,8 @@ tracker and pipeline (text from postings and the user's words only through files
   candidates --budget N [--batch 10] [--need N] [--start]   the next batch for a Find within a budget (≤ 40)
   judge --results-file f                  store verdicts [{ role, eligible: yes|no|unclear, score, evidence, reason? }]
   pick [--n N] [--day D] | pick --role <id> [--request <link request id>]   ("Add it anyway" only from the request)
-  add-role --role-file f | role <id> --apply-url-file f | status <role> <status> [--reason-file f]
+  add-role --role-file f | status <role> <status> [--reason-file f]
+  role <id> [--apply-url-file f] [--apply-method form|email|document|walk_in|chatbot|account_needed [--apply-note-file f]] [--lang xx]
   event add <role> --kind k --detail-file f | question add <role> --text-file f
   applied <role> | not-interested <role> --reason-file f [--title-words-file f]
 page requests (the payload comes from Crewdeck by id, never through the shell):
@@ -450,12 +470,13 @@ the web (through the SSRF guard; addresses only from files):
   link --url-file f                       read a pasted posting, add it, pick it for today
   linkedin search [--days N]              LinkedIn guest search (only when you switched it on)
   form <role> [--url-file f]              read the application form headlessly and store its questions
-  resume <role> --variant-file f          render the tailored resume PDF from fact ids
+  resume <role> --variant-file f          render the tailored resume PDF from fact ids (in resume.language)
+  letter <role> --text-file f --claims-file f [--lang xx]   a cited cover letter or statement PDF
 knowledge and answers:
-  form <role> --fields-file f             store questions read from a form by hand
+  form <role> --fields-file f [--lang xx]   store questions read from a form by hand (ID, bank, tax numbers never)
   draft <role> --brief out.json | --answers f
-  answer <role> --question Qn --text-file f (--quote-file f | --claims-file f [--instruction-file f])
-  learn <role> --label-file f [--answer-file f] [--quote-file f] [--options-file f] [--claims-file f] [--required]
+  answer <role> --question Qn --text-file f (--quote-file f [--everywhere] | --claims-file f [--instruction-file f])
+  learn <role> --label-file f [--answer-file f] [--quote-file f] [--options-file f] [--claims-file f] [--required] [--sensitive]
   undo | knowledge <words>
   fill-plan <role> --fields-file f [--page-url-file f]
 outreach (off until you switch it on): contact add --file f | message add|check <role> … | message sent <id> | followups | followup done <id> nudge|final

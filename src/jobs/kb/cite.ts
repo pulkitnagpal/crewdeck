@@ -5,10 +5,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import type { MemoryItem } from '../schema.ts';
+import { languageName } from '../form-terms.ts';
 
 export type Claim = { text: string; about: 'me' | 'company'; fact_ids: string[] };
-export type Fact = { id: string; text: string };
-export type CiteContext = { facts: Fact[]; memory: MemoryItem[]; postingText: string; profile: Record<string, string>; terms?: Term[] };
+export type Fact = { id: string; text: string; /** approved translations by language (D33) */ tr?: Record<string, string> };
+export type CiteContext = {
+  facts: Fact[]; memory: MemoryItem[]; postingText: string; profile: Record<string, string>; terms?: Term[];
+  /** The answer's language and the facts' own (D33): a fact cited in another language needs its approved translation. */
+  lang?: string | null; factsLang?: string | null;
+};
 export type CiteResult = { ok: true } | { ok: false; reason: string };
 export type Term = { name: string; res: RegExp[] };
 
@@ -168,6 +173,8 @@ export function checkAnswer(a: { text: string; claims: Claim[] }, ctx: CiteConte
   const claims = Array.isArray(a.claims) ? a.claims : [];
   if (a.text.trim() && !claims.length) return { ok: false, reason: 'answer has no cited claims' };
   const facts = new Map(ctx.facts.map((f) => [f.id, f.text.replace(/\*\*/g, '')]));
+  const tr = new Map(ctx.facts.map((f) => [f.id, f.tr ?? {}]));
+  const other = !!ctx.lang && !!ctx.factsLang && ctx.lang !== ctx.factsLang;
   const mem = new Map(ctx.memory.map((m) => [m.id, m]));
   // The user's own sources (facts, memory, profile) from every claim; the posting only for the company claims citing it.
   const ownSources: string[] = [];
@@ -189,7 +196,15 @@ export function checkAnswer(a: { text: string; claims: Claim[] }, ctx: CiteConte
         sources.push(v);
         continue;
       }
-      if (facts.has(id)) { sources.push(facts.get(id)!); continue; }
+      if (facts.has(id)) {
+        // In another language, a fact speaks through the translation the user approved word for word (never Claude's own).
+        if (other) {
+          const t = tr.get(id)?.[ctx.lang!];
+          if (!t) return { ok: false, reason: `fact ${id} has no approved ${languageName(ctx.lang!)} translation (facts[].tr.${ctx.lang}): ask the user to approve one, word for word` };
+          sources.push(`${t.replace(/\*\*/g, '')}\n${facts.get(id)!}`);
+        } else sources.push(facts.get(id)!);
+        continue;
+      }
       const m = mem.get(id);
       if (!m) return { ok: false, reason: `unknown source ${id}` };
       if (m.superseded_by) return { ok: false, reason: `source ${id} was replaced` };

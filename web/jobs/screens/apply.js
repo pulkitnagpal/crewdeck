@@ -18,15 +18,19 @@ function Lines({ lines }) {
 }
 
 function Resume({ d, reveal, onReveal, linkedin }) {
-  if (!d.resume) return html`<div class="block"><h3>Tailored resume</h3><span class="hint">Not made yet: Claude makes it while preparing the role.</span></div>`;
-  return html`<div class="block"><h3>Tailored resume</h3>
+  // The user's word for it (me/career.md → resume.word): "CV" or "resume".
+  const word = d.resume_word === 'CV' ? 'CV' : 'resume';
+  const letter = d.letter ? html`<span class="hint">Cover letter ready: ${d.letter} (next to the ${word}; Claude offers it for the form's letter upload).</span>` : null;
+  if (!d.resume) return html`<div class="block"><h3>Tailored ${word}</h3><span class="hint">Not made yet: Claude makes it while preparing the role (a form with no upload and no work history needs none).</span>${letter}</div>`;
+  return html`<div class="block"><h3>Tailored ${word}</h3>
     <div class="resume"><span class="pdfico" aria-hidden="true">PDF</span><span class="file" title=${d.resume.file}>${d.resume.file}</span></div>
     <div class="row-flex">
       <a class="btn small" href=${d.resume.url} target="_blank" rel="noopener">Open</a>
       <a class="btn small" href=${`${d.resume.url}?download=1`} download=${d.resume.file}>Download</a>
       ${reveal ? html`<button type="button" class="btn small" onClick=${() => onReveal(d.id)}>Show in Finder</button>` : null}
     </div>
-    <span class="hint">${linkedin ? 'Easy Apply: Claude picks a resume already on LinkedIn when one matches; otherwise attach this one in the form.' : 'The form\'s upload button is yours: Claude can\'t attach files.'}</span>
+    <span class="hint">${linkedin ? `Easy Apply: Claude picks a ${word} already on LinkedIn when one matches; otherwise attach this one in the form.` : 'The form\'s upload button is yours: Claude can\'t attach files.'}</span>
+    ${letter}
   </div>`;
 }
 
@@ -59,8 +63,16 @@ export function ApplyPanel({ d, panel, reveal = false, workspace = '', onApply =
     case 'applied':
       body = html`<div class="state ok"><span class="title">Applied${p.applied ? ` · ${p.applied}` : ''}</span><span class="small">The company cooldown has started and today's journal has a line for it.</span></div>`;
       break;
+    case 'walk_in':
+      body = html`<div class="state info"><span class="title">Apply in person</span>
+          <span class="small">${p.note ? `From the posting: ${p.note}` : 'The posting asks you to come in: it says where and when.'}</span>
+          <span class="small">Take your answers below (and the ${d.resume_word === 'CV' ? 'CV' : 'resume'}, printed) with you.</span></div>
+        ${url ? html`<a class="btn" href=${url} target="_blank" rel="noopener noreferrer">Open the posting</a>` : null}
+        <div class="stack">${(d.copy ?? []).map((a, i) => html`<div class="copyrow" key=${i}><span class="lbl">${a.label}</span><span class="ans">${a.text}</span></div>`)}</div>
+        <button type="button" class="btn primary big" onClick=${() => onMarkApplied(d.id)}>I applied in person</button>`;
+      break;
     case 'copy':
-      body = html`<div class="state info"><span class="title">Copy these answers into the form</span><span class="small">${p.copyReason}</span></div>
+      body = html`<div class="state info"><span class="title">Copy these answers into the ${p.method === 'email' ? 'email' : p.method === 'document' ? 'document' : p.method === 'chatbot' ? 'chat' : 'form'}</span><span class="small">${p.copyReason}</span>${p.note ? html`<span class="small">From the posting: ${p.note}</span>` : null}</div>
         ${url ? html`<a class="btn" href=${url} target="_blank" rel="noopener noreferrer">Open the posting</a>` : null}
         <div class="stack">${(d.copy ?? []).map((a, i) => html`<div class="copyrow" key=${i}><span class="lbl">${a.label}</span><span class="ans">${a.text}</span>
           <div class="row-flex"><${CopyButton} text=${a.text} label="Copy" onCopied=${onToast} /></div></div>`)}</div>
@@ -111,14 +123,16 @@ export function ApplyPanel({ d, panel, reveal = false, workspace = '', onApply =
           <div class="stat"><b>${c.drafted}</b><span>drafted, please check</span></div>
           <div class=${cls('stat', c.first && 'warn')}><b>${c.first}</b><span>first time</span></div>
         </div>
-        <button type="button" class="btn primary big" disabled=${!d.approvable} onClick=${() => onApply(d.id)}>Apply</button>
+        ${p.method === 'account_needed' ? html`<div class="state warn" role="note"><span class="title">This site needs an account</span>
+          <span class="small">Create it in the form tab (Claude never creates accounts), sign in, then click Continue.</span>${url ? html`<div class="row-flex">${openForm}</div>` : null}</div>` : null}
+        <button type="button" class="btn primary big" disabled=${!d.approvable} onClick=${() => onApply(d.id)}>${p.method === 'account_needed' ? 'Continue' : 'Apply'}</button>
         <span class="hint">${d.approvable ? 'Claude opens the real form in a tab next to this one and fills it from your answers. You review it and click Submit.'
           : c.total ? `Answer the ${plural(c.first, 'first-time question')} first (here, or tell Claude).` : 'Claude is still reading the application form.'}</span>`;
   }
   return html`<aside class="side" aria-label="Apply">
-    <div class="panel-head"><h2>Apply</h2>${p.state !== 'ready' && p.state !== 'copy' ? html`<span class=${cls('chip', { applied: 'ok', needs_you: 'warn', stopped: 'bad', your_turn: 'ok', confirmation: 'ok' }[p.state] ?? 'info')}>${{ waiting: 'Waiting', filling: 'Filling', needs_you: 'Needs you', your_turn: 'Your turn', confirmation: 'Submitted?', stopped: 'Stopped', applied: 'Applied' }[p.state]}</span>` : null}</div>
+    <div class="panel-head"><h2>Apply</h2>${p.state !== 'ready' && p.state !== 'copy' && p.state !== 'walk_in' ? html`<span class=${cls('chip', { applied: 'ok', needs_you: 'warn', stopped: 'bad', your_turn: 'ok', confirmation: 'ok' }[p.state] ?? 'info')}>${{ waiting: 'Waiting', filling: 'Filling', needs_you: 'Needs you', your_turn: 'Your turn', confirmation: 'Submitted?', stopped: 'Stopped', applied: 'Applied' }[p.state]}</span>` : null}</div>
     ${body}
     <${Lines} lines=${p.progress} />
-    ${p.state !== 'applied' && p.state !== 'copy' ? html`<${Resume} d=${d} reveal=${reveal} onReveal=${onReveal} linkedin=${linkedin} />` : null}
+    ${p.state !== 'applied' && p.state !== 'copy' && p.state !== 'walk_in' ? html`<${Resume} d=${d} reveal=${reveal} onReveal=${onReveal} linkedin=${linkedin} />` : null}
   </aside>`;
 }

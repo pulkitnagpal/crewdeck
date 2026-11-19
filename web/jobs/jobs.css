@@ -320,3 +320,8 @@ fieldset.f legend { padding: 0; margin-bottom: 5px; font-size: 12.5px; font-weig
 .prefs fieldset.f legend, .prefs .field, .prefs .check, .prefs .btn, .prefs .btn.small, .prefs code, .prefs .banner,
 .prefs .banner .fix, .prefs .chip { font-size: 0.875rem; }
 .prefs .soft, .prefs .hint, .prefs .f .help { color: var(--soft); }
+/* The apply panel to the same baseline (P9h: walk-in, account needed, the letter line). */
+.side .small, .side .hint, .side .stat span, .side .copyrow .lbl, .side .btn, .side .btn.small, .side .chip, .side .steps, .side .lines,
+.side .resume .file, .side .option, .side .editbox textarea { font-size: 0.875rem; }
+.side .soft, .side .hint, .side .stat span { color: var(--soft); }
+.side h3 { font-size: 0.9375rem; }

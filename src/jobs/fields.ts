@@ -2,12 +2,18 @@
 // the web addresses a role may have. Nothing here is about one person: every value comes from the profile note.
 import type { JobsFeatures } from '../config.ts';
 import type { Profile } from './schema.ts';
+import { classOf, keyClass, labelKey, profileRows } from './form-terms.ts';
 
 /** A question label, compared loosely: lowercase, no required-marks, no trailing colon or question mark. */
 export const norm = (s: string) => String(s ?? '').toLowerCase().replace(/[*✱]/g, '').replace(/\s+/g, ' ').trim().replace(/[\s:?]+$/, '');
 
-/** Questions that are never guessed: only the user's explicit answer (or an exact standard answer) fills them. */
-export const SENSITIVE = /salary|compensation|\bctc\b|pay expectation|expected pay|desired (pay|rate)|rate expectation|visa|sponsor|authori[sz]ed to work|legally authori[sz]ed|work authori[sz]ation|right to work|work permit|passport|citizenship|nationality|gender|\brace\b|ethnic|veteran|disabilit|pronoun|sexual orientation|hispanic|latino|date of birth|\bage\b|criminal|conviction|background check|social security|\bssn\b|national insurance/i;
+/**
+ * Questions that are never guessed: only the user's explicit answer (or an exact standard answer) fills them. The words
+ * are data, per language (data/form-terms.yaml, D32); never_fill questions (ID, bank and tax numbers) count too.
+ */
+export const SENSITIVE = { test: (label: string) => classOf(label) !== null };
+/** Government ID, bank and tax numbers: always skipped, never drafted or stored (D32). */
+export const NEVER_FILL = { test: (label: string) => classOf(label) === 'never_fill' };
 
 const words = (key: string) => key.replace(/_/g, ' ');
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -24,7 +30,8 @@ function latestEducation(p: Profile) {
 export function profileValues(p: Profile): Record<string, string> {
   const id = p.identity, out: Record<string, string> = {};
   const put = (k: string, v: unknown) => { if (v !== undefined && v !== null && String(v).trim() !== '') out[k] = String(v).trim(); };
-  for (const [k, v] of Object.entries(p.standard_answers)) put(k, v);
+  // A standard answer under an ID, bank or tax key is never used, even when the note has one (`jobs check` refuses it).
+  for (const [k, v] of Object.entries(p.standard_answers)) if (keyClass(k) !== 'never_fill') put(k, v);
   const e = latestEducation(p);
   if (e) { put('school', e.school); put('degree', e.degree); put('discipline', e.discipline); put('start_year', e.start_year); put('end_year', e.end_year); }
   for (const [k, v] of Object.entries(id.links)) put(k, v);
@@ -44,40 +51,22 @@ export type ProfileField = { re: RegExp; key: string; value: string; exact: bool
  */
 export function profileFields(p: Profile, opts: { withEmpty?: boolean } = {}): ProfileField[] {
   const v = profileValues(p);
-  const rows: [RegExp, string][] = [
-    [/^country( of residence)?$|^country you (live|reside) in$/, 'country'],
-    [/^(state|province|region)( of residence)?$|^state\/province$/, 'region'],
-    [/^location \(?city\)?$|^city$|^current city$/, 'city'],
-    [/^school( name)?$|^university$|^college$|^institution$/, 'school'],
-    [/^degree( type)?$/, 'degree'],
-    [/^discipline$|^field of study$|^major$/, 'discipline'],
-    [/^(graduation|end date) year$|^end year$|^graduation year$/, 'end_year'],
-    [/^preferred (first )?name$/, 'preferred_name'],
-    [/^(legal )?first name$|^given name$/, 'first_name'],
-    [/^(legal )?last name$|^surname$|^family name$/, 'last_name'],
-    [/^(full |legal |your )?name$/, 'full_name'],
-    [/^(your )?e-?mail( address)?$/, 'email'],
-    [/^(your )?(phone|mobile|contact)( number| no\.?)?$/, 'phone'],
-    [/^(your )?(personal )?(website|portfolio)( url| link)?$/, v.website ? 'website' : 'portfolio'],
-    [/^current (company|employer)$|^company$|^organi[sz]ation$/, 'current_company'],
-    [/^current (title|role|position|job title)$/, 'current_title'],
-    [/^notice period$|^when can you start$|^earliest start date$/, 'notice_period'],
-    [/^(total |overall )?years of (professional |relevant |total )?experience$/, 'years_experience'],
-    [/^(your )?time ?zone$/, 'timezone'],
-    [/^location$|^current location$|^where are you (based|located)$/, 'location'],
-  ];
+  // Whole labels per profile key in every language (data/form-terms.yaml); "website" falls back to the portfolio link.
+  const rows: [RegExp, string][] = profileRows().map(({ key, re }) => [re, key === 'website' && !v.website ? 'portfolio' : key]);
   // Links by their own name: linkedin, github, behance, …
-  for (const k of new Set([...Object.keys(p.identity.links), ...(opts.withEmpty ? ['linkedin', 'github'] : [])])) rows.push([new RegExp(`^(your )?${esc(words(k))}( profile)?( url| link| profile url)?$`), k]);
+  for (const k of new Set([...Object.keys(p.identity.links), ...(opts.withEmpty ? ['linkedin', 'github'] : [])])) rows.push([new RegExp(`^${esc(labelKey(words(k)))}( profile)?( url| link| profile url)?$`), k]);
   const out: ProfileField[] = rows.filter(([, k]) => opts.withEmpty || v[k]).map(([re, key]) => ({ re, key, value: v[key] ?? '', exact: false }));
   // Every standard answer also fills the question that is exactly its words ("notice period", "work authorization").
-  for (const k of Object.keys(p.standard_answers)) if (v[k]) out.push({ re: new RegExp(`^${esc(words(k))}$`), key: k, value: v[k], exact: true });
+  for (const k of Object.keys(p.standard_answers)) if (v[k]) out.push({ re: new RegExp(`^${esc(labelKey(words(k)))}$`), key: k, value: v[k], exact: true });
   return out;
 }
 
 /** The profile value for a question label, or undefined. Sensitive labels match only an exact standard answer. */
-export function profileAnswer(fields: ProfileField[], label: string): ProfileField | undefined {
-  const l = norm(label);
-  const sensitive = SENSITIVE.test(label);
+export function profileAnswer(fields: ProfileField[], label: string, raised = false): ProfileField | undefined {
+  const cls = classOf(label);
+  if (cls === 'never_fill') return undefined;
+  const l = labelKey(label);
+  const sensitive = raised || cls === 'sensitive';
   return fields.find((f) => (!sensitive || f.exact) && f.re.test(l));
 }
 

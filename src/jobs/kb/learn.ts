@@ -6,11 +6,12 @@ import { type Ctx, notesOf, nowIso } from '../ctx.ts';
 import { getRole, tx } from '../db.ts';
 import { activeMemory } from '../memory.ts';
 import { profileFields } from '../fields.ts';
+import { classOf } from '../form-terms.ts';
 import { type Claim, checkAnswer } from './cite.ts';
 import { ensureField, ensureQuestion, kbKind } from './questions.ts';
 import { answerFirstTime, autoAnswer, changeAnswer, citeContext, currentAnswers, insertAnswer } from './ops.ts';
 
-export type LearnInput = { label: string; answer?: string; options?: string[]; quote?: string; claims?: Claim[]; required?: boolean; kind?: string };
+export type LearnInput = { label: string; answer?: string; options?: string[]; quote?: string; claims?: Claim[]; required?: boolean; kind?: string; /** Claude raised it (D32) */ sensitive?: boolean };
 export type LearnResult =
   | { ok: true; fieldId: number; ref: string; saved: 'Remembered.' | 'Saved.' | 'Answered from what you already told Claude.' | 'Recorded as a first-time question.' }
   | { ok: false; reason: string };
@@ -20,11 +21,13 @@ export function learnField(ctx: Ctx, roleId: string, a: LearnInput): LearnResult
   const notes = notesOf(ctx);
   const label = String(a.label ?? '').replace(/\s+/g, ' ').trim();
   if (!label) return { ok: false, reason: 'the question has no label' };
+  // D32: never recorded, never answered: the user types an ID, bank or tax number into the form.
+  if (classOf(label) === 'never_fill') return { ok: false, reason: `Not recorded: "${label}" is an ID, bank or tax number. Crewdeck never stores these: leave it for the user to type in the form.` };
   const given = (a.options ?? []).map((o) => String(o).trim()).filter(Boolean);
   // A Yes/No question recorded without its options (a "needs you" question the user answered on the page): their Yes or
   // No makes it a choice about them, remembered for every company, not a written answer kept for this company only.
   const options = given.length || !/^(yes|no)$/i.test(String(a.answer ?? '').trim()) ? given : ['Yes', 'No'];
-  const kind = kbKind({ label, kind: a.kind ?? (options.length ? 'radio' : 'text'), options }, notes.profile.data);
+  const kind = kbKind({ label, kind: a.kind ?? (options.length ? 'radio' : 'text'), options, sensitive: a.sensitive }, notes.profile.data);
   if (a.answer) {
     // Sensitive and choice answers are about the user: only their own words (quote), or what they already told us.
     const claims = a.claims ?? [];

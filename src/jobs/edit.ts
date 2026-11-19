@@ -4,8 +4,8 @@ import { parse, stringify } from 'yaml';
 import { mergeListInDoc, readNote, renderNote, setInDoc, writeAtomic } from './notes.ts';
 import { type Schema, didYouMean, keysAt, schemaAt, validate } from './schema.ts';
 
-const PROFILE_ROOTS = ['identity', 'standard_answers', 'education', 'copy_only_hosts'];
-const CAREER_ROOTS = ['resume', 'sections', 'facts', 'skills', 'terms'];
+const PROFILE_ROOTS = ['identity', 'standard_answers', 'education', 'copy_only_hosts', 'references'];
+const CAREER_ROOTS = ['resume', 'sections', 'facts', 'skills', 'terms', 'language'];
 
 /** Which note a `me set` path belongs to, and the path inside it. */
 export function meTarget(path: string): { note: 'profile' | 'career'; segs: (string | number)[] } {

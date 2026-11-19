@@ -4,10 +4,14 @@ import type { Db } from '../db.ts';
 import { tx } from '../db.ts';
 import type { Profile } from '../schema.ts';
 import { SENSITIVE, norm, profileFields } from '../fields.ts';
+import { classOf, labelKey } from '../form-terms.ts';
 
 export type FieldKind = 'text' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'combobox' | 'file';
 /** A question read from a form (headless in P2b, or by Claude in the pane). */
-export type FormQuestion = { label: string; kind: FieldKind | string; required?: boolean; options?: string[]; char_limit?: number; section?: string };
+export type FormQuestion = {
+  label: string; kind: FieldKind | string; required?: boolean; options?: string[]; char_limit?: number; section?: string;
+  /** Claude raised it (D32): stricter than the words alone; never lowers what the words say. */ sensitive?: boolean;
+};
 export type QuestionKind = 'contact' | 'logistics' | 'numeric' | 'choice' | 'narrative' | 'sensitive';
 export const QUESTION_KINDS: readonly QuestionKind[] = ['contact', 'logistics', 'numeric', 'choice', 'narrative', 'sensitive'];
 
@@ -22,8 +26,8 @@ const CONTACT = /^(legal |preferred )?(first |last |full |given |family )?name$|
 
 /** What kind of question a label is: decides whether a remembered answer is reused as is or adapted per company. */
 export function kbKind(q: FormQuestion, profile: Profile): QuestionKind {
-  const l = norm(q.label);
-  if (SENSITIVE.test(q.label)) return 'sensitive';
+  const l = labelKey(q.label);
+  if (q.sensitive === true || SENSITIVE.test(q.label)) return 'sensitive';
   if (profileFields(profile, { withEmpty: true }).some((f) => !f.exact && f.re.test(l))) return CONTACT.test(l) ? 'contact' : 'logistics';
   if (['radio', 'select', 'checkbox', 'combobox'].includes(String(q.kind))) return 'choice';
   if (/\b(years|how many|number of)\b/.test(l) && q.kind !== 'textarea') return 'numeric';
@@ -61,15 +65,18 @@ export function cleanQuestions(raw: unknown): FormQuestion[] {
     const label = String(f.label ?? '').replace(/\s+/g, ' ').trim().slice(0, 500);
     const kind = String(f.kind ?? f.type ?? 'text').toLowerCase();
     const options = Array.isArray(f.options) ? f.options.map((o: unknown) => String(o).trim()).filter(Boolean).slice(0, 200) : [];
-    return { label, kind, required: !!f.required, options, char_limit: Number.isInteger(f.char_limit) && f.char_limit > 0 ? f.char_limit : undefined, section: typeof f.section === 'string' ? f.section.slice(0, 200) : undefined };
+    return { label, kind, required: !!f.required, options, char_limit: Number.isInteger(f.char_limit) && f.char_limit > 0 ? f.char_limit : undefined, section: typeof f.section === 'string' ? f.section.slice(0, 200) : undefined, ...(f.sensitive === true ? { sensitive: true } : {}) };
   });
 }
 
-/** Store the questions read from a role's form. A re-read drops questions that are no longer on the form. */
+/**
+ * Store the questions read from a role's form. A re-read drops questions that are no longer on the form. ID, bank and
+ * tax numbers (never_fill, D32) are never stored: the user types them into the form; the fill plan skips them.
+ */
 export function storeFormFields(db: Db, roleId: string, profile: Profile, fields: FormQuestion[]) {
   const role = db.prepare('select c.name company from roles r join companies c on c.id=r.company_id where r.id=?').get(roleId) as any;
   if (!role) throw new Error(`no role ${roleId}`);
-  const keep = fields.filter((f) => f.kind !== 'file' && f.label.trim() !== '');
+  const keep = fields.filter((f) => f.kind !== 'file' && f.label.trim() !== '' && classOf(f.label) !== 'never_fill');
   const labels = new Set(keep.map((f) => f.label));
   tx(db, () => {
     for (const old of db.prepare('select id, label from form_fields where role_id=?').all(roleId) as any[]) {

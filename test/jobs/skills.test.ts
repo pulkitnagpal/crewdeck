@@ -89,6 +89,13 @@ test('skills: the four playbooks, each with a name that matches its folder and a
     /places\.relocate_to/, /places\.authorized_in/, /work_pattern\.shifts/, /work_pattern\.hours_per_week/, /work_pattern\.term_time_only/, /pay\.hours_per_week/,
     /pay\.per_unit/, /`A1`–`C2`/, /\{ name: RN, where: Ohio \}/, /schedule\.per_company/]) assert.match(setup, re);
   assert.doesNotMatch(setup, /Crewdeck will soon have its own fields|until then `judge_notes` carries them/);
+  // P9h: forms in any language, apply methods, referees, translations, IDs never stored, the letter.
+  for (const re of [/\*\*Never store\*\* government ID, bank or tax numbers/, /references/, /ask the user to check with each\s+person first/, /facts\.3\.tr\.de/,
+    /resume\.personal: \[date_of_birth, nationality, languages\]/, /resume\.word/, /`start` and\s+`end` as `YYYY-MM`/, /1 in the US, 2 in the UK, Germany and India/]) assert.match(setup, re);
+  const wsk = read('plugin', 'skills', 'jobs-workspace', 'SKILL.md');
+  for (const re of [/--apply-method form\|email\|document\|walk_in\|chatbot\|account_needed/, /--apply-note-file/, /--fields-file <T>\/fields\.json --lang de/, /"sensitive": true/,
+    /"group": "employment" \| "education" \| "reference"/, /`add` presses the "Add another" button `times` times/, /crewdeck jobs letter <role id> --text-file/,
+    /Answer \*\*in the form's language\*\*/, /never create the account yourself/, /--everywhere/, /no resume upload and `me\/career\.md` has no experience facts/]) assert.match(wsk, re);
   const order = ['## 1. Resume', '## 2. Who they are', '## 3. Their career', '## 4. What they want, part one', '## 5. Where to look', '## 6. Fetch once', '## 7. What they want, part two', '## 8. Check'];
   assert.deepEqual(order.map((h) => setup.indexOf(h)).every((x, i, a) => x >= 0 && (i === 0 || x > a[i - 1])), true, 'the design\'s order');
   assert.match(daily, /run\.funnel\.sources\.empty/);

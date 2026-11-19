@@ -11,12 +11,16 @@ import { type Claim, checkAnswer } from '../kb/cite.ts';
 import { type AnswerView, autoAnswer, citeContext, currentAnswers, insertAnswer, matchOption } from '../kb/ops.ts';
 import { clip, plainText } from '../text.ts';
 import { DRAFT_SCHEMA, buildPrompt } from './prompt.ts';
+import { blockField, entriesFor } from '../entries.ts';
+import { LANG_CODE } from '../form-terms.ts';
 
-export type DraftAnswer = { field_ref: string; label?: string; canonical_key?: string; answer: string | null; reason?: string; claims: Claim[] };
-export type DraftOut = { answers: DraftAnswer[] };
+export type DraftAnswer = { field_ref: string; label?: string; canonical_key?: string; answer: string | null; reason?: string; claims: Claim[]; /** Claude raised it (D32) */ sensitive?: boolean };
+/** `language`: the form's language as Claude read it from the labels, when the page didn't say (D33). */
+export type DraftOut = { answers: DraftAnswer[]; language?: string };
 export type Drafter = (prompt: string, schema: object, posting: string) => Promise<DraftOut>;
 
 const SENSITIVE_REASON = 'sensitive: tell Claude once';
+const REFERENCE_REASON = 'a referee\'s details: add references to me/profile.md (ask them first)';
 const CONTACT_REASON = 'not in your profile yet (me/profile.md)';
 const STOP = new Set(['what', 'your', 'have', 'with', 'that', 'this', 'tell', 'about', 'they', 'were', 'will', 'would', 'which', 'when', 'where', 'there', 'their', 'from', 'into', 'more', 'some', 'like', 'please', 'share', 'describe', 'list', 'well', 'worked', 'faced', 'does', 'should']);
 
@@ -49,6 +53,14 @@ export function prepareDraft(ctx: Ctx, roleId: string) {
   tx(ctx.db, () => {
     for (const f of currentAnswers(ctx.db, roleId)) {
       if (!isOpen(f)) { res.kept++; continue; }
+      // A referee's details (D35): from me/profile.md's references only, never drafted.
+      const ref = blockField(f.label, {});
+      if (ref?.group === 'reference') {
+        const v = entriesFor('reference', null, notes.profile.data)[ref.index]?.[ref.part];
+        if (v) { insertAnswer(ctx, f, roleId, role.company, v, ['profile:references'], 'approved'); res.answered++; }
+        else { if (!(f.status === 'first_time' && f.reason === REFERENCE_REASON)) insertAnswer(ctx, f, roleId, role.company, null, [], 'first_time', REFERENCE_REASON); res.first_time++; }
+        continue;
+      }
       const auto = autoAnswer(f, memory, pf, { redraft: isRedraft(f) });
       if (auto) { insertAnswer(ctx, f, roleId, role.company, auto.text, auto.sources, 'approved'); res.answered++; continue; }
       // Sensitive questions and the user's own contact details are never drafted: only the user can give them.
@@ -68,6 +80,7 @@ export function prepareDraft(ctx: Ctx, roleId: string) {
   const prompt = forClaude.length ? buildPrompt({
     name, company: role.company, title: role.title, fields: forClaude, facts: notes.career.data.facts, memory,
     profileKeys: Object.keys(profileValues(notes.profile.data)), shortlists, existingKeys,
+    lang: role.form_lang ?? null, factsLang: notes.career.data.language || null,
   }) : '';
   return { role: roleId, res, refs: forClaude.map((f) => f.ref), prompt, schema: DRAFT_SCHEMA, posting: clip(plainText(role.description ?? ''), 12000) };
 }
@@ -75,9 +88,11 @@ export function prepareDraft(ctx: Ctx, roleId: string) {
 /** Claude half: store Claude's answers after the citation check; unsupported ones become first-time questions. */
 export function applyDraft(ctx: Ctx, roleId: string, out: DraftOut) {
   const role = getRole(ctx.db, roleId);
+  if (!out || !Array.isArray(out.answers)) throw new Error('the answers file must be { "answers": [ … ] } (see the schema in the brief)');
+  // The form's language, when the page didn't say and Claude read it from the labels (D33): answers are checked in it.
+  if (!role.form_lang && typeof out.language === 'string' && LANG_CODE.test(out.language)) ctx.db.prepare('update roles set form_lang=? where id=?').run(out.language, roleId);
   const cite = citeContext(ctx, roleId);
   const res = { drafted: 0, first_time: 0, skipped: 0 };
-  if (!out || !Array.isArray(out.answers)) throw new Error('the answers file must be { "answers": [ … ] } (see the schema in the brief)');
   const fields = currentAnswers(ctx.db, roleId).filter(isOpen);
   tx(ctx.db, () => {
     for (const a of out.answers) {
@@ -92,6 +107,12 @@ export function applyDraft(ctx: Ctx, roleId: string, out: DraftOut) {
       }
       const claims = Array.isArray(a.claims) ? a.claims : [];
       const first = (reason: string) => { insertAnswer(ctx, f, roleId, role.company, null, [], 'first_time', reason); res.first_time++; };
+      // Claude may raise a question to sensitive, never lower it: only the user answers it, for this company.
+      if (a.sensitive === true) {
+        if (f.kind !== 'sensitive') ctx.db.prepare(`update form_fields set kind='sensitive' where id=?`).run(f.field_id);
+        first(SENSITIVE_REASON);
+        continue;
+      }
       if (!a.answer || typeof a.answer !== 'string') { first(a.reason ? String(a.reason).slice(0, 300) : 'not in your resume or memory yet'); continue; }
       let text = a.answer.trim();
       if (f.options.length) {

@@ -8,6 +8,10 @@ import { type MemoryInput, activeMemory, isActive, remember as rememberNote, und
 import type { MemoryItem } from '../schema.ts';
 import { type ProfileField, norm, profileAnswer, profileValues } from '../fields.ts';
 import { type CiteContext, type Claim, checkAnswer, termsFor } from './cite.ts';
+import { classOf } from '../form-terms.ts';
+
+/** D32: never stored, so never answered here. */
+const NEVER = 'Crewdeck never stores ID, bank or tax numbers: type it into the form yourself';
 import { plainText } from '../text.ts';
 
 export type AnswerStatus = 'first_time' | 'drafted' | 'approved';
@@ -63,6 +67,7 @@ export function citeContext(ctx: Ctx, roleId: string, notes: Pick<JobNotes, 'car
   return {
     facts: notes.career.data.facts, memory: activeMemory(memFacts, r.company), postingText: plainText(r.description ?? ''),
     profile: profileValues(notes.profile.data), terms: termsFor(notes.career.data.terms.extra),
+    lang: r.form_lang ?? null, factsLang: notes.career.data.language || null,
   };
 }
 
@@ -77,6 +82,7 @@ export function matchOption(options: string[], value: string): string | null {
  * answer). Choices only with an option that matches.
  */
 export function autoAnswer(f: AnswerView, memory: MemoryItem[], pf: ProfileField[], o: { redraft?: boolean } = {}): { text: string; sources: string[] } | null {
+  if (classOf(f.label) === 'never_fill') return null;
   const fit = (text: string, sources: string[]) => {
     if (!f.options.length) return { text, sources };
     const opt = matchOption(f.options, text);
@@ -87,7 +93,7 @@ export function autoAnswer(f: AnswerView, memory: MemoryItem[], pf: ProfileField
     const r = fit(mem.text, [mem.id]);
     if (r) return r;
   }
-  const p = profileAnswer(pf, f.label);
+  const p = profileAnswer(pf, f.label, f.kind === 'sensitive');
   if (p) return fit(p.value, [`profile:${p.key}`]);
   return null;
 }
@@ -107,6 +113,7 @@ function addToUndo(ctx: Ctx, undoId: number, ids: number[]) {
 export function changeAnswer(ctx: Ctx, i: { role: string; question: string; new_text: string; claims: Claim[]; instruction: string }) {
   const r = getRole(ctx.db, i.role);
   const f = resolveField(ctx.db, i.role, i.question);
+  if (classOf(f.label) === 'never_fill') return { ok: false as const, reason: NEVER };
   const text = String(i.new_text ?? '').trim();
   if (!text) return { ok: false as const, reason: 'the answer is empty' };
   if (f.options.length && !matchOption(f.options, text)) return { ok: false as const, reason: `"${f.label}" takes one of: ${f.options.join(' | ')}` };
@@ -168,12 +175,15 @@ export function remember(ctx: Ctx, input: MemoryInput) {
 
 /**
  * The user answered a first-time question. Their words are remembered (an `answer` item with their quote): for every
- * company when the question is about them (choices, logistics, numbers, sensitive, contact), for this company only when
- * it is a written answer (those name the company). The answer is approved here and on every open form asking it.
+ * company when the question is about them (choices, logistics, numbers, contact), for this company only when it is a
+ * written answer (those name the company) or a sensitive one (D32: a salary expectation or a personal detail differs per
+ * role and country), unless the user said to use it everywhere. The answer is approved here and on every open form
+ * asking it. ID, bank and tax numbers are refused (never stored).
  */
-export function answerFirstTime(ctx: Ctx, i: { role: string; question: string; value: string; quote: string }) {
+export function answerFirstTime(ctx: Ctx, i: { role: string; question: string; value: string; quote: string; everywhere?: boolean }) {
   const r = getRole(ctx.db, i.role);
   const f = resolveField(ctx.db, i.role, i.question);
+  if (classOf(f.label) === 'never_fill') throw new Error(NEVER);
   let value = String(i.value ?? '').trim();
   if (!value) throw new Error('the answer is empty');
   if (f.options.length) {
@@ -181,7 +191,7 @@ export function answerFirstTime(ctx: Ctx, i: { role: string; question: string; v
     if (!opt) throw new Error(`"${f.label}" takes one of: ${f.options.join(' | ')}`);
     value = opt;
   }
-  const shared = DIRECT_KINDS.has(f.kind ?? '');
+  const shared = DIRECT_KINDS.has(f.kind ?? '') && (f.kind !== 'sensitive' || i.everywhere === true);
   const key = f.canonical_key ?? undefined;
   const rem = remember(ctx, { kind: 'answer', key, text: value, quote: i.quote, scope: shared ? 'all' : 'company', company: shared ? undefined : r.company });
   const now = currentAnswers(ctx.db, i.role).find((a) => a.field_id === f.field_id)!;
