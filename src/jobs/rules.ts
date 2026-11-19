@@ -227,7 +227,9 @@ export function prefilter(post: Posting, c: Compiled): Verdict {
     }
   }
 
-  const ind = first(c.regex.industry, `${company}\n${title}\n${description}`);
+  // The company's name or the title only: a description names industries in boilerplate, negations ("we don't work
+  // with gambling") and client lists, so those hits are the judge's (its brief lists the excluded industries).
+  const ind = first(c.regex.industry, `${company}\n${title}`);
   if (ind) return no('industry', `industry you excluded: "${ind[0]}"`);
 
   if (c.travelDrop) {
@@ -247,7 +249,9 @@ export function travelLevel(description: string, c: Pick<Compiled, 'regex'>): 'n
   let level: 'none' | 'occasional' | 'frequent' = 'none';
   for (const sentence of plain(description).split(/[.!?;\n]+/)) {
     if (!/travel/i.test(sentence) || NO_TRAVEL.test(sentence)) continue;
-    const pct = Math.max(-1, ...[...sentence.matchAll(/(\d{1,3})\s?%/g)].map((m) => Number(m[1])));
+    // Only a percentage next to the word travel is the travel share ("Travel up to 30%", "60% travel"), not "100% of
+    // your health insurance" further along the sentence.
+    const pct = Math.max(-1, ...[...sentence.matchAll(/travel\w*/gi)].flatMap((t) => [...sentence.slice(Math.max(0, t.index! - 25), t.index! + t[0].length + 25).matchAll(/(\d{1,3})\s?%/g)]).map((m) => Number(m[1])));
     if (first(c.regex.travel_frequent, sentence) || pct >= 50) return 'frequent';
     if (first(c.regex.travel_occasional, sentence) || pct > 0) level = 'occasional';
   }
@@ -269,7 +273,7 @@ export function describeRules(c: Compiled): string {
   row('location_elsewhere', 'location names only places outside those', 'gazetteer');
   row('place_excluded', `"not open to / excluding <place>" covering all your places: /${pat('place_excluded')}/`, c.source.place_excluded);
   row('other_only', `"<place> only / must reside in <place>" outside your places: /${pat('other_only')}/`, c.source.other_only);
-  row('industry', c.regex.industry ? `/${pat('industry')}/` : 'off', c.source.industry);
+  row('industry', c.regex.industry ? `in the company name or title: /${pat('industry')}/ (descriptions go to the judge)` : 'off', c.source.industry);
   row('travel', c.travelDrop ? `${c.travelDrop}${c.travelDrop === 'occasional' ? ' or more' : ''} travel (≥ 50 % is frequent)` : 'off (exclude.travel: none)', 'exclude.travel');
   row('pay', c.pay ? (c.pay.floor > 0 ? `below ${c.pay.floor} ${c.pay.currency}/${c.pay.period} by ${c.pay.rule.replace(/_/g, ' ')}; unlisted: ${c.pay.unlisted}; fx: ${Object.entries(c.pay.fx).map(([k, v]) => `${k} ${v}`).join(', ') || '(none)'}` : `no floor; unlisted: ${c.pay.unlisted}`) : 'off (no pay.currency)', 'pay');
   lines.push('  cooldown / active_pick  a company in its cooldown, or with a role already picked (checked by crewdeck jobs prefilter)');

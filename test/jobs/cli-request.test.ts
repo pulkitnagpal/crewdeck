@@ -6,7 +6,7 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { currentAnswers } from '../../src/jobs/kb/ops.ts';
 import { jobsServer, preparedRole, TOKEN } from './api-helpers.ts';
-import { textFile, REPO } from './helpers.ts';
+import { role, textFile, REPO } from './helpers.ts';
 import { spawn } from 'node:child_process';
 
 let s: Awaited<ReturnType<typeof jobsServer>>;
@@ -77,4 +77,37 @@ test('answer --request: an Ask Claude rewrite passes the citation check, with th
   assert.equal(JSON.parse(r.out).ok, true);
   const bad = await jobs(s.w.home, ['answer', '--request', String(id), '--text-file', textFile(s.w.root, 'b.txt', 'Sam, who led 40 teams'), '--claims-file', claims]);
   assert.equal(bad.code, 1);
+});
+
+test('C9/C2: pick --role --request takes "Add it anyway" from the link request\'s payload, never from a flag', async () => {
+  const url = 'https://jobs.example.com/careers/c9-analyst';
+  const busy = role(s.w.ctx, { company: 'Example Forge', title: 'Data Lead' }, 'picked');
+  const chosen = role(s.w.ctx, { company: 'Example Forge', title: 'Product Designer', url, source: 'pasted' });
+  const statusOf = (id: string) => (s.w.ctx.db.prepare('select status from roles where id=?').get(id) as any).status;
+  // Without the user's override: warnings, exit 2, nothing picked.
+  const plain = (await s.action('addLink', { url })).json.request;
+  const r1 = await jobs(s.w.home, ['pick', '--role', chosen, '--request', String(plain)]);
+  assert.equal(r1.code, 2, r1.err);
+  assert.match(JSON.parse(r1.out).warnings.join(), /already has "Data Lead" in progress/);
+  assert.equal(statusOf(chosen), 'new');
+  // A flag can't force it, with or without a request.
+  for (const args of [['pick', '--role', chosen, '--force'], ['pick', '--role', chosen, '--request', String(plain), '--force']]) {
+    const r = await jobs(s.w.home, args);
+    assert.notEqual(r.code, 0);
+    assert.match(r.err, /--force is not taken from the command line/);
+  }
+  assert.match((await jobs(s.w.home, ['link', '--url-file', textFile(s.w.root, 'u.txt', url), '--force'])).err, /--force is not taken from the command line/);
+  // The page's "Add it anyway" request carries force: it picks this role, and only the role whose link it carries.
+  const forced = (await s.action('addLink', { url, force: true })).json.request;
+  const other = role(s.w.ctx, { company: 'Example Forge', title: 'Analyst', source: 'pasted' });
+  const wrong = await jobs(s.w.home, ['pick', '--role', other, '--request', String(forced)]);
+  assert.notEqual(wrong.code, 0);
+  assert.match(wrong.err, /not the posting of request/);
+  assert.equal(statusOf(other), 'new');
+  const r2 = await jobs(s.w.home, ['pick', '--role', chosen, '--request', String(forced)]);
+  assert.equal(r2.code, 0, r2.err + r2.out);
+  assert.equal(JSON.parse(r2.out).picked, true);
+  assert.equal(statusOf(chosen), 'picked');
+  assert.match((s.w.ctx.db.prepare('select status_reason from roles where id=?').get(chosen) as any).status_reason, /chosen by the user despite/);
+  assert.equal(statusOf(busy), 'picked');
 });

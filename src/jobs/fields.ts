@@ -87,10 +87,12 @@ const LINKEDIN_HOSTS = /(^|\.)(linkedin\.com|lnkd\.in|licdn\.com)$/i;
 /** Sites whose terms forbid automated filling: Crewdeck shows the answers to copy. The user can add more in profile.md. */
 export const COPY_ONLY_HOSTS = ['wellfound.com', 'angel.co', 'workatastartup.com'];
 
-export const hostOf = (url: string) => { try { return new URL(url).hostname.toLowerCase(); } catch { return ''; } };
-export const isXHost = (host: string) => X_HOSTS.test(host);
-export const isLinkedinHost = (host: string) => LINKEDIN_HOSTS.test(host);
-export const isLinkedinJobUrl = (u: URL) => /(^|\.)linkedin\.com$/i.test(u.hostname) && /^\/jobs\/view\/\d+\/?$/.test(u.pathname);
+/** A host as every comparison sees it: lowercase, no IPv6 brackets, no trailing dots ("x.com." is x.com to DNS). */
+export const cleanHost = (host: string) => String(host ?? '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+export const hostOf = (url: string) => { try { return cleanHost(new URL(url).hostname); } catch { return ''; } };
+export const isXHost = (host: string) => X_HOSTS.test(cleanHost(host));
+export const isLinkedinHost = (host: string) => LINKEDIN_HOSTS.test(cleanHost(host));
+export const isLinkedinJobUrl = (u: URL) => /(^|\.)linkedin\.com$/.test(cleanHost(u.hostname)) && /^\/jobs\/view\/\d+\/?$/.test(u.pathname);
 
 /** The copy-only host a URL is on (built in or the user's), or null. */
 export function copyOnlyHost(url: string, extra: string[] = []): string | null {
@@ -108,6 +110,8 @@ export function checkRoleUrl(raw: string, features: Pick<JobsFeatures, 'linkedin
   try { u = new URL(String(raw ?? '').trim()); } catch { throw new Error(`${what} is not a web address`); }
   if (!/^https?:$/.test(u.protocol)) throw new Error(`${what} must start with http:// or https://`);
   if (u.username || u.password) throw new Error(`${what} must not contain a user name or password`);
+  // Stored and compared without trailing dots, so "jobs.example.com." and "jobs.example.com" are one role.
+  if (/\.$/.test(u.hostname)) u.hostname = cleanHost(u.hostname);
   if (isXHost(u.hostname)) throw new Error('X links are never used: use the company\'s own posting');
   if (isLinkedinHost(u.hostname)) {
     if (!isLinkedinJobUrl(u)) throw new Error('LinkedIn links must be job postings (linkedin.com/jobs/view/<id>)');
@@ -122,8 +126,9 @@ export function checkRoleUrl(raw: string, features: Pick<JobsFeatures, 'linkedin
 export function applyUrl(jobUrl: string): string {
   const u = new URL(jobUrl);
   const path = u.pathname.replace(/\/+$/, '');
-  if (u.hostname === 'jobs.ashbyhq.com' && !path.endsWith('/application')) u.pathname = `${path}/application`;
-  else if (u.hostname === 'jobs.lever.co' && !path.endsWith('/apply')) u.pathname = `${path}/apply`;
+  const h = cleanHost(u.hostname);
+  if (h === 'jobs.ashbyhq.com' && !path.endsWith('/application')) u.pathname = `${path}/application`;
+  else if (h === 'jobs.lever.co' && !path.endsWith('/apply')) u.pathname = `${path}/apply`;
   return u.toString();
 }
 

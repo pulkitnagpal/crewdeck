@@ -19,8 +19,10 @@ export type NetOptions = { resolve?: (host: string) => Promise<Address[]>; testH
 export type FetchOptions = NetOptions & {
   timeoutMs?: number; maxBytes?: number; maxRedirects?: number; redirect?: 'follow' | 'manual';
   headers?: Record<string, string>;
+  /** GET (default), HEAD or POST; a POST body is sent as is (the providers' fetches, through the sandbox's parent) */
+  method?: 'GET' | 'HEAD' | 'POST' | string; body?: Buffer;
 };
-export type Fetched = { status: number; url: string; headers: http.IncomingHttpHeaders; body: string; redirects: string[]; /** the decoded body's bytes (hashes) */ bytes?: Buffer };
+export type Fetched = { status: number; statusText?: string; url: string; headers: http.IncomingHttpHeaders; body: string; redirects: string[]; /** the decoded body's bytes (hashes) */ bytes?: Buffer };
 
 export type NetErrorCode = 'blocked' | 'scheme' | 'timeout' | 'too_large' | 'redirects' | 'dns' | 'network';
 export class NetError extends Error {
@@ -37,10 +39,14 @@ export const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Apple
 // Two lists: a BlockList also matches IPv4 addresses against IPv6 rules in their mapped form, so one list holding
 // ::ffff:0:0/96 would block every IPv4 address.
 const V4 = new BlockList(), V6 = new BlockList();
+// 192.0.0/24 (IETF protocol assignments), 198.18/15 (benchmarking) and the three documentation nets are never public sites.
 for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
-  ['192.168.0.0', 16], ['224.0.0.0', 4], ['240.0.0.0', 4]] as const) V4.addSubnet(net, bits, 'ipv4');
-// ::/96 covers ::/128, ::1 and the IPv4-compatible forms; ::ffff:0:0/96 the IPv4-mapped ones.
-for (const [net, bits] of [['::', 96], ['::ffff:0:0', 96], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8], ['64:ff9b::', 96], ['2002::', 16]] as const) V6.addSubnet(net, bits, 'ipv6');
+  ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24],
+  ['224.0.0.0', 4], ['240.0.0.0', 4]] as const) V4.addSubnet(net, bits, 'ipv4');
+// ::/96 covers ::/128, ::1 and the IPv4-compatible forms; ::ffff:0:0/96 the IPv4-mapped ones and ::ffff:0:0:0/96 the
+// IPv4-translated ones (SIIT); 64:ff9b::/96 and 64:ff9b:1::/48 are NAT64 (an IPv4 address behind them may be private).
+for (const [net, bits] of [['::', 96], ['::ffff:0:0', 96], ['::ffff:0:0:0', 96], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8], ['64:ff9b::', 96],
+  ['64:ff9b:1::', 48], ['2002::', 16], ['2001:db8::', 32]] as const) V6.addSubnet(net, bits, 'ipv6');
 
 /** True for any address a fetched page must never reach (also anything that isn't an IP address). */
 export function isBlockedAddress(ip: string): boolean {
@@ -124,9 +130,11 @@ function once(u: URL, o: Required<Pick<FetchOptions, 'maxBytes'>> & FetchOptions
     let req: http.ClientRequest;
     // The deadline covers the body too: on abort, whatever is in flight is destroyed and the promise settles.
     signal.addEventListener('abort', () => { req?.destroy(); agent.destroy(); reject(new NetError('timeout', 'timed out')); }, { once: true });
+    const method = o.method ?? 'GET';
     req = mod.request(u, {
-      method: 'GET', agent, lookup, signal,
-      headers: { 'user-agent': USER_AGENT, accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8', 'accept-language': 'en-US,en;q=0.9', 'accept-encoding': 'gzip, deflate, br', ...o.headers },
+      method, agent, lookup, signal,
+      headers: { 'user-agent': USER_AGENT, accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8', 'accept-language': 'en-US,en;q=0.9', 'accept-encoding': 'gzip, deflate, br', ...o.headers,
+        ...(o.body ? { 'content-length': String(o.body.length) } : {}) },
     } as any, (res) => {
       const chunks: Buffer[] = [];
       let size = 0;
@@ -140,7 +148,7 @@ function once(u: URL, o: Required<Pick<FetchOptions, 'maxBytes'>> & FetchOptions
       body.on('end', () => {
         agent.destroy();
         const bytes = Buffer.concat(chunks);
-        resolve({ status: res.statusCode ?? 0, url: u.toString(), headers: res.headers, body: new TextDecoder(charsetOf(res.headers['content-type'])).decode(bytes), redirects: [], bytes });
+        resolve({ status: res.statusCode ?? 0, statusText: res.statusMessage ?? '', url: u.toString(), headers: res.headers, body: new TextDecoder(charsetOf(res.headers['content-type'])).decode(bytes), redirects: [], bytes });
       });
       body.on('error', (e) => fail(signal.aborted ? new NetError('timeout', 'timed out') : new NetError('network', `the page could not be read (${e.message})`)));
       res.on('error', (e) => fail(signal.aborted ? new NetError('timeout', 'timed out') : new NetError('network', e.message)));
@@ -153,7 +161,7 @@ function once(u: URL, o: Required<Pick<FetchOptions, 'maxBytes'>> & FetchOptions
       if (e?.netCode === 'dns') return reject(new NetError('dns', e.message));
       reject(new NetError('network', `${u.host} could not be reached (${e?.code ?? e?.message})`));
     });
-    req.end();
+    req.end(o.body);
   });
 }
 
@@ -178,6 +186,8 @@ export async function guardedFetch(raw: string | URL, opts: FetchOptions = {}): 
       let next: URL;
       try { next = new URL(String(loc), u); } catch { throw new NetError('scheme', 'a redirect went to something that is not a web address'); }
       u = checkScheme(next);
+      // As browsers do: 303, and 301/302 after a POST, continue as a GET without the body; 307/308 keep both.
+      if (r.status === 303 || ((r.status === 301 || r.status === 302) && o.method === 'POST')) Object.assign(o, { method: 'GET', body: undefined });
       redirects.push(u.toString());
     }
   } finally { clearTimeout(timer); }

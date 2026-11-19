@@ -3,24 +3,29 @@
 // stay: an applied role, a company in its cooldown or one with a role in progress come back as warnings, and the role
 // is picked only when the user overrides them (force). LinkedIn links go through its guest page, only when switched on.
 import { type Ctx, todayOf } from './ctx.ts';
-import { checkRoleUrl, applyUrl, atsOf, isLinkedinHost, isXHost } from './fields.ts';
+import { checkRoleUrl, applyUrl, atsOf, cleanHost, isLinkedinHost, isXHost } from './fields.ts';
 import { type ApplyKind, type ClientOptions, LinkedinClient, LinkedinStop, fetchDetail, linkedinJobId, storeLinkedinRole } from './linkedin.ts';
 import { type NetOptions, NetError, guardedFetch } from './net/netguard.ts';
 import { addRole } from './pipeline/roles.ts';
 import { pickPasted } from './pipeline/pick.ts';
-import { plainText } from './text.ts';
+import { HTML_MAX, elements, plainText } from './text.ts';
 
 export type Posting = { title?: string; company?: string; location?: string; description?: string; pay_text?: string; posted_at?: string; closed?: boolean; closed_reason?: string };
 export type LinkInput = { url: string; force?: boolean };
 export type LinkResult = { id: string; company: string; title: string; apply_kind: ApplyKind; closed?: boolean; warnings: string[]; picked: boolean; needs?: string };
 export type LinkOptions = { net?: NetOptions; linkedin?: ClientOptions; day?: string };
 
-/** Every <meta> tag's name/property → content (attribute order doesn't matter). */
+/** Every <meta> tag's name/property → content (attribute order doesn't matter). Linear: tags found with indexOf. */
 function metas(html: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const m of html.matchAll(/<meta\b([^>]*)>/gi)) {
+  const open = /<meta\b/gi;
+  for (let m; (m = open.exec(html));) {
+    const gt = html.indexOf('>', m.index);
+    if (gt < 0) break;
+    open.lastIndex = gt + 1;
     const attrs: Record<string, string> = {};
-    for (const a of m[1].matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) attrs[a[1].toLowerCase()] = a[2] ?? a[3] ?? a[4] ?? '';
+    // A real meta tag is short; a 4000-character one is not worth reading.
+    for (const a of html.slice(m.index + 5, Math.min(gt, m.index + 4000)).matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) attrs[a[1].toLowerCase()] = a[2] ?? a[3] ?? a[4] ?? '';
     const key = (attrs.property ?? attrs.name ?? '').toLowerCase();
     if (key && attrs.content !== undefined && !(key in out)) out[key] = plainText(attrs.content);
   }
@@ -63,12 +68,14 @@ const iso = (s: string) => { const t = Date.parse(s); return Number.isFinite(t) 
 
 /** Best-effort posting fields from a page: JSON-LD JobPosting first, then meta tags. `at` decides validThrough. */
 export function readPostingPage(html: string, at = new Date()): Posting {
-  const page = String(html ?? '');
-  const visible = plainText(page.slice(0, 400_000));
+  // Hostile input (E6): at most HTML_MAX characters, and every scan below is linear (text.ts).
+  const page = String(html ?? '').slice(0, HTML_MAX);
+  const visible = plainText(page);
   const closedText = CLOSED_TEXT.exec(visible)?.[0];
-  for (const m of page.matchAll(/<script\b[^>]*type\s*=\s*["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script>/gi)) {
+  for (const el of elements(page, 'script')) {
+    if (!/\btype\s*=\s*["']?application\/ld\+json\b/i.test(el.tag.slice(0, 2000))) continue;
     let j: any;
-    try { j = JSON.parse(m[1].trim()); } catch { continue; }
+    try { j = JSON.parse(el.inner.trim()); } catch { continue; }
     const n = postings(j)[0];
     if (!n) continue;
     const org = typeof n.hiringOrganization === 'string' ? n.hiringOrganization : n.hiringOrganization?.name;
@@ -85,14 +92,14 @@ export function readPostingPage(html: string, at = new Date()): Posting {
     };
   }
   const meta = metas(page);
-  const title = meta['og:title'] || meta['twitter:title'] || plainText(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(page)?.[1] ?? '');
+  const title = meta['og:title'] || meta['twitter:title'] || plainText(elements(page, 'title').next().value?.inner ?? '');
   return {
     title: title || undefined, company: undefined, description: meta['og:description'] || meta.description || undefined,
     closed: !!closedText, closed_reason: closedText ? `the page says "${closedText}"` : undefined,
   };
 }
 
-const NEEDS = 'Title and company could not be read from the page. Read it in the browser pane, then add it with `crewdeck jobs add-role --role-file <f>` (source "pasted") and pick it with `crewdeck jobs pick --role <id>`.';
+const NEEDS = 'Title and company could not be read from the page. Read it in the browser pane, then add it with `crewdeck jobs add-role --role-file <f>` (source "pasted") and pick it with `crewdeck jobs pick --role <id> --request <the link request id>`.';
 
 /** Paste a link: the request payload P3 hands over is exactly { url, force? }. */
 export async function link(ctx: Ctx, input: LinkInput, o: LinkOptions = {}): Promise<LinkResult> {
@@ -100,7 +107,7 @@ export async function link(ctx: Ctx, input: LinkInput, o: LinkOptions = {}): Pro
   const raw = input.url.trim(), force = input.force === true;
   const day = o.day ?? todayOf(ctx);
   let host = '';
-  try { host = new URL(raw).hostname.toLowerCase(); } catch { throw new Error('that is not a web address'); }
+  try { host = cleanHost(new URL(raw).hostname); } catch { throw new Error('that is not a web address'); }
   if (isXHost(host)) throw new Error('X links are never used: paste the company\'s own posting');
 
   if (isLinkedinHost(host)) {

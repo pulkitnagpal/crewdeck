@@ -1,10 +1,12 @@
 // `crewdeck jobs source` (design §2.4 step 1, §15): fetch new roles without spending a token. The pinned providers run in
-// the sandboxed child (provider-runner.ts); every job it prints is checked here before it reaches the tracker. Then
+// the sandboxed child (provider-runner.ts), which has no network: its fetches come here over a private channel and go
+// out through netguard (E1). Every job it sends is checked here before it reaches the tracker. Then
 // LinkedIn guest search (only when the user switched it on), the rule prefilter, and descriptions for the best-ranked
 // roles that came without one. What happened is written to <jobs.home>/state/sources.json for the Jobs page.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import type { Readable, Writable } from 'node:stream';
 import { join } from 'node:path';
 import { ensureHome } from '../config.ts';
 import { type Ctx, notesOf, nowIso } from './ctx.ts';
@@ -12,9 +14,12 @@ import { addEvent, upsertRole } from './db.ts';
 import type { JobNotes } from './notes.ts';
 import type { SourceEntry } from './schema.ts';
 import { checkRoleUrl } from './fields.ts';
-import { type Manifest, loadManifest, providersDir, providersStatus } from './providers.ts';
+import { type Manifest, loadManifest, providersDir, providersStatus, sandboxSupport } from './providers.ts';
+
+export { sandboxSupport };
 import { runPrefilter } from './pipeline/prefilter.ts';
-import type { NetOptions } from './net/netguard.ts';
+import { type NetOptions, NetError, guardedFetch } from './net/netguard.ts';
+import type { FetchAnswer, FetchAsk } from './provider-runner.ts';
 
 export const RUNNER = join(import.meta.dirname, 'provider-runner.ts');
 const MAX_LINES = 50_000;
@@ -63,52 +68,123 @@ export function sourcePlan(notes: Pick<JobNotes, 'sources'>, m: Manifest = loadM
 
 // ---- the sandboxed child ----
 
-/** Node's flags for the sandbox: read the providers and the runner only; network where the permission model gates it. */
+/** Node's flags for the sandbox: read the providers and the runner only. No network: --allow-net is never given. */
 export function runnerArgs(dir: string, runner = RUNNER): string[] {
-  const net = process.allowedNodeEnvironmentFlags.has('--allow-net') ? ['--allow-net'] : [];
-  return ['--permission', `--allow-fs-read=${dir}`, `--allow-fs-read=${runner}`, ...net, '--disallow-code-generation-from-strings', '--max-old-space-size=512', runner, dir];
+  return ['--permission', `--allow-fs-read=${dir}`, `--allow-fs-read=${runner}`, '--disallow-code-generation-from-strings', '--max-old-space-size=512', runner, dir];
 }
 
 export type RunnerLine = { t: 'job'; i: number; provider: string; job: any } | { t: 'entry'; i: number; ok: boolean; provider?: string; jobs?: number; old?: number; error?: string; ms?: number } | { t: 'fatal'; error: string } | { t: 'done' };
 
-export type SpawnOptions = { dir?: string; runner?: string; manifest?: Manifest; timeoutMs?: number; entryTimeoutMs?: number; sinceDays?: number; maxPages?: number };
+export type SpawnOptions = { dir?: string; runner?: string; manifest?: Manifest; timeoutMs?: number; entryTimeoutMs?: number; sinceDays?: number; maxPages?: number; /** netguard test options for the providers' fetches */ net?: NetOptions };
 
-/** Run the child and hand each protocol line to `onLine`. Resolves with the exit and what went to stderr (tail). */
-export function spawnRunner(plan: Plan, onLine: (l: RunnerLine) => void, o: SpawnOptions & { dir: string }): Promise<{ code: number | null; stderr: string; done: boolean; killed: boolean; bad: number }> {
+// What the parent fetches for the providers (E1): netguard's checks on every request and redirect, its 15 s deadline
+// and 5 redirects; 10 MB per body (career-ops' own cap: some boards send their whole list in one answer), at most 8 in
+// flight, 2000 requests and 256 MB per run. GET, HEAD and POST only; request bodies ≤ 1 MB.
+export const FETCH_CAPS = { maxBytes: 10_000_000, inFlight: 8, requests: 2000, totalBytes: 256_000_000, bodyBytes: 1_000_000 };
+const DROP_REQUEST = new Set(['host', 'connection', 'content-length', 'transfer-encoding', 'keep-alive', 'upgrade', 'proxy-authorization', 'proxy-connection', 'te', 'trailer', 'expect', 'accept-encoding']);
+const DROP_RESPONSE = new Set(['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'keep-alive']);
+
+/** One provider fetch through netguard, as the answer line the child turns back into a Response. */
+export async function answerFetch(a: FetchAsk, o: { net?: NetOptions; caps?: typeof FETCH_CAPS; budget: { requests: number; bytes: number } }): Promise<FetchAnswer> {
+  const caps = o.caps ?? FETCH_CAPS;
+  const id = a.id;
+  if (++o.budget.requests > caps.requests) return { id, error: `more than ${caps.requests} requests in one run: stopped`, code: 'budget' };
+  const method = String(a.method).toUpperCase();
+  if (!['GET', 'HEAD', 'POST'].includes(method)) return { id, error: `${method} requests are not made for providers`, code: 'method' };
+  const body = method === 'POST' && typeof a.body === 'string' ? Buffer.from(a.body, 'base64') : undefined;
+  if (body && body.length > caps.bodyBytes) return { id, error: 'request body larger than 1 MB', code: 'too_large' };
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Array.isArray(a.headers) ? a.headers.slice(0, 100) : []) {
+    const name = String(k).toLowerCase();
+    if (/^[!#$%&'*+.^_`|~0-9a-z-]{1,100}$/.test(name) && !DROP_REQUEST.has(name) && typeof v === 'string' && v.length <= 8000 && !/[\r\n]/.test(v)) headers[name] = v;
+  }
+  const redirect = a.redirect === 'follow' ? 'follow' : 'manual';
+  try {
+    const r = await guardedFetch(String(a.url), { ...o.net, method, body, headers, redirect, maxBytes: caps.maxBytes });
+    o.budget.bytes += r.bytes?.length ?? 0;
+    if (o.budget.bytes > caps.totalBytes) return { id, error: `more than ${Math.round(caps.totalBytes / 1e6)} MB in one run: stopped`, code: 'budget' };
+    if (a.redirect === 'error' && r.status >= 300 && r.status <= 399 && r.headers.location) return { id, error: 'unexpected redirect', code: 'redirect' };
+    const out: [string, string][] = [];
+    for (const [k, v] of Object.entries(r.headers)) if (!DROP_RESPONSE.has(k) && v !== undefined) for (const x of Array.isArray(v) ? v : [v]) out.push([k, String(x)]);
+    return { id, status: r.status, statusText: r.statusText ?? '', url: r.url, redirected: r.redirects.length > 0, headers: out, body: (r.bytes ?? Buffer.from(r.body)).toString('base64') };
+  } catch (e: any) {
+    return { id, error: String(e?.message ?? e).slice(0, 300), code: e instanceof NetError ? e.code : 'network' };
+  }
+}
+
+/** Lines `<nonce> <json>` from a stream, capped: anything without the run's nonce is not the runner's and is dropped. */
+function protocolLines(s: Readable, nonce: string, on: (l: any) => void, over: () => void) {
+  let buf = '', bytes = 0, lines = 0;
+  s.setEncoding('utf8');
+  s.on('data', (d: string) => {
+    bytes += d.length;
+    if (bytes > MAX_BYTES) return over();
+    buf += d;
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+      if (++lines > MAX_LINES) return over();
+      if (!line.startsWith(`${nonce} `)) { on(undefined); continue; }
+      let l: any;
+      try { l = JSON.parse(line.slice(nonce.length + 1)); } catch { on(undefined); continue; }
+      on(l);
+    }
+  });
+}
+
+/** Run the child and hand each protocol line to `onLine`. Resolves with the exit and the tail of what it printed. */
+export function spawnRunner(plan: Plan, onLine: (l: RunnerLine) => void, o: SpawnOptions & { dir: string }): Promise<{ code: number | null; stderr: string; done: boolean; killed: boolean; bad: number; fetches: number }> {
+  const support = sandboxSupport();
+  if (!support.ok) return Promise.reject(new Error(support.why));
   const m = o.manifest ?? loadManifest();
   const dir = realpathSync(o.dir), runner = realpathSync(o.runner ?? RUNNER);
+  const nonce = randomBytes(24).toString('hex');
   const input = JSON.stringify({
-    files: m.files, ids: plan.ids, detectors: m.detectors, entries: plan.entries.map((e) => ({ i: e.i, entry: e.entry })),
+    nonce, files: m.files, ids: plan.ids, detectors: m.detectors, entries: plan.entries.map((e) => ({ i: e.i, entry: e.entry })),
     since_ms: o.sinceDays ? Date.now() - o.sinceDays * 86_400_000 : 0, timeout_ms: o.entryTimeoutMs ?? 90_000, max_jobs: 2000, max_pages: o.maxPages ?? 10, concurrency: 4,
   });
   return new Promise((resolve) => {
-    // An empty environment: no proxy variables, no tokens, nothing of the user's.
-    const child = spawn(process.execPath, runnerArgs(dir, runner), { env: {}, stdio: ['pipe', 'pipe', 'pipe'] });
-    let buf = '', bytes = 0, lines = 0, stderr = '', done = false, killed = false, bad = 0;
-    const kill = () => { killed = true; child.kill('SIGKILL'); };
+    // An empty environment: no proxy variables, no tokens, nothing of the user's. fd 3 (lines from the child) and fd 4
+    // (fetch answers to it) are the private channel (E9);
+    // stdout and stderr are kept only as a log tail.
+    const child = spawn(process.execPath, runnerArgs(dir, runner), { env: {}, stdio: ['pipe', 'pipe', 'pipe', 'pipe', 'pipe'] });
+    const chan = child.stdio[3] as unknown as Readable, answers = child.stdio[4] as unknown as Writable;
+    let log = '', done = false, killed = false, bad = 0, fetches = 0, inFlight = 0;
+    const budget = { requests: 0, bytes: 0 };
+    const queued: FetchAsk[] = [];
+    const kill = () => { if (!killed) { killed = true; child.kill('SIGKILL'); } };
     const timer = setTimeout(kill, o.timeoutMs ?? 15 * 60_000);
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (d: string) => {
-      bytes += d.length;
-      if (bytes > MAX_BYTES) return kill();
-      buf += d;
-      let nl;
-      while ((nl = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
-        if (++lines > MAX_LINES) return kill();
-        let l: any;
-        try { l = JSON.parse(line); } catch { bad++; continue; }
-        if (!l || typeof l !== 'object' || !['job', 'entry', 'fatal', 'done'].includes(l.t)) { bad++; continue; }
-        if (l.t === 'done') done = true;
-        onLine(l);
+    const pump = () => {
+      while (inFlight < FETCH_CAPS.inFlight && queued.length) {
+        const a = queued.shift()!;
+        inFlight++; fetches++;
+        answerFetch(a, { net: o.net, budget }).then((ans) => {
+          inFlight--;
+          if (!killed && answers.writable) answers.write(`${JSON.stringify(ans)}\n`);
+          pump();
+        });
       }
-    });
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (d: string) => { stderr = (stderr + d).slice(-4000); });
-    child.on('error', (e) => { stderr += `\n${e.message}`; });
-    child.on('close', (code) => { clearTimeout(timer); resolve({ code, stderr, done, killed, bad }); });
-    child.stdin.on('error', () => {});
-    child.stdin.end(input);
+    };
+    protocolLines(chan, nonce, (l) => {
+      if (!l || typeof l !== 'object') { bad++; return; }
+      if (l.t === 'fetch') {
+        if (!Number.isSafeInteger(l.id) || typeof l.url !== 'string' || l.url.length > 4000 || queued.length > 1000) { bad++; return; }
+        queued.push(l as FetchAsk);
+        return pump();
+      }
+      if (!['job', 'entry', 'fatal', 'done'].includes(l.t)) { bad++; return; }
+      if (l.t === 'done') done = true;
+      onLine(l);
+    }, kill);
+    const tail = (d: Buffer) => { log = (log + d.toString('utf8')).slice(-4000); };
+    child.stdout!.on('data', tail);
+    child.stderr!.on('data', tail);
+    chan.on('error', () => {});
+    answers.on('error', () => {});
+    child.on('error', (e) => { log += `\n${e.message}`; });
+    child.on('close', (code) => { clearTimeout(timer); resolve({ code, stderr: log, done, killed, bad, fetches }); });
+    child.stdin!.on('error', () => {});
+    child.stdin!.end(input);
   });
 }
 
@@ -147,6 +223,8 @@ export async function runProviders(ctx: Ctx, plan: Plan, o: SpawnOptions & { dir
   const byI = new Map(plan.entries.map((e) => [e.i, { e, r: { name: e.name, ok: false, jobs: 0, new: 0, refused: 0 } as EntryResult }]));
   const at = ctx.clock();
   let fatal = '';
+  const support = sandboxSupport();
+  if (!support.ok) return { ...res, ran: false, error: support.why };
   const out = await spawnRunner(plan, (l) => {
     if (l.t === 'fatal') { fatal = String(l.error ?? '').slice(0, 500); return; }
     const x = byI.get((l as any).i);
@@ -198,7 +276,9 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
   const state: SourcesState = { started: nowIso(ctx), ok: true, new: 0, trigger: o.trigger };
   const notes = notesOf(ctx);
   const st = o.dir ? { ready: existsSync(o.dir), message: '' } : providersStatus({ jobs: { home: ctx.home } } as any, o.manifest);
-  if (st.ready) {
+  const support = sandboxSupport();
+  if (st.ready && !support.ok) state.providers = { ran: false, why: support.why };
+  else if (st.ready) {
     const plan = o.plan ?? sourcePlan(notes, o.manifest);
     if (plan.entries.length) {
       const r = await runProviders(ctx, plan, { ...o, dir: o.dir ?? providersDir({ jobs: { home: ctx.home } } as any, o.manifest) });

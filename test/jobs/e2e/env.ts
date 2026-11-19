@@ -8,7 +8,8 @@ export const TMP = realpathSync(tmpdir());
 export const ROOT = mkdtempSync(join(TMP, 'cd-e2e-'));
 export const HOME = join(ROOT, 'crewdeck');
 export const VAULT = join(ROOT, 'vault');
-export const FILES = join(ROOT, 'files');
+// Claude's scratch files (the skills' <T>): inside the jobs home, the one place `crewdeck jobs` reads files from (E5).
+export const FILES = join(HOME, 'jobs', 'out', 'tmp');
 mkdirSync(HOME, { mode: 0o700 });
-mkdirSync(FILES);
+mkdirSync(FILES, { recursive: true, mode: 0o700 });
 process.env.CREWDECK_HOME = HOME;

@@ -47,7 +47,7 @@ export function ApplyPanel({ d, panel, reveal = false, workspace = '', onApply =
   const p = panel ?? { state: 'ready', progress: [] };
   const c = d.counts;
   const url = safeHref(d.url);
-  const linkedin = !!url && /(^|\.)linkedin\.com$/i.test(new URL(url).hostname);
+  const linkedin = !!url && /(^|\.)linkedin\.com\.*$/i.test(new URL(url).hostname);
   const firstRows = d.rows.filter((r) => r.status === 'first_time' && r.required);
   const openForm = url ? html`<a class="btn small" href=${url} target="_blank" rel="noopener noreferrer">Open the form</a>` : null;
   // Stop a request that waits, or that a session took and never finished (it closed, crashed or got stuck).

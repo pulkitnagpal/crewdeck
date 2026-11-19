@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // crewdeck — init | up | add-project <name> <path> | doctor | jobs <cmd>
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync, chmodSync, rmSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parse } from 'yaml';
 import { CONFIG_PATH, HOME, REPO, SB_VERSION, TOKEN_PATH, defaults, ensureHome, ensureToken, expand, loadConfig, readToken, rotateToken, saveConfig, writeCliWrapper, type Config } from './config.ts';
@@ -13,6 +13,7 @@ import { createShell } from './server.ts';
 import { boardHead, notesAppearancePage, notesHead } from './appearance.ts';
 import { findBrowser, installHint } from './jobs/browser.ts';
 import { agentCall } from './agent-client.ts';
+import { checkedPath, notCrewdeckFile } from './files.ts';
 
 const say = (s: string) => console.log(s);
 
@@ -120,10 +121,21 @@ const api = agentCall;
 
 async function requestsCmd() { for (const r of await api('/api/requests')) say(`${r.id}\t${r.status}\t${r.lane}\t${r.kind ? `${r.kind}${r.ref ? ` ${r.ref}` : ''}` : r.text}${r.result ? `  → ${r.result}` : ''}`); }
 
+/**
+ * A file named by --result-file / --text-file (E5). In the jobs workspace (the sandboxed lane, where this command is the
+ * one let out) it must be inside Jobs' home or workspace; anywhere else only Crewdeck's own files are refused.
+ */
+function flagFile(file: string, what: string): string {
+  const c = loadConfig();
+  let inJobs = false;
+  try { const ws = realpathSync(c.jobs.workspace), cwd = realpathSync(process.cwd()); inJobs = cwd === ws || cwd.startsWith(ws + sep); } catch {}
+  return readFileSync(inJobs ? checkedPath(file, what, { roots: [...new Set([c.jobs.home, c.jobs.workspace])] }) : notCrewdeckFile(file, what, c.jobs.home), 'utf8');
+}
+
 /** The result text: --result-file <path>, --result - (stdin), or --result "<text>". Files keep page text out of the shell. */
 function resultText(args: string[]): string {
   const file = flag(args, 'result-file');
-  if (file) return readFileSync(file, 'utf8').trim();
+  if (file) return flagFile(file, '--result-file').trim();
   const v = flag(args, 'result');
   if (v === '-') return readFileSync(0, 'utf8').trim();
   return v ?? '';
@@ -143,7 +155,7 @@ async function progressCmd(args: string[]) {
   const file = flag(args, 'text-file'), v = flag(args, 'text');
   if (!/^\d+$/.test(id ?? '') || (!file && v === undefined)) throw new Error('usage: crewdeck progress <id> --text-file <path> | --text - (stdin)');
   if (!file && v !== '-') throw new Error('progress text comes from a file (--text-file) or stdin (--text -), never the command line');
-  const text = file ? readFileSync(file, 'utf8') : readFileSync(0, 'utf8');
+  const text = file ? flagFile(file, '--text-file') : readFileSync(0, 'utf8');
   await api(`/api/requests/${Number(id)}/progress`, { text: text.trim() });
   say('noted');
 }

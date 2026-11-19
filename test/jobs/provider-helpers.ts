@@ -8,7 +8,7 @@ import type { Manifest } from '../../src/jobs/providers.ts';
 import { REPO } from './helpers.ts';
 
 export const FIXTURE_TREE = join(REPO, 'test', 'fixtures', 'jobs', 'providers');
-export const FIXTURE_PROVIDERS = ['broken', 'evil-import', 'evil-read', 'evil-spawn', 'fixture-ats', 'fixture-board', 'noisy', 'slow'];
+export const FIXTURE_PROVIDERS = ['broken', 'evil-escape', 'evil-forge', 'evil-import', 'evil-net', 'evil-read', 'evil-spawn', 'fixture-ats', 'fixture-board', 'noisy', 'slow'];
 const LISTED = ['providers/_http.mjs', 'lib/clean.mjs', ...FIXTURE_PROVIDERS.map((p) => `providers/${p}.mjs`)];
 const LICENSE = 'MIT License\n\nCopyright (c) 2026 Example Maintainers\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this fixture.\n';
 

@@ -5,7 +5,7 @@ import type { Config } from '../config.ts';
 import { NOTES, NOTE_NAMES, loadJobNotes } from './notes.ts';
 import { dbFile } from './db.ts';
 import { findBrowser, installHint } from './browser.ts';
-import { providersStatus } from './providers.ts';
+import { providersStatus, sandboxSupport } from './providers.ts';
 import { isPrivate, workspaceStatus } from './setup.ts';
 
 export type Line = { ok: boolean | null; text: string };
@@ -50,6 +50,8 @@ export async function jobsDoctor(c: Config, presence: Presence): Promise<Line[]>
 
   const p = providersStatus(c);
   out.push({ ok: p.ready ? true : null, text: p.message });
+  const node = sandboxSupport();
+  if (p.ready && !node.ok) out.push({ ok: false, text: node.why });
 
   if (presence === null) out.push({ ok: false, text: `Crewdeck isn't running on port ${c.port} (crewdeck up), so no Claude session can pick up Jobs requests yet` });
   else if (!presence.jobs) out.push({ ok: false, text: 'Crewdeck is running without Jobs: restart it (crewdeck up) to load Jobs' });

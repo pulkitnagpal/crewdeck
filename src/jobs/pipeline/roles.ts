@@ -58,10 +58,33 @@ export function addRoleEvent(ctx: Ctx, roleId: string, kind: string, detail: str
   addEvent(ctx.db, roleId, kind, d, nowIso(ctx));
 }
 
-/** Set a status by hand. `applied` goes through `crewdeck jobs applied` (cooldown and journal). */
+/**
+ * The moves `crewdeck jobs status` may make (C2). `picked` is reached only through `pick` (cooldowns, one role per company,
+ * the daily count, the user's own override from a link request) and `applied` only through `applied` (cooldown and
+ * journal); `prepared` only from `picked`. A prefiltered role comes back through `refilter`, which re-runs the rules.
+ */
+export const MANUAL_MOVES: Record<Status, Status[]> = {
+  new: ['bench', 'skipped', 'expired', 'judged_out'],
+  bench: ['new', 'skipped', 'expired', 'judged_out'],
+  picked: ['prepared', 'bench', 'skipped', 'expired', 'judged_out'],
+  prepared: ['skipped', 'expired', 'judged_out'],
+  applied: [],
+  skipped: ['new'],
+  expired: ['new'],
+  judged_out: ['new'],
+  prefiltered_out: [],
+};
+
+/** Set a status by hand, along MANUAL_MOVES only. */
 export function setRoleStatus(ctx: Ctx, roleId: string, status: string, reason = '') {
   if (!(STATUSES as readonly string[]).includes(status)) throw new Error(`status must be one of ${STATUSES.join(', ')}`);
   if (status === 'applied') throw new Error('use crewdeck jobs applied <role>: it also starts the company cooldown and writes the journal line');
-  getRole(ctx.db, roleId);
+  const from = getRole(ctx.db, roleId).status as Status;
+  if (from === status) return;
+  if (status === 'picked') throw new Error('picked is set by crewdeck jobs pick (cooldowns, one role per company, the daily count), never by hand');
+  if (!MANUAL_MOVES[from].includes(status as Status)) {
+    const hint = from === 'prefiltered_out' ? ': run crewdeck jobs refilter after changing your notes' : MANUAL_MOVES[from].length ? ` (from ${from}: ${MANUAL_MOVES[from].join(', ')})` : '';
+    throw new Error(`from ${from} to ${status} is not allowed${hint}`);
+  }
   setStatus(ctx.db, roleId, status as Status, text(reason, 1000), nowIso(ctx));
 }

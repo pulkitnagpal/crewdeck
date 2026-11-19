@@ -73,5 +73,59 @@ test('terms span fields: healthcare and analytics names, aliases, short names on
   const extra = 'I use Kestrel daily.';
   const withExtra = { ...ctx, terms: termsFor(['Kestrel']) };
   assert.match((checkAnswer({ text: extra, claims: [me(extra, ['summary.analytics'])] }, withExtra) as any).reason, /Kestrel/);
-  assert.deepEqual(numbersIn('5,000+ users, 50K rows, p99'), ['5000', '50k', '99']);
+  assert.deepEqual(numbersIn('5,000+ users, 50K rows, p99'), ['5000', '50000', '99']);
+  assert.deepEqual(numbersIn('1,5 Jahre, 1.234,5 €, 5 Monate'), ['1.5', '1234.5', '5']);
+});
+
+// C3: invented numbers that used to slip through.
+const own: CiteContext = {
+  facts: [
+    { id: 'f.hours', text: 'Cut weekly reporting time by 15 hours' },
+    { id: 'f.years', text: '1,5 Jahre Erfahrung mit Python' },
+    { id: 'f.project', text: 'Led a 5 month migration project' },
+    { id: 'f.dash', text: 'Built 40 dashboards for 3 teams' },
+    { id: 'f.users', text: 'Served 50,000 users and a 5 million row warehouse' },
+  ],
+  memory: [], postingText: 'Example Labs has 12 analysts, 45 dashboards and a 2M euro budget.', profile: {},
+};
+const ok = (text: string, ids: string[], about: 'me' | 'company' = 'me', claimText = text) => checkAnswer({ text, claims: [{ text: claimText, about, fact_ids: ids }] }, own);
+
+test('C3: decimals are locale-aware ("1,5" is one and a half, never 15)', () => {
+  assert.equal(ok('I cut weekly reporting time by 1,5 hours.', ['f.hours']).ok, false);
+  assert.equal(ok('I have 15 years of Python.', ['f.years']).ok, false);
+  assert.equal(ok('I have 1.5 years of Python.', ['f.years']).ok, true, '1,5 and 1.5 are the same number');
+  assert.equal(ok('I served 50.000 users.', ['f.users']).ok, true, 'German thousands');
+  assert.equal(ok('I served 50000 users.', ['f.users']).ok, true);
+  assert.equal(ok('I served 500 users.', ['f.users']).ok, false);
+});
+
+test('C3: a unit counts only when attached to its digits ("5 month" is not 5M)', () => {
+  assert.equal(ok('I led a 5M migration project.', ['f.project']).ok, false);
+  assert.equal(ok('I led a 5 month migration project.', ['f.project']).ok, true);
+  assert.equal(ok('I ran a 5M row warehouse for 50K users.', ['f.users']).ok, true, '5 million = 5M, 50,000 = 50K');
+  assert.equal(ok('I ran a 5k row warehouse.', ['f.users']).ok, false);
+});
+
+test('C3: number words are numbers too (English, German, French, Spanish, Portuguese)', () => {
+  assert.equal(ok('I built forty dashboards for three teams.', ['f.dash']).ok, true);
+  assert.equal(ok('I built forty-five dashboards.', ['f.dash']).ok, false);
+  assert.equal(ok('I built a dozen dashboards.', ['f.dash']).ok, false);
+  assert.equal(ok('I built dashboards for twelve teams.', ['f.dash']).ok, false);
+  assert.equal(ok('Ich habe Dashboards für zwölf Teams gebaut.', ['f.dash']).ok, false);
+  assert.equal(ok('J\'ai construit des tableaux pour douze équipes.', ['f.dash']).ok, false);
+  assert.equal(ok('Construí paneles para cinco equipos.', ['f.dash']).ok, false);
+  assert.equal(ok('Ich habe Dashboards für drei Teams gebaut.', ['f.dash']).ok, true);
+  assert.equal(ok('I built dashboards no one else could, for 3 teams.', ['f.dash']).ok, true, '"no one" is not a count');
+  assert.equal(ok('I built hundreds of dashboards.', ['f.dash']).ok, false, 'hundreds needs a count of at least 200');
+});
+
+test('C3: sentences use only the user\'s own sources unless they are the company claim citing the posting', () => {
+  // Not first person in English, not a listed claim: the posting's 12 can't support it.
+  const r1 = checkAnswer({ text: 'Example Labs has 12 analysts. Led a team of 12 analysts before.', claims: [{ text: 'Example Labs has 12 analysts', about: 'company', fact_ids: ['posting'] }] }, own);
+  assert.equal(r1.ok, false);
+  assert.match((r1 as any).reason, /"12" isn't in any source you cited: "Led a team/);
+  const r2 = checkAnswer({ text: 'Example Labs has 12 analysts. Ich habe 12 Analysten geführt.', claims: [{ text: 'Example Labs has 12 analysts', about: 'company', fact_ids: ['posting'] }] }, own);
+  assert.equal(r2.ok, false, 'a non-English sentence about the user gets no posting numbers');
+  const r3 = checkAnswer({ text: 'Example Labs has 12 analysts and 45 dashboards. I built 40 dashboards.', claims: [{ text: 'Example Labs has 12 analysts and 45 dashboards', about: 'company', fact_ids: ['posting'] }, { text: 'I built 40 dashboards', about: 'me', fact_ids: ['f.dash'] }] }, own);
+  assert.equal(r3.ok, true, (r3 as any).reason);
 });

@@ -72,7 +72,8 @@ const inrYear: PaySettings = { currency: 'INR', floor: 4_000_000, period: 'year'
 test('floor rules: top_of_range, bottom_of_range, conversion, unlisted keep/drop, no rate, unclear periods', () => {
   const status = (t: string | null, s: PaySettings) => payCheck(t, '', s).status;
   assert.equal(status('€50.000 – €60.000', eurYear), 'ok', 'top reaches the floor');
-  assert.equal(status('€40.000 – €50.000', eurYear), 'below_floor');
+  assert.equal(status('€40.000 – €50.000', eurYear), 'unclear', 'no period: below as a year, above as a month');
+  assert.equal(status('€40.000 – €50.000 pro Jahr', eurYear), 'below_floor');
   assert.equal(status('$55,000 - $65,000 per year', eurYear), 'ok', '65k USD = 59.8k EUR');
   assert.equal(status('$45,000 - $55,000 per year', eurYear), 'below_floor');
   assert.equal(status('£3,500 per month', eurYear), 'below_floor', '3,500 × 12 × 1.17 = 49,140 EUR');
@@ -80,7 +81,8 @@ test('floor rules: top_of_range, bottom_of_range, conversion, unlisted keep/drop
   assert.equal(status('CHF 90,000', eurYear), 'no_rate');
   assert.equal(status('€4.000', eurYear), 'unclear', 'small amount, no period');
   assert.equal(status(null, eurYear), 'unlisted');
-  assert.equal(status('up to €50k', eurYear), 'below_floor', 'even the top is below');
+  assert.equal(status('up to €50k a year', eurYear), 'below_floor', 'even the top is below');
+  assert.equal(status('up to €50k', eurYear), 'unclear', 'no period');
   assert.equal(status('from €50k', eurYear), 'ok', 'no top: never dropped by top_of_range');
   assert.equal(status('$40 - $50 per hour', usdHour), 'below_floor', 'bottom below');
   assert.equal(status('$42 - $50 per hour', usdHour), 'ok');
@@ -88,8 +90,9 @@ test('floor rules: top_of_range, bottom_of_range, conversion, unlisted keep/drop
   assert.equal(status('$80,000 per year', usdHour), 'below_floor', '80,000 / 2080 = 38.46 an hour');
   assert.equal(status('$95,000 per year', usdHour), 'ok', '45.67 an hour');
   assert.equal(status('35–70 LPA', inrYear), 'ok');
-  assert.equal(status('₹20–35L', inrYear), 'below_floor');
-  assert.equal(status('$40k–$45k', inrYear), 'below_floor', '45k USD = 38.25L INR');
+  assert.equal(status('₹20–35L per annum', inrYear), 'below_floor');
+  assert.equal(status('$40k–$45k a year', inrYear), 'below_floor', '45k USD = 38.25L INR');
+  assert.equal(status('$40k–$45k', inrYear), 'unclear', 'no period: 45k a month is above');
   assert.ok(payDrops(payCheck(null, 'no pay mentioned', inrYear), inrYear), 'unlisted: drop');
   assert.ok(!payDrops(payCheck(null, 'no pay mentioned', eurYear), eurYear), 'unlisted: keep');
 });
@@ -102,8 +105,23 @@ test('ambiguous currency: dropped only when every reading is below the floor', (
   assert.equal(payCheck('¥6,000,000', '', jpy).status, 'no_rate', 'CNY reading has no rate');
 });
 
-test('pay found in the description when no pay field', () => {
+test('pay found in the description when no pay field: shown and ranked, never a hard drop (C5)', () => {
   const r = payCheck(null, 'Great team. Salary range: €45.000 - €50.000 per year. Apply now.', eurYear);
   assert.equal(r.status, 'below_floor');
   assert.match(r.reason, /below your floor/);
+  assert.equal(payDrops(r, eurYear), false, 'description text can be a bonus, a range for another role or a typo: the judge decides');
+  assert.equal(payDrops(payCheck('€45.000 - €50.000 per year', '', eurYear), eurYear), true, 'the pay field still drops');
+});
+
+test('C5: shift differentials and premiums are not the pay; no period drops only when every reading (year and month) is below', () => {
+  assert.equal(findPayText('Night RN. $4/hr shift differential for nights. Pay: $45 - $55 per hour.'), '$45 - $55 per hour');
+  assert.equal(findPayText('Weekend premium $6/hour; base rate $48/hr.'), '$48/hr');
+  assert.equal(findPayText('Differential: $3.50/hr. Starting at $41/hr.'), '$41/hr');
+  assert.equal(findPayText('$4/hr shift diff'), undefined);
+  const r = payCheck(null, 'Nights earn a $4/hr differential. Pay $45 - $55 per hour.', usdHour);
+  assert.equal(r.status, 'ok', r.reason);
+  const high: PaySettings = { ...eurYear, floor: 200_000 };
+  assert.equal(payCheck('€12.000 – €15.000', '', high).status, 'below_floor', '15k a year and 180k a year (as a month) are both below 200k');
+  assert.equal(payCheck('€12.000 – €20.000', '', high).status, 'unclear', '20k a month would be 240k a year');
+  assert.equal(payCheck('€90.000', '', eurYear).status, 'ok', 'above as a year and as a month');
 });

@@ -14,8 +14,13 @@ const SRC = files(join(REPO, 'src', 'jobs')).map((f) => ({ f: relative(REPO, f),
 
 // Type-only imports (the Jobs API's request/response types) make no requests.
 test('no web request in src/jobs bypasses netguard', () => {
-  const bad = SRC.filter(({ f, src }) => !f.startsWith('src/jobs/net/') && (/(?<![\w.])fetch\(/.test(src) || /\bhttps?\.(request|get)\(/.test(src) || /\bnet\.connect\(/.test(src) || /^import (?!type )[^;]*from 'node:(http|https|net|dgram)'/m.test(src)));
+  const bad = SRC.filter(({ f, src }) => !f.startsWith('src/jobs/net/') && f !== 'src/jobs/provider-runner.ts' && (/(?<![\w.])fetch\(/.test(src) || /\bhttps?\.(request|get)\(/.test(src) || /\bnet\.connect\(/.test(src) || /^import (?!type )[^;]*from 'node:(http|https|net|dgram)'/m.test(src)));
   assert.deepEqual(bad.map((x) => x.f), []);
+  // The provider sandbox talks to its parent on fds 3 and 4 only (node:net wraps fd 4), and has no network anyway (E1).
+  const runner = SRC.find((x) => x.f === 'src/jobs/provider-runner.ts')!.src;
+  assert.doesNotMatch(runner, /from 'node:(http|https|dgram|dns|tls)'|\.connect\(|(?<![\w.])fetch\(/);
+  assert.deepEqual([...runner.matchAll(/new Socket\(([^)]*)\)/g)].map((m) => m[1]), ['{ fd: 4, readable: true, writable: false }']);
+  assert.match(runner, /const CHAN = 3, write = writeSync/);
 });
 
 test('the browser is launched only through launchGuarded, with the guard proxy', () => {

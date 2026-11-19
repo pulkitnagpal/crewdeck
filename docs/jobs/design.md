@@ -277,8 +277,8 @@ Every rule becomes a user setting, and every test uses fictional people.
 | D11 | No page or posting text in shell commands: request-scoped commands take `--request <id>`; other text via `-file` or stdin (`--result-file`, `--text-file`), the files written with Claude's **Write tool** (P7: never a heredoc, whose delimiter the text can contain) | Removes shell injection paths | Quoted arguments; heredocs |
 | D12 | Playbooks are skills in the public plugin; `jobs init` writes the workspace `CLAUDE.md` and a `.claude/settings.json` with deny rules (§14) | Every user gets the same playbooks and guard rails | Skills in each user's folder |
 | D13 | Risky features: switches in `config.yaml` that only the user can change (page toggle, or an interactive terminal: the CLI refuses without a TTY). P7: switching on or raising a number also needs the user's click in a **native dialog** the server (or CLI) shows; with none, the page shows a one-time code for `crewdeck jobs features …` in a real terminal | Prompt injection can't widen the agent's reach; headers and TTYs can be forged by local processes | Switches in a note Claude can write; header-only checks |
-| D14 | Leak scan: generic PII patterns + **HMAC-SHA256** denylist (key in a CI secret, never in the repo); scans the tracked tree, the pushed commits' diffs and author fields; a private local hook with a plaintext list | No guessable hashes, covers history | Plain sha256 list; tree-only scan |
-| D15 | Node ≥ 22.18 kept; CI matrix 22 and 24; `node:sqlite` FTS5 and the permission model verified in CI; no `import.meta.main` | Doesn't raise the floor | Node 25 |
+| D14 | Leak scan: generic PII patterns + **HMAC-SHA256** denylist (key in a CI secret, never in the repo); scans the tracked tree, the pushed commits' diffs, messages, added blobs and author fields (P7: a new branch against the default branch); a private local hook with a plaintext list | No guessable hashes, covers history | Plain sha256 list; tree-only scan |
+| D15 | Node ≥ 22.18 kept; CI matrix 22 and 24; `node:sqlite` FTS5 and the permission model verified in CI; no `import.meta.main`. P7: **job-board sourcing needs Node ≥ 25** (the first Node whose permission model denies the network); on 22/24 it refuses with the reason and everything else works; CI adds 25 | Doesn't raise the floor for the rest; providers never run with network access | Node 25 for everything; sourcing with network on 22/24 |
 | D16 | API split: **page endpoints** (same-origin only: exact Origin + `Sec-Fetch-Site: same-origin` (required since P7), JSON body) vs **agent endpoints** (claim, requeue, done/fail/show/progress: require the token in `~/.crewdeck/token`, 0600, new on every `up`; sent only after `POST /api/hello` proved the server with a port-bound hash; request-scoped calls name their cwd and must be in the request's lane). Jobs requests are created only by `/api/jobs/*` actions, never by the generic `/api/requests`. SilverBullet moves to **its own origin** (own proxied port, like boards), on a Unix socket since P7 | A local page or a Notes script can't mint prompts or close requests; a squatter never sees the token | Origin-only checks |
 | D17 | The coded Playwright filler, Electron app, MCP server, legacy Today page and headless `claude -p` drafter are **not carried over** (owner approved removal, 2026-11-18) | Filling happens in Claude's pane from `fill-plan`; the CLI covers answer changes | Keeping two fillers |
 
@@ -541,12 +541,12 @@ settings; **prompt** = skill and `CLAUDE.md` instruction only.
 | Never send email | code (no send path; drafts only) |
 | No CAPTCHA, password or account creation | `fill-plan` skips password/CAPTCHA fields (code); stop-and-tell (prompt) |
 | Stop at 429 / sign-in / checkpoint | code in `linkedin.ts`, `link.ts`; prompt for the pane |
-| Caps, one per company, cooldown | code (`pick`, `prefilter`, `link` warnings; `--force` only when the request carries the user's override flag set by a page click) |
+| Caps, one per company, cooldown | code (`pick`, `prefilter`, `link` warnings). P7: no `--force` flag at all; the user's "Add it anyway" exists only in a link request's payload (`link --request`, `pick --role <id> --request <id>`, and only for that request's posting). `status` by hand never reaches `picked` (only `pick`) or `applied` (only `applied`); `prepared` only from `picked`; a prefiltered role comes back only through `refilter` |
 | Risky switches | code (page or TTY, plus a native dialog or a page-issued code) + guard (deny Edit on `~/.crewdeck/config.yaml`; the sandbox can't write it) |
 | No raw DB writes | guard (deny `Bash(sqlite3:*)`; the sandbox can't write `jobs.db`) + prompt |
 | No exfiltration from the pane | prompt (open only the role's URLs; never put facts in URLs) + the user's permission mode. A residual risk, stated in the README |
-| Postings are data | code (`--request`, `-file`) + prompt |
-| No invented experience | code (fact ids validated; citation check; unknown → first-time question) |
+| Postings are data | code (`--request`, `-file`: P7 reads only real paths inside Jobs' home or workspace, never the token or config) + prompt |
+| No invented experience | code (fact ids validated; citation check; unknown → first-time question). P7: numbers compared by value ("1,5" is 1.5, never 15; "5M" only when the M is attached; number words in English, German, French, Spanish, Portuguese), and every sentence is checked against the user's own sources; only a sentence that is a company claim citing the posting may use the posting |
 
 ## 14. Threat model and controls
 
@@ -574,15 +574,15 @@ settings; **prompt** = skill and `CLAUDE.md` instruction only.
 | Port squatting (e) | Challenge first (P7): `/api/hello` proves the server (port-bound) before the bridge or CLI sends the token; the token rotates on every `up` |
 | Crash by malformed URL | Top-level try/catch → 400 (e.g. `/%`); test |
 | XSS | Preact escaping; no `innerHTML`/`dangerouslySetInnerHTML` with data (grep test); hrefs only http(s); CSP `default-src 'self'; script-src 'self' 'sha256-<importmap>'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'`; `nosniff`; `Cross-Origin-Resource-Policy: same-origin` on the shell too |
-| Path traversal | Fixed roots + `startsWith(root + sep)` after `realpath`; resume by role id regex; `-file` paths realpath'd inside `out/<role>/tmp` |
-| SSRF (pasted links) | `netguard`: http(s) only; DNS lookup inside the connect (every address checked, the connection pinned to a checked address); blocklist incl. `0.0.0.0/8`, `10/8`, `100.64/10`, `127/8`, `169.254/16`, `172.16/12`, `192.168/16`, `224/4`, `240/4`, `::/128`, `::1`, `fc00::/7`, `fe80::/10`, `ff00::/8`, `64:ff9b::/96`, `2002::/16`, IPv4-mapped and -compatible; manual redirects ≤ 5 re-checked; one 15 s deadline incl. body; **decoded** body cap 2 MB while streaming; proxy env vars ignored |
+| Path traversal | Fixed roots + `startsWith(root + sep)` after `realpath`; resume by role id regex; P7: every `crewdeck jobs` file flag (`--*-file`, `--value-file`, `draft --brief/--answers`) and, in the jobs workspace, `request done --result-file`/`progress --text-file` take only real paths (links resolved) inside `<jobs.home>` or the jobs workspace, never `~/.crewdeck/token` or `config.yaml` (`src/files.ts`); elsewhere those two never read Crewdeck's own files |
+| SSRF (pasted links) | `netguard`: http(s) only; DNS lookup inside the connect (every address checked, the connection pinned to a checked address); blocklist incl. `0.0.0.0/8`, `10/8`, `100.64/10`, `127/8`, `169.254/16`, `172.16/12`, `192.0.0/24`, `192.0.2/24`, `192.168/16`, `198.18/15`, `198.51.100/24`, `203.0.113/24`, `224/4`, `240/4`, `::/128`, `::1`, `fc00::/7`, `fe80::/10`, `ff00::/8`, `64:ff9b::/96`, `64:ff9b:1::/48`, `2002::/16`, `2001:db8::/32`, IPv4-mapped (`::ffff:0:0/96`), -translated (`::ffff:0:0:0/96`) and -compatible; manual redirects ≤ 5 re-checked; one 15 s deadline incl. body; **decoded** body cap 2 MB while streaming; proxy env vars ignored |
 | Headless browser reaching local services | All Chromium traffic via an in-process guard proxy using `netguard` (`--proxy-server`, `--proxy-bypass-list=<-loopback>`), service workers blocked, WebSockets through the proxy; PDF render with JS off and network off |
 | Prompt injection (b) | Data never in shell; prompts mark data; user-only switches; deny rules; caps in code; apply needs the user's click; residual risk documented |
 | Shell injection | `execFile` only; `--request` ids; `-file`/stdin; skills and the bridge prompt write text with the Write tool, never heredocs (P7) |
 | SQL injection | Prepared statements; FTS terms `[a-z0-9]` quoted; grep test for interpolated SQL |
-| Supply chain (c) | D7 (closure manifest, verify at download and load, resolve hook, allow-list, sandboxed child with `--permission`, read-only provider dir, empty env); `npm ci`; `npm audit --omit=dev --audit-level=high`; new deps only preact, htm, playwright-core |
+| Supply chain (c) | D7 (closure manifest, verify at download and load, resolve hook, allow-list, sandboxed child with `--permission` and **no network** on Node ≥ 25, its fetches made by the parent through netguard, a frozen `getBuiltinModule` and no WebAssembly compiler, protocol on a private fd with a per-run nonce, read-only provider dir, empty env; P7, §15); `npm ci`; `npm audit --omit=dev --audit-level=high`; new deps only preact, htm, playwright-core |
 | Data at rest | Crewdeck's own files written with explicit modes (dirs 0700, files 0600; no global umask, so SilverBullet/Backlog.md keep normal modes in the user's vault and repos); `~/.crewdeck` 0700; refuse a group/world-writable `jobs.home`; payloads cleared on close |
-| Leaks (d) | D14; tests refuse to run unless `CREWDECK_HOME` is a temp dir; screenshots only from a temp home with fixtures |
+| Leaks (d) | D14; tests refuse to run unless `CREWDECK_HOME` is a temp dir; screenshots only from a temp home with fixtures; P7: the leak scan also reads commit bodies, UTF-16 files and every blob a push adds, knows North American numbers without +1, and scans a new branch against the default branch (§17) |
 
 ## 15. Providers (supply chain detail)
 
@@ -599,13 +599,27 @@ import other than `node:`/built-ins.
 **Download** goes to a temp dir, every file is verified, and the dir is renamed to `providers/<commit>/` together
 with LICENSE. Any mismatch aborts.
 
-**Run:**
+**Run (P7: Node ≥ 25 only):**
+- Sourcing needs **Node 25 or newer**: only from 25 does Node's permission model deny the network (and have
+  `--allow-net`). On Node 22/24 `crewdeck jobs source` and the server's timer refuse with that reason ("boards: not run
+  (job-board providers need Node 25 or newer …)"), `doctor` says so, and pasted links, Prepare and Apply still work.
 - `crewdeck jobs source` spawns
-  `node --permission --allow-fs-read=<providers dir> src/jobs/provider-runner.ts` with an empty environment.
-- The runner verifies hashes, installs a resolve hook (`module.register`) that refuses unlisted files and bare
-  imports, and imports only the needed provider ids (explicit ones from `sources.md` plus the ATS detectors for
-  `careers_url`).
-- It prints normalised jobs as JSON on stdout. The parent validates every field before writing the DB.
+  `node --permission --allow-fs-read=<providers dir> --allow-fs-read=<runner> --disallow-code-generation-from-strings
+  src/jobs/provider-runner.ts` with an empty environment and **no `--allow-net`**: no sockets (TCP, UDP, Unix), no DNS,
+  no processes, workers or writes.
+- The runner verifies hashes, installs resolve/load hooks (`module.registerHooks`) that refuse unlisted files, bare
+  imports and the denied built-ins (`vm`, `module`, `worker_threads`, `child_process`, `inspector`, `wasi`, …), wraps and
+  freezes `process.getBuiltinModule` with the same denylist, removes WebAssembly's compile/instantiate/Module, and only
+  then imports the needed provider ids (explicit ones from `sources.md` plus the ATS detectors for `careers_url`).
+- **Fetch through the parent.** The runner replaces the global `fetch` (which career-ops' `_http.mjs` helpers call) with
+  one that sends `{ url, method, headers, body, redirect }` to the parent over fd 3. The parent makes the request with
+  `guardedFetch` (SSRF checks on the host and every redirect, 15 s, 5 redirects, 10 MB decoded body, GET/HEAD/POST only,
+  POST bodies ≤ 1 MB, hop-by-hop headers dropped; at most 8 in flight, 2000 requests and 256 MB per run) and answers on
+  fd 4; `redirect: 'error'` (career-ops' default) refuses a 3xx as undici would.
+- **Protocol on fd 3, not stdout.** Jobs, entry results and fetches go to the parent as `<nonce> <json>` lines; the nonce
+  is per run, sent on stdin and never visible to providers, so a line a provider writes (stdout, the console, or fd 3
+  itself) is dropped. The runner writes them with a `writeSync` captured before any provider loads, so no patched
+  prototype sees the nonce. stdout and stderr are only a log tail. The parent validates every field before writing the DB.
 - Providers that need disk caching get an in-memory shim; their behaviour is reviewed per provider in the impl doc.
 
 **Upstream risk:** if the pinned commit vanishes, `jobs init` reports it and links still work. Re-pinning is a
@@ -630,9 +644,16 @@ reviewed PR.
   - home-directory paths;
   - the HMAC denylist, keyed by the `LEAK_SCAN_KEY` CI secret. It is skipped with a notice when the secret is
     absent (forks); the generic checks always run.
+  - P7: North American numbers without +1 (one separator style, area code and exchange 2-9; versions, dates,
+    SSN-shaped ids and bare 10-digit ids don't match), UTF-16 text with or without a BOM (and UTF-16 runs in binaries),
+    whole commit messages (`%B`), and every blob the pushed commits add (a file added then removed is still read). A
+    new branch (all-zero `before`) is scanned against the default branch (`LEAK_SCAN_DEFAULT_BRANCH`, else
+    `origin/HEAD`, `main`, `master`), or whole when there is none.
 - **Local hook.** `scripts/pre-commit` uses a private plaintext list (`~/.crewdeck/leak-denylist.txt`).
-- **CI.** Push and same-repo `pull_request` only, never `pull_request_target`. Node 22 and 24: `npm ci`,
-  `npm test` (incl. leak scan), `npm audit`.
+- **CI.** Push and same-repo `pull_request` only, never `pull_request_target`. Node 22, 24 and 25 (25 runs the provider
+  sandbox; 22/24 assert that sourcing refuses): `npm ci`, the leak scan as its own step (the only one with
+  `LEAK_SCAN_KEY`), the tests without the key, `npm audit`. `actions/checkout` and `actions/setup-node` are pinned by
+  full commit SHA (v4.4.0), without persisted credentials.
 
 ## 18. Out of scope for now
 
@@ -712,6 +733,16 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **P7 pass B (2026-11-19):** the pipeline and sources from the security review ([impl/07-security-review.md](impl/07-security-review.md)):
+  the provider sandbox has no network (Node ≥ 25 required for sourcing; older Node refuses with the reason), its fetches
+  made by the parent through netguard over fd 3, protocol lines with a per-run nonce on fd 3, `getBuiltinModule` frozen
+  behind the denylist and no WebAssembly compiler; linear HTML scans with a 400 KB cap; more netguard ranges; file flags
+  only inside Jobs' home or workspace; no `--force` flags (force only from a link request, `pick --role --request`
+  reads it) and restricted status moves; a value-based citation check (locale decimals, attached units, number words,
+  own-sources-only sentences); pay differentials skipped, description pay never drops, period-less pay read as a year
+  and a month; travel percentages next to "travel" only; industry drops on company or title only; trailing-dot hosts;
+  a locked, mtime-checked jobs/memory.md; leak scan (bodies, UTF-16, blobs, NANP, new branches); CI with Node 25, the
+  scan as its own keyed step, actions pinned by SHA.
 - **P7 pass A (2026-11-19):** the trust boundary from the security review ([impl/07-security-review.md](impl/07-security-review.md)):
   SilverBullet on a private Unix socket with its shell off, random internal board ports, challenge-first agent
   handshake with a port-bound proof and a token rotated on every `up`, lane checks on request-scoped agent calls, the

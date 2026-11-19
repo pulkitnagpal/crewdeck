@@ -55,7 +55,10 @@ what Claude knows about you, in your own words. The vault's `CLAUDE.md` tells ag
 
 ## Setup (macOS or Linux)
 
-You need Node.js 22.18 or newer, git, `unzip`, and the [Claude desktop app](https://claude.ai/download).
+You need Node.js 22.18 or newer, git, `unzip`, and the [Claude desktop app](https://claude.ai/download). Fetching from
+job boards (Jobs → sources) needs **Node 25 or newer**: from 25 Node can run the boards' third-party code with no network
+access of its own (Crewdeck makes its requests through its SSRF guard). On Node 22 or 24 sourcing says so and does
+nothing; pasted links, Prepare and Apply work.
 
 ```bash
 git clone https://github.com/pulkitnagpal/crewdeck.git
@@ -122,8 +125,13 @@ This switches Jobs on, creates your job notes in the vault (it never overwrites 
 `~/.crewdeck/jobs/`, and the jobs workspace's `CLAUDE.md` and `.claude/settings.json` (hard rules and deny rules for the
 Claude session that works Jobs; rewritten on every `init` and `up`). It checks for a Chromium-based browser and tells you
 how to install one. Then open a Claude session in the workspace folder it prints, open Crewdeck → Jobs and click
-**Set up with Claude**. `node src/cli.ts doctor` shows what is missing. Job-board sourcing is not built yet; pasted links,
-Prepare and Apply work.
+**Set up with Claude**. `node src/cli.ts doctor` shows what is missing. Job boards are fetched by the pinned, sandboxed
+providers every `jobs.fetch_every` (Node 25+); pasted links, Prepare and Apply work on any supported Node.
+
+Files you or Claude hand to `crewdeck jobs` (`--text-file`, `--fields-file`, …) must sit inside the jobs home or the
+jobs workspace (the skills use `~/.crewdeck/jobs/out/tmp`); the CLI refuses anything else, and never reads Crewdeck's
+token or `config.yaml` through a file flag. The user's "Add it anyway" is never a command-line flag: it travels only in
+the request the page sends.
 
 ### Config
 
@@ -210,6 +218,10 @@ Crewdeck runs on your machine for you alone. What it defends against, and what i
   forging the page's headers; the controls above stop web pages and a prompt-injected Claude session in the jobs
   workspace, not malware. Claude sessions outside the jobs workspace have no sandbox from Crewdeck. Claude drives the
   browser pane, so "never submit" and "open only the role's pages" are prompt-level rules there.
+- **Job-board providers** (third-party code from a pinned career-ops commit, every file hash-checked) run in a Node
+  permission-model child that can read only their folder and has no network, processes, workers or file writes (Node
+  25+); Crewdeck makes their web requests for them through the same SSRF guard as pasted links. Residual: a provider can
+  still return misleading postings (each one is validated before it is stored) or make requests to public sites.
 - `~/.crewdeck` is private (0700). Requests are capped (20 open per lane and kind, 30 a minute); a request whose
   session stops answering for 15 minutes goes back to the queue, and the page can cancel it.
 - The repo is scanned for personal data on every test run and in CI (`scripts/leak-scan.mjs`).

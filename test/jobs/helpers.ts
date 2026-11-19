@@ -35,9 +35,14 @@ export function jobs(home: string, args: string[], input = '') {
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
-/** Write a text file in the temp root (the user's words for --because-file / --text-file). */
+/**
+ * Write a text file for a --*-file flag (the user's words for --because-file / --text-file): in the temp setup's jobs
+ * home, `<jobs home>/out/tmp`, the one place `crewdeck jobs` reads files from (E5), like the skills' `<T>`.
+ */
 export function textFile(root: string, name: string, text: string) {
-  const p = join(root, name);
+  const dir = join(root, 'crewdeck', 'jobs', 'out', 'tmp');
+  mkdirSync(dir, { recursive: true });
+  const p = join(dir, name);
   writeFileSync(p, text);
   return p;
 }

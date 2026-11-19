@@ -33,7 +33,7 @@ test('install: every file verified, one rename into providers/<commit>/ with LIC
     const m = fixtureManifest();
     const r = await installProviders(c, { base: srv.base('raw.example.test'), net, manifest: m });
     assert.equal(r.ready, true, r.message);
-    assert.match(r.message, /8 from example\/providers@aaaaaaa \(MIT\), 10 files verified/);
+    assert.match(r.message, /11 from example\/providers@aaaaaaa \(MIT\), 13 files verified/);
     const dir = providersDir(c, m);
     assert.equal(readFileSync(join(dir, 'LICENSE'), 'utf8'), m.license.text);
     assert.equal(readFileSync(join(dir, 'providers', 'fixture-board.mjs'), 'utf8'), readFileSync(join(FIXTURE_TREE, 'providers', 'fixture-board.mjs'), 'utf8'));
@@ -42,7 +42,7 @@ test('install: every file verified, one rename into providers/<commit>/ with LIC
     assert.equal(statSync(dir).mode & 0o777, 0o500);
     assert.deepEqual(readdirSync(providersRoot(c)), [m.commit], 'no temp dir left');
     assert.equal(providersStatus(c, m).ready, true);
-    assert.deepEqual(verifyProviders(c, m), { ok: true, bad: [], checked: 10 });
+    assert.deepEqual(verifyProviders(c, m), { ok: true, bad: [], checked: 13 });
     // Installing again replaces the folder cleanly.
     assert.equal((await installProviders(c, { base: srv.base('raw.example.test'), net, manifest: m })).ready, true);
     assert.deepEqual(readdirSync(providersRoot(c)), [m.commit]);

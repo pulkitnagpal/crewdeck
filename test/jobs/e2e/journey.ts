@@ -21,7 +21,10 @@ import { Requests } from '../../../src/requests.ts';
 import { createShell } from '../../../src/server.ts';
 import { type Ctx, notesOf, openCtx } from '../../../src/jobs/ctx.ts';
 import { type Manifest, installProviders, providersStatus, verifyProviders } from '../../../src/jobs/providers.ts';
-import { runSources } from '../../../src/jobs/sources.ts';
+import { cleanJob, readSourcesState, runSources, sandboxSupport, sourcePlan, writeSourcesState } from '../../../src/jobs/sources.ts';
+import { normalizeJob } from '../../../src/jobs/provider-runner.ts';
+import { guardedFetch } from '../../../src/jobs/net/netguard.ts';
+import { addEvent, upsertRole } from '../../../src/jobs/db.ts';
 import { showRequest } from '../../../src/agent-client.ts';
 import { link } from '../../../src/jobs/link.ts';
 import { readForm } from '../../../src/jobs/read-form.ts';
@@ -39,7 +42,9 @@ export const REPO = resolve(import.meta.dirname, '..', '..', '..');
 const CLI = join(REPO, 'src', 'cli.ts');
 const PEOPLE = join(REPO, 'test', 'fixtures', 'jobs', 'people');
 const TREE = join(REPO, 'test', 'fixtures', 'jobs', 'e2e', 'providers');
-const HOSTS = ['raw.example.test', 'jobs.example.test', 'apply.example.test'];
+const HOSTS = ['raw.example.test', 'jobs.example.test', 'apply.example.test', 'feeds.example.test'];
+/** The provider sandbox needs Node 25+ (E1); on 22/24 sourcing refuses and the journey stands in for the provider. */
+const SANDBOX = sandboxSupport();
 const net = { testHosts: Object.fromEntries(HOSTS.map((h) => [h, '127.0.0.1'])) };
 
 // ---- the person's spec ----
@@ -393,7 +398,7 @@ export function runJourney(spec: Spec) {
       assert.match(ok(await jobs(...args), 'remember'), /^remembered m-\d+/);
     }
     // jobs/sources.md has no command: the setup skill edits it (P4). Companies by their careers page.
-    const watch = spec.feeds.map((f) => `  - { name: ${JSON.stringify(f.company)}, careers_url: "https://careers.example.test/${f.slug}", feed: "http://127.0.0.1:${site.port}/feeds/${f.slug}.json" }`).join('\n');
+    const watch = spec.feeds.map((f) => `  - { name: ${JSON.stringify(f.company)}, careers_url: "https://careers.example.test/${f.slug}", feed: "http://feeds.example.test:${site.port}/feeds/${f.slug}.json" }`).join('\n');
     writeFileSync(join(VAULT, 'jobs', 'sources.md'), `---\ntags: jobs\nboards: []\nwatchlist:\n${watch}\n---\n# Job sources\n`);
 
     const check = await jobs('check');
@@ -413,6 +418,28 @@ export function runJourney(spec: Spec) {
   /** The tracker for in-process steps (the same database the CLI and the server use). */
   function openCtxOnce() { ctx ??= openCtx(loadConfig()); return ctx; }
 
+  /**
+   * Node < 25 only: what the careers-page provider does (read each watchlist feed), in this process through netguard,
+   * then the same checks the parent applies to the sandbox's jobs. Node 25+ runs the real sandboxed child instead.
+   */
+  async function standInProvider(c: Ctx) {
+    const plan = sourcePlan(notesOf(c), manifest);
+    const res = { ran: true as const, fetched: 0, new: 0, refused: 0, skipped: plan.skipped, entries: [] as any[] };
+    for (const e of plan.entries) {
+      const r = { name: e.name, provider: 'careers-page', ok: true, jobs: 0, new: 0, refused: 0 };
+      const data = JSON.parse((await guardedFetch(String(e.entry.feed), net)).body);
+      for (const j of data.jobs) {
+        const cj = cleanJob(normalizeJob({ ...j, postedAt: Date.parse(j.posted) }, 'careers-page'), { features: c.features, at: c.clock(), fallbackCompany: e.name });
+        if (!cj.ok) { r.refused++; res.refused++; continue; }
+        const { id, isNew } = upsertRole(c.db, { ...cj.role, source: 'ats' });
+        r.jobs++; res.fetched++;
+        if (isNew) { r.new++; res.new++; addEvent(c.db, id, 'added', `from ${e.name} (careers-page)`, c.clock().toISOString()); }
+      }
+      res.entries.push(r);
+    }
+    return res;
+  }
+
   // ---- 2. The server, before any Claude session (§2.9) ----
   step('the Jobs page with no Claude session on the lane: the banner, requests wait', async () => {
     const c = loadConfig();
@@ -425,7 +452,17 @@ export function runJourney(spec: Spec) {
         // Refresh sources runs the real runSources (sandboxed child, checks, prefilter) with the fixture manifest.
         sources: {
           ready: () => providersStatus(c, manifest).ready, firstDelayMs: 3_600_000,
-          run: async () => { const st = await runSources(openCtxOnce(), { manifest, sinceDays: 14, net, trigger: 'refresh', entryTimeoutMs: 20_000 }); return { code: st.ok ? 0 : 1, error: st.error }; },
+          run: async () => {
+            const ctx = openCtxOnce();
+            const stood = SANDBOX.ok ? null : await standInProvider(ctx);
+            const st = await runSources(ctx, { manifest, sinceDays: 14, net, trigger: 'refresh', entryTimeoutMs: 20_000 });
+            if (stood) {
+              // This Node refused to run the sandbox, and said so; the stand-in's roles went through the same rules.
+              assert.match((st.providers as any).why, /need Node 25 or newer/);
+              writeSourcesState(ctx.home, { ...readSourcesState(ctx.home)!, providers: stood, new: st.new + stood.new });
+            }
+            return { code: st.ok ? 0 : 1, error: st.error };
+          },
         },
       },
     });

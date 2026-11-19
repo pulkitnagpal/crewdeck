@@ -157,3 +157,28 @@ test('CLI: link reads the URL from a file and refuses a local address and X', ()
   const usage = jobs(w.home, ['link', 'https://jobs.example.com/1']);
   assert.match(usage.err, /--url-file/);
 });
+
+test('E6: 2 MB adversarial pages (unclosed scripts, styles, meta and title tags, bare <, LinkedIn markers) parse in under a second each', async () => {
+  const { plainText } = await import('../../src/jobs/text.ts');
+  const { parseDetail, parseSearch } = await import('../../src/jobs/linkedin.ts');
+  const N = 2_000_000;
+  const fill = (s: string) => s.repeat(Math.ceil(N / s.length)).slice(0, N);
+  const evil = {
+    script: fill('<script type="application/ld+json">'), scripts: fill('<script '), style: fill('<style>'), meta: fill('<meta a=b '),
+    metaAttrs: `<meta ${fill('a="b ')}`, title: fill('<title>'), lt: fill('<'), amp: fill('&a'), tags: fill('<p x'),
+    topcard: fill('topcard__title>'), markup: fill('show-more-less-html__markup><'), cards: fill('<li>urn:li:jobPosting:1 base-search-card__title>'),
+  };
+  for (const [name, page] of Object.entries(evil)) {
+    for (const [fn, f] of [['readPostingPage', (h: string) => readPostingPage(h)], ['plainText', plainText], ['parseDetail', (h: string) => parseDetail('1', h)], ['parseSearch', parseSearch]] as const) {
+      const t = performance.now();
+      (f as (h: string) => unknown)(page);
+      const ms = performance.now() - t;
+      assert.ok(ms < 1000, `${fn} on ${name}: ${Math.round(ms)} ms`);
+    }
+  }
+  // Still the same answers on ordinary pages.
+  assert.equal(plainText('<p>a<script>x<y</script>b</p><style>s</style>c &amp; d<>e'), 'a b c & d<>e');
+  assert.equal(plainText('<b>never closed <script>gone'), 'never closed');
+  assert.equal(readPostingPage('<html><head><title>Data Analyst at Example</title><meta property="og:title" content="Analyst &amp; Lead"></head></html>').title, 'Analyst & Lead');
+  assert.equal(readPostingPage('<title>Plain title</title>').title, 'Plain title');
+});

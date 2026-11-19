@@ -165,3 +165,53 @@ test('features: printed for anyone, changed only from a real terminal (an agent\
   assert.equal(readFileSync(join(s.home, 'config.yaml'), 'utf8'), config);
   assert.match(jobs(s.home, ['features', 'auto_submit', 'on']).err, /unknown feature/);
 });
+
+test('E5: file flags read only inside Jobs\' home or workspace, never the token or config (links resolved)', async () => {
+  const { mkdirSync, mkdtempSync, symlinkSync } = await import('node:fs');
+  const { spawnSync } = await import('node:child_process');
+  const { tmpdir } = await import('node:os');
+  const { REPO } = await import('./helpers.ts');
+  const s = tempSetup('berlin-analyst');
+  const quote = textFile(s.root, 'quote.txt', 'I said so');
+  const outside = join(mkdtempSync(join(tmpdir(), 'cd-outside-')), 'notes.txt');
+  writeFileSync(outside, 'private notes');
+  const r1 = jobs(s.home, ['remember', '--kind', 'fact', '--text-file', outside, '--quote-file', quote]);
+  assert.equal(r1.code, 1);
+  assert.match(r1.err, /--text-file: files must be inside .*jobs/);
+  assert.match(jobs(s.home, ['me', 'set', 'identity.first_name', '--value-file', outside]).err, /files must be inside/);
+  assert.match(jobs(s.home, ['pref', 'set', 'roles.titles', '[x]', '--because-file', join(s.vault, 'me', 'profile.md')]).err, /files must be inside/, 'not even the vault');
+  // A link inside the jobs home that points out is followed, then refused.
+  const link = join(s.jobsHome, 'out', 'tmp', 'sneaky.txt');
+  symlinkSync(outside, link);
+  assert.match(jobs(s.home, ['remember', '--kind', 'fact', '--text-file', link, '--quote-file', quote]).err, /files must be inside/);
+  // Even with jobs.home set to Crewdeck's own home, the token and config are refused, also through a link.
+  writeFileSync(join(s.home, 'token'), 'f'.repeat(64), { mode: 0o600 });
+  writeFileSync(join(s.home, 'config.yaml'), `vault: ${s.vault}\njobs:\n  home: ${s.home}\n`, { mode: 0o600 });
+  mkdirSync(join(s.home, 'out', 'tmp'), { recursive: true });
+  symlinkSync(join(s.home, 'token'), join(s.home, 'out', 'tmp', 't.txt'));
+  for (const f of [join(s.home, 'token'), join(s.home, 'config.yaml'), join(s.home, 'out', 'tmp', 't.txt')]) {
+    const r = jobs(s.home, ['remember', '--kind', 'fact', '--text-file', f, '--quote-file', quote]);
+    assert.equal(r.code, 1, f);
+    assert.match(r.err, /token and config are never read/, f);
+  }
+  // draft --brief writes only inside Jobs' folders too.
+  assert.match(jobs(s.home, ['draft', 'aaaaaaaaaaaa', '--brief', join(tmpdir(), 'cd-brief.json')]).err, /--brief: files must be inside/);
+  // crewdeck progress / request done: in the jobs workspace the same rule; anywhere, never Crewdeck's own files.
+  const cli = (cwd: string, args: string[]) => spawnSync(process.execPath, [join(REPO, 'src', 'cli.ts'), ...args], { cwd, env: { ...process.env, CREWDECK_HOME: s.home }, encoding: 'utf8' });
+  assert.match(cli(s.home, ['progress', '1', '--text-file', outside]).stderr, /--text-file: files must be inside/);
+  assert.match(cli(tmpdir(), ['progress', '1', '--text-file', join(s.home, 'token')]).stderr, /Crewdeck's own files are never read|token and config/);
+  assert.match(cli(tmpdir(), ['request', 'done', '1', '--result-file', join(s.home, 'config.yaml')]).stderr, /Crewdeck's own files are never read|token and config/);
+});
+
+test('E5: the checker itself: roots, an explicit extra root for tests, files to write', async () => {
+  const { checkedPath, readChecked } = await import('../../src/files.ts');
+  const { mkdtempSync, realpathSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'cd-files-'))), other = realpathSync(mkdtempSync(join(tmpdir(), 'cd-files-')));
+  writeFileSync(join(other, 'a.txt'), 'hello');
+  assert.throws(() => readChecked(join(other, 'a.txt'), '--text-file', { roots: [root] }), /files must be inside/);
+  assert.equal(readChecked(join(other, 'a.txt'), '--text-file', { roots: [root], extraRoots: [other] }), 'hello');
+  assert.equal(checkedPath(join(root, 'new.json'), '--brief', { roots: [root] }, 'write'), join(root, 'new.json'));
+  assert.throws(() => checkedPath(join(root, 'missing', 'new.json'), '--brief', { roots: [root] }, 'write'), /does not exist/);
+  assert.throws(() => readChecked(root, '--text-file', { roots: [root] }), /not a regular file/);
+});

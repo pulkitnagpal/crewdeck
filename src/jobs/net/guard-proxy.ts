@@ -6,7 +6,7 @@ import http from 'node:http';
 import net from 'node:net';
 import type { Duplex } from 'node:stream';
 import { type Address, type NetOptions, checkHost } from './netguard.ts';
-import { isLinkedinHost, isXHost } from '../fields.ts';
+import { cleanHost, isLinkedinHost, isXHost } from '../fields.ts';
 
 export type Blocked = { host: string; reason: string };
 export type GuardProxy = { port: number; url: string; blocked: Blocked[]; allowed: number; close(): Promise<void> };
@@ -35,7 +35,7 @@ export async function startGuardProxy(o: ProxyOptions = {}): Promise<GuardProxy>
   const track = (s: Duplex) => { sockets.add(s); s.on('close', () => sockets.delete(s)); return s; };
 
   async function admit(host: string): Promise<Address[]> {
-    const h = host.replace(/^\[|\]$/g, '').toLowerCase();
+    const h = cleanHost(host);
     try {
       if (o.denyAll) throw new Error('the network is off for this browser');
       if (isXHost(h)) throw new Error('X is never used');

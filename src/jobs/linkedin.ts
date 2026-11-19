@@ -4,10 +4,11 @@
 // "slow down" and sign-in wall). Applying happens in the user's own signed-in browser pane, never here.
 import { type Ctx, notesOf, nowIso } from './ctx.ts';
 import { addEvent, upsertRole } from './db.ts';
+import { cleanHost } from './fields.ts';
 import { type FetchOptions, type NetOptions, guardedFetch } from './net/netguard.ts';
 import type { JobNotes } from './notes.ts';
 import { compileRules, prefilter } from './rules.ts';
-import { plainText } from './text.ts';
+import { after, plainText } from './text.ts';
 
 export const LINKEDIN_BASE = 'https://www.linkedin.com/jobs-guest/jobs/api';
 export const PACE_MS = 2500;
@@ -21,7 +22,7 @@ export type Detail = { id: string; title: string; company: string; location: str
 export function linkedinJobId(input: string): string | null {
   let u: URL;
   try { u = new URL(String(input ?? '').trim()); } catch { return null; }
-  if (!/^https?:$/.test(u.protocol) || !/(^|\.)linkedin\.com$/i.test(u.hostname)) return null;
+  if (!/^https?:$/.test(u.protocol) || !/(^|\.)linkedin\.com$/.test(cleanHost(u.hostname))) return null;
   const cur = u.searchParams.get('currentJobId');
   if (cur && /^\d{6,}$/.test(cur)) return cur;
   return /^\/(?:comm\/)?jobs\/view\/(?:[^/]*-)?(\d{6,})\/?$/.exec(u.pathname)?.[1] ?? null;
@@ -33,13 +34,21 @@ const text = (h: string) => plainText(h ?? '');
 
 export function parseSearch(html: string): Card[] {
   const out: Card[] = [];
-  for (const li of String(html ?? '').split(/<li\b[^>]*>/).slice(1)) {
+  // Linear scans only (E6): each card is the text between two `<li` tags, fields are found with indexOf.
+  const page = String(html ?? '');
+  const starts: number[] = [];
+  for (const m of page.matchAll(/<li\b/g)) starts.push(m.index!);
+  for (let k = 0; k < starts.length; k++) {
+    const gt = page.indexOf('>', starts[k]);
+    if (gt < 0) break;
+    const li = page.slice(gt + 1, k + 1 < starts.length ? starts[k + 1] : page.length);
     const id = /urn:li:jobPosting:(\d+)/.exec(li)?.[1];
-    const title = /base-search-card__title[^>]*>([\s\S]*?)<\/h3>/.exec(li)?.[1];
+    const title = after(li, 'base-search-card__title', 'h3');
     if (!id || !title) continue;
-    const company = /base-search-card__subtitle[^>]*>([\s\S]*?)<\/h4>/.exec(li)?.[1] ?? '';
-    const location = /job-search-card__location[^>]*>([\s\S]*?)<\/span>/.exec(li)?.[1] ?? '';
-    const posted = /job-search-card__listdate[^>]*datetime="(\d{4}-\d{2}-\d{2})"/.exec(li)?.[1];
+    const company = after(li, 'base-search-card__subtitle', 'h4') ?? '';
+    const location = after(li, 'job-search-card__location', 'span') ?? '';
+    const d = li.indexOf('job-search-card__listdate');
+    const posted = d < 0 ? undefined : /^[^>]{0,300}?datetime="(\d{4}-\d{2}-\d{2})"/.exec(li.slice(d, d + 400))?.[1];
     out.push({ id, title: text(title), company: text(company), location: text(location), posted_at: posted ? `${posted}T00:00:00.000Z` : undefined });
   }
   return out;
@@ -49,14 +58,15 @@ export function parseSearch(html: string): Card[] {
 export const isClosed = (html: string) => /no longer accepting applications/i.test(html);
 
 export function parseDetail(id: string, html: string): Detail | null {
-  const title = /topcard__title[^>]*>([\s\S]*?)<\/h[12]>/.exec(html)?.[1];
+  html = String(html ?? '');
+  const title = after(html, 'topcard__title', 'h[12]');
   if (!title) return null;
-  const company = /topcard__org-name-link[^>]*>([\s\S]*?)<\/a>/.exec(html)?.[1] ?? /topcard__flavor"[^>]*>([\s\S]*?)<\/span>/.exec(html)?.[1] ?? '';
-  const location = /topcard__flavor topcard__flavor--bullet[^>]*>([\s\S]*?)<\/span>/.exec(html)?.[1] ?? '';
-  const desc = /show-more-less-html__markup[^>]*>([\s\S]*?)<\/div>/.exec(html)?.[1] ?? '';
+  const company = after(html, 'topcard__org-name-link', 'a') ?? after(html, 'topcard__flavor"', 'span') ?? '';
+  const location = after(html, 'topcard__flavor topcard__flavor--bullet', 'span') ?? '';
+  const desc = after(html, 'show-more-less-html__markup', 'div') ?? '';
   // The apply button carries its kind in the tracking name; off-site links sit behind the sign-in modal.
   const apply_kind: ApplyKind = /apply-link-onsite/.test(html) ? 'easy' : /apply-link-offsite/.test(html) ? 'external' : 'unknown';
-  const description = desc.replace(/<br\s*\/?>|<\/(li|p|ul|ol|h\d)>/gi, '\n').replace(/<[^>]+>/g, ' ').split('\n').map((l) => text(l)).filter(Boolean).join('\n');
+  const description = desc.replace(/<br\s*\/?>|<\/(li|p|ul|ol|h\d)>/gi, '\n').replace(/<[^<>]+>/g, ' ').split('\n').map((l) => text(l)).filter(Boolean).join('\n');
   return { id, title: text(title), company: text(company), location: text(location), description, apply_kind, closed: isClosed(html) };
 }
 

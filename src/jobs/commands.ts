@@ -4,9 +4,11 @@
 import { writeFileSync } from 'node:fs';
 import { loadConfig } from '../config.ts';
 import { type Ctx, notesOf, openCtx, todayOf } from './ctx.ts';
-import { ROLE_ID } from './db.ts';
+import { ROLE_ID, getRole } from './db.ts';
+import { checkRoleUrl } from './fields.ts';
 import { isDay } from './time.ts';
-import { flag, positional, textFrom } from './cli.ts';
+import { flag, jobsFileRoots, positional, textFrom } from './cli.ts';
+import { checkedPath } from '../files.ts';
 import { cleanQuestions, storeFormFields } from './kb/questions.ts';
 import { answerFirstTime, changeAnswer, currentAnswers, knowledge, resolveField, undoLast } from './kb/ops.ts';
 import { learnField } from './kb/learn.ts';
@@ -55,6 +57,14 @@ async function requestPayload(args: string[], kind: string): Promise<{ id: numbe
   if (r.kind !== kind) throw new Error(`request ${r.id} is ${r.kind ? `kind ${r.kind}` : 'not a Jobs request'}: this command works ${kind} requests`);
   if (r.status !== 'new' && r.status !== 'picked') throw new Error(`request ${r.id} is already ${r.status}`);
   return { id: r.id, payload: r.payload ?? {}, ref: r.ref };
+}
+
+/**
+ * The user's "Add it anyway" is never a command-line flag (C2): an agent could pass it. It arrives only in the payload
+ * of the link request the page sends when the user clicks it.
+ */
+function noForceFlag(args: string[]) {
+  if (args.includes('--force')) throw new Error('--force is not taken from the command line: the user\'s "Add it anyway" on the Jobs page sends a link request that carries it (crewdeck jobs link --request <id>, or pick --role <id> --request <id>)');
 }
 
 /** Open the user's tracker for one command and close it after. */
@@ -174,12 +184,23 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     throw new Error(usage);
   },
 
-  pick: (args) => withCtx((ctx) => {
+  pick: (args) => withCtx(async (ctx) => {
+    noForceFlag(args);
     const day = flag(args, 'day') ?? todayOf(ctx);
     if (!isDay(day)) throw new Error('--day must be YYYY-MM-DD');
     const role = flag(args, 'role');
     if (role) {
-      const warnings = pickPasted(ctx, roleArg(role, 'usage: crewdeck jobs pick --role <id> [--force]'), day, args.includes('--force'));
+      const id = roleArg(role, 'usage: crewdeck jobs pick --role <id> [--request <link request id>]');
+      let force = false;
+      if (args.includes('--request')) {
+        // A role read from the page by hand (the link's `needs` path): the override is the request's, and only for the
+        // posting that request carries.
+        const r = await requestPayload(args, 'link');
+        const want = checkRoleUrl(String(r.payload.url ?? ''), ctx.features);
+        if (getRole(ctx.db, id).url !== want) throw new Error(`role ${id} is not the posting of request ${r.id} (${want})`);
+        force = r.payload.force === true;
+      }
+      const warnings = pickPasted(ctx, id, day, force);
       if (warnings.length) { json({ picked: false, warnings }); process.exitCode = 2; return; }
       return json({ picked: true, role, day });
     }
@@ -252,14 +273,15 @@ const cmds: Record<string, (args: string[]) => unknown> = {
   }),
 
   link: (args) => withCtx(async (ctx) => {
-    const usage = 'usage: crewdeck jobs link --request <id> | --url-file <f with the posting\'s address> [--force]';
+    noForceFlag(args);
+    const usage = 'usage: crewdeck jobs link --request <id> | --url-file <f with the posting\'s address>';
     const { link } = await import('./link.ts');
     let input: { url: string; force: boolean };
     if (flag(args, 'request')) {
       // The link and the user's "add anyway" come from the page's request; --force is not taken from the command line here.
       const { payload } = await requestPayload(args, 'link');
       input = { url: String(payload.url ?? ''), force: payload.force === true };
-    } else if (flag(args, 'url-file')) input = { url: text(flag(args, 'url-file'), '--url-file').trim(), force: args.includes('--force') };
+    } else if (flag(args, 'url-file')) input = { url: text(flag(args, 'url-file'), '--url-file').trim(), force: false };
     else throw new Error(usage);
     const r = await link(ctx, input);
     json(r);
@@ -293,8 +315,9 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     const role = roleArg(positional(args)[0], usage);
     const brief = flag(args, 'brief'), answers = flag(args, 'answers');
     if (brief) {
+      const out = checkedPath(brief, '--brief', jobsFileRoots(), 'write');
       const b = prepareDraft(ctx, role);
-      writeFileSync(brief, JSON.stringify(b, null, 1), { mode: 0o600 });
+      writeFileSync(out, JSON.stringify(b, null, 1), { mode: 0o600 });
       say(`${b.res.answered} answered from your profile and memory; ${b.res.first_time} need you; ${b.refs.length ? `brief written: ${b.refs.length} for Claude (${b.refs.join(', ')})` : 'nothing for Claude'}`);
     } else if (answers) json(applyDraft(ctx, role, jsonFile(answers, '--answers')));
     else throw new Error(usage);
@@ -388,7 +411,7 @@ tracker and pipeline (text from postings and the user's words only through files
   candidates [--limit N]                  unjudged roles, best first (JSON)
   candidates --budget N [--batch 10] [--need N] [--start]   the next batch for a Find within a budget (≤ 40)
   judge --results-file f                  store verdicts [{ role, eligible: yes|no|unclear, score, evidence, reason? }]
-  pick [--n N] [--day D] | pick --role <id> [--force]
+  pick [--n N] [--day D] | pick --role <id> [--request <link request id>]   ("Add it anyway" only from the request)
   add-role --role-file f | role <id> --apply-url-file f | status <role> <status> [--reason-file f]
   event add <role> --kind k --detail-file f | question add <role> --text-file f
   applied <role> | not-interested <role> --reason-file f [--title-words-file f]
@@ -398,7 +421,7 @@ page requests (the payload comes from Crewdeck by id, never through the shell):
   answer --request <id> --text-file f --claims-file f      an "Ask Claude" rewrite (citation check)
   fill-plan --request <id> --fields-file f [--page-url-file f]   the plan for an apply request's live form
 the web (through the SSRF guard; addresses only from files):
-  link --url-file f [--force]             read a pasted posting, add it, pick it for today
+  link --url-file f                       read a pasted posting, add it, pick it for today
   linkedin search [--days N]              LinkedIn guest search (only when you switched it on)
   form <role> [--url-file f]              read the application form headlessly and store its questions
   resume <role> --variant-file f          render the tailored resume PDF from fact ids

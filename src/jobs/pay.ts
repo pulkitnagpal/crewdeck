@@ -1,6 +1,7 @@
 // Pay in postings: any common currency, units (k, M, lakh, crore), ranges and periods, converted with the user's own
 // fx table to their currency and period (jobs/search.md → pay). A posting is dropped only when every reading of its
-// pay is below the floor; anything unclear is kept for the judge.
+// pay is below the floor; anything unclear is kept for the judge. Pay read from the description (not the posting's pay
+// field) is shown and ranked but never drops a posting on its own: it may be a differential, a bonus or another role's.
 import { plain } from './places.ts';
 
 export type Period = 'year' | 'month' | 'week' | 'day' | 'hour';
@@ -12,7 +13,7 @@ export type PaySettings = {
 /** Pay as written: amounts in the posting's currency (one or more readings when the symbol is ambiguous). */
 export type ParsedPay = { currencies: string[]; min: number | null; max: number | null; period: Period | null; text: string };
 export type PayStatus = 'ok' | 'below_floor' | 'unlisted' | 'unclear' | 'no_rate';
-export type PayResult = { status: PayStatus; reason: string; min?: number | null; max?: number | null; currency?: string; text?: string };
+export type PayResult = { status: PayStatus; reason: string; min?: number | null; max?: number | null; currency?: string; text?: string; /** where the text came from */ from?: 'pay_text' | 'description' };
 
 /** Hours in each period (40 h weeks, 52 weeks, 260 working days). */
 export const HOURS: Record<Period, number> = { year: 2080, month: 2080 / 12, week: 40, day: 8, hour: 1 };
@@ -123,8 +124,9 @@ export function parsePay(text: string | null | undefined, userCurrency?: string)
   return null;
 }
 
-// Money near these words isn't pay: bonuses, budgets, funding, company size.
-const NOT_PAY = /\b(bonus|sign[- ]?on|signing|relocation|stipend|allowance|budget|reimburs|equity|stock|referral|funding|funded|raised|revenue|arr|valuation|series [a-e]|grant|per diem allowance|tuition)\b/i;
+// Money near these words isn't pay: bonuses, budgets, funding, company size, and the extras on top of a base rate
+// (a "$4/hr shift differential" or "weekend premium" is not what the job pays).
+const NOT_PAY = /\b(bonus|sign[- ]?on|signing|relocation|stipend|allowance|budget|reimburs|equity|stock|referral|funding|funded|raised|revenue|arr|valuation|series [a-e]|grant|per diem allowance|tuition|differentials?|diffs?|premiums?|uplift)\b/i;
 
 /** The first pay-looking text in a job description, skipping bonuses, budgets and funding. */
 export function findPayText(description: string | null | undefined): string | undefined {
@@ -159,35 +161,36 @@ const money = (n: number, s: PaySettings) => {
  * rule: top_of_range compares the top, bottom_of_range the bottom. A missing end ("up to", "from") never drops.
  */
 export function payCheck(payText: string | null | undefined, description: string | null | undefined, s: PaySettings): PayResult {
+  const from = payText ? 'pay_text' : 'description';
   const text = payText || findPayText(description);
   const p = parsePay(text, s.currency);
   const unit = `${s.currency}/${s.period}`;
   if (!p) return { status: 'unlisted', reason: 'no pay listed' };
-  if (!p.period) {
-    // No period: a year only when the amount is salary-sized; small numbers may be hourly or monthly.
-    if ((p.max ?? p.min ?? 0) >= 10_000) p.period = 'year';
-    else return { status: 'unclear', reason: `pay "${p.text}" has no period`, text: p.text };
-  }
-  const readings = p.currencies.map((c) => {
-    const conv = (n: number | null) => (n == null ? null : convertAmount(n, { currency: c, period: p.period! }, { currency: s.currency, period: s.period }, s.fx));
+  // No period: small numbers may be hourly, daily or weekly (unclear); a salary-sized one is read both as a year and
+  // as a month, and only a drop under both readings counts.
+  const periods: Period[] = p.period ? [p.period] : (p.max ?? p.min ?? 0) >= 10_000 ? ['year', 'month'] : [];
+  if (!periods.length) return { status: 'unclear', reason: `pay "${p.text}" has no period`, text: p.text, from };
+  const readings = p.currencies.flatMap((c) => periods.map((period) => {
+    const conv = (n: number | null) => (n == null ? null : convertAmount(n, { currency: c, period }, { currency: s.currency, period: s.period }, s.fx));
     return { c, min: conv(p.min), max: conv(p.max), ok: c === s.currency || !!s.fx[c] };
-  });
+  }));
   if (readings.some((r) => !r.ok)) {
     const missing = readings.filter((r) => !r.ok).map((r) => r.c).join(', ');
-    return { status: 'no_rate', reason: `no fx rate for ${missing} in jobs/search.md pay.fx`, text: p.text };
+    return { status: 'no_rate', reason: `no fx rate for ${missing} in jobs/search.md pay.fx`, text: p.text, from };
   }
-  // The most favourable reading decides.
+  // The most favourable reading decides what is shown.
   const best = readings.reduce((a, b) => ((b.max ?? b.min ?? 0) > (a.max ?? a.min ?? 0) ? b : a));
-  const base = { min: best.min, max: best.max, currency: s.currency, text: p.text };
+  const base = { min: best.min, max: best.max, currency: s.currency, text: p.text, from };
   if (s.floor <= 0) return { status: 'ok', reason: 'no floor', ...base };
-  const below = readings.every((r) => {
+  const isBelow = (r: (typeof readings)[number]) => {
     if (s.rule === 'top_of_range') return r.max != null && r.max < s.floor;
     return (r.min ?? r.max) != null && (r.min != null ? r.min < s.floor : r.max! < s.floor);
-  });
+  };
   const shown = s.rule === 'top_of_range' ? best.max : best.min ?? best.max;
-  if (below) return { status: 'below_floor', reason: `pay below your floor: ${money(shown!, s)} ${unit} (${s.rule === 'top_of_range' ? 'top' : 'bottom'} of "${p.text}") < ${money(s.floor, s)} ${unit}`, ...base };
+  if (readings.every(isBelow)) return { status: 'below_floor', reason: `pay below your floor: ${money(shown!, s)} ${unit} (${s.rule === 'top_of_range' ? 'top' : 'bottom'} of "${p.text}"${p.period ? '' : ', as a year or a month'}) < ${money(s.floor, s)} ${unit}`, ...base };
+  if (!p.period && readings.some(isBelow)) return { status: 'unclear', reason: `pay "${p.text}" has no period: below your floor as a year, not as a month`, ...base };
   return { status: 'ok', reason: `pay ${p.text}`, ...base };
 }
 
-/** Whether a pay result drops the posting under the user's settings. */
-export const payDrops = (r: PayResult, s: PaySettings) => r.status === 'below_floor' || (r.status === 'unlisted' && s.unlisted === 'drop');
+/** Whether a pay result drops the posting: only pay from the posting's pay field, or no pay at all when unlisted drops. */
+export const payDrops = (r: PayResult, s: PaySettings) => (r.status === 'below_floor' && r.from !== 'description') || (r.status === 'unlisted' && s.unlisted === 'drop');

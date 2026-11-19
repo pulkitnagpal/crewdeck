@@ -48,7 +48,8 @@ check('berlin-analyst', { title: 'Data Analyst', company: 'Acme', location: 'Ber
   ['"must reside in the United States"', { location: 'Hybrid', description: 'Candidates must reside in the United States.' }, 'other_only'],
   ['"US only"', { location: 'Hybrid', description: 'This position is US only.' }, 'other_only'],
   ['"excluding Germany"', { location: 'Hybrid', description: 'We hire across Europe, excluding Germany.' }, 'place_excluded'],
-  ['gambling industry', { company: 'Example Bet', description: 'A leading sports betting platform.' }, 'industry'],
+  ['gambling industry (company name)', { company: 'Example Betting GmbH', description: 'A leading platform.' }, 'industry'],
+  ['gambling industry (title)', { title: 'Data Analyst - Sports Betting' }, 'industry'],
   ['frequent travel', { description: 'Frequent travel to client sites (50%).' }, 'travel'],
   ['pay below the floor', { pay_text: '€40.000 – €48.000 pro Jahr' }, 'pay'],
   ['CHF pay below the floor', { pay_text: 'CHF 50,000 per year' }, 'pay'],
@@ -94,7 +95,7 @@ check('example', { title: 'Senior Product Designer', company: 'Acme', location: 
   ['LATAM only', { description: 'Open to candidates in LATAM only.' }, 'other_only'],
   ['all acceptable places excluded', { description: 'Not open to candidates in the EU or UK.' }, 'place_excluded'],
   ['company rule from memory', { company: 'Example Travel Co' }, 'company_rule'],
-  ['crypto words', { description: 'We build web3 wallets.' }, 'industry'],
+  ['crypto words in the title', { title: 'Senior Product Designer (Web3)' }, 'industry'],
   ['occasional travel', { description: 'Some travel to client offices each quarter.' }, 'travel'],
   ['USD monthly pay below', { pay_text: '$3,000 - $4,000 per month' }, 'pay'],
   ['up to, below the floor', { pay_text: 'up to €4,000 per month' }, 'pay'],
@@ -147,4 +148,21 @@ test('judge brief: the person\'s settings, and nothing from anyone else', () => 
   // No country is hard-coded: a brief built from empty notes names no place at all.
   const empty = judgeBrief(loadJobNotes(PEOPLE.template, null));
   for (const b of ['India', 'Germany', 'United States', 'US', 'EU', 'INR', 'EUR', 'USD']) assert.ok(!new RegExp(`\\b${b}\\b`).test(empty), `template brief mentions ${b}`);
+});
+
+test('C7: industry words in the description go to the judge, never a hard drop (boilerplate, negations, client lists)', () => {
+  const c = rulesOf('berlin-analyst');
+  for (const description of ['We do not work with gambling or betting companies.', 'Our clients range from banks to casinos and airlines.', 'No crypto experience needed.']) {
+    const v = prefilter({ title: 'Data Analyst', company: 'Acme', location: 'Berlin', description }, c);
+    assert.equal(v.keep, true, description);
+  }
+  assert.match(judgeBrief(notesOf('berlin-analyst')), /industries .*gambling/, 'the judge still knows');
+});
+
+test('C6: only a percentage next to "travel" (about 25 characters) counts as the travel share', () => {
+  const c = rulesOf('example');
+  assert.equal(travelLevel('Travel to the Lisbon office is reimbursed, and we pay 100% of your health insurance.', c), 'none');
+  assert.equal(travelLevel('We cover 100% of your premiums, and the whole team travels to one offsite a year', c), 'none');
+  assert.equal(travelLevel('Up to 60% travel to client sites.', c), 'frequent');
+  assert.equal(travelLevel('Travel: up to 30% of the time, mostly within Portugal.', c), 'occasional');
 });

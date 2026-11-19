@@ -26,7 +26,8 @@ It opens in SilverBullet (Crewdeck → Notes) and in Obsidian.
 - **Query**: read `wiki/index.md`, open the relevant pages, answer with links to them. If the answer is worth keeping, file it as a new page.
 - **Lint** (weekly, or when asked): contradictions, stale claims, orphan pages, missing links, concepts that deserve a page. Fix what is safe; list the rest in the log.
 - **Remember** (the human says "remember…"): the `crewdeck-memory` skill of the `crewdeck` plugin does this in any session.
-  Job-search things go through commands, with their words in a file written with the Write tool (never a heredoc), never typed into the command line:
+  Job-search things go through commands, with their words in a file written with the Write tool (never a heredoc), never typed into the command line;
+  the file goes in `<jobs home>/out/tmp` (by default `~/.crewdeck/jobs/out/tmp`), the only place `crewdeck jobs` reads files from:
   - a job preference ("I'm OK with hybrid now") → `crewdeck jobs pref set <field> <value> --because-file <f>`;
   - an answer, a fact about them, a style rule, a "not interested" reason or a company rule →
     `crewdeck jobs remember --kind answer|fact|preference|style|avoid|company_rule --text-file <f> --quote-file <f>`;

@@ -118,3 +118,9 @@ test('proxy environment variables are ignored', async (t) => {
     assert.deepEqual(proxy.hits, []);
   } finally { for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY']) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } }
 });
+
+test('E8: NAT64 local-use, IPv4-translated, benchmarking, IETF protocol and documentation ranges are blocked too', () => {
+  for (const ip of ['64:ff9b:1::7f00:1', '64:ff9b:1:ffff::1', '::ffff:0:7f00:1', '::ffff:0:a00:1', '198.18.0.1', '198.19.255.254', '192.0.0.1', '192.0.0.170',
+    '192.0.2.1', '198.51.100.7', '203.0.113.9', '2001:db8::1']) assert.equal(isBlockedAddress(ip), true, `${ip} should be blocked`);
+  for (const ip of ['198.17.255.255', '198.20.0.1', '192.0.1.1', '64:ff9b:2::1']) assert.equal(isBlockedAddress(ip), false, `${ip} should be allowed`);
+});

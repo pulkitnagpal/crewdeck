@@ -93,8 +93,8 @@ export function checkLink(raw: unknown, features: Pick<JobsFeatures, 'linkedin_l
   let u: URL;
   try { u = new URL(t); } catch { throw new HttpError(400, 'Paste a web address (https://…)'); }
   if (!/^https?:$/.test(u.protocol)) throw new HttpError(400, 'Paste a web address (https://…)');
-  if (isXHost(u.hostname.toLowerCase())) throw new HttpError(400, 'X links are never used: paste the company\'s own posting');
-  if (isLinkedinHost(u.hostname.toLowerCase())) {
+  if (isXHost(u.hostname)) throw new HttpError(400, 'X links are never used: paste the company\'s own posting');
+  if (isLinkedinHost(u.hostname)) {
     const id = linkedinJobId(t);
     if (!id) throw new HttpError(400, 'That LinkedIn page is not a job posting: paste the job\'s own link (linkedin.com/jobs/view/…)');
     if (!features.linkedin_links) throw new HttpError(400, 'Pasted LinkedIn links are off: switch them on in Jobs → Settings, or paste the company\'s own posting');

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { type Config, CONFIG_PATH, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, ensureHome, featureValue, loadConfig, readToken, setFeature } from '../config.ts';
 import { type Issue, MEMORY_KINDS } from './schema.ts';
+import { type FileRoots, readChecked } from '../files.ts';
 import { NOTES, NOTE_NAMES, loadJobNotes } from './notes.ts';
 import { compileRules, describeRules, judgeBrief } from './rules.ts';
 import { meTarget, parsePath, setField } from './edit.ts';
@@ -15,10 +16,13 @@ const say = (s: string) => console.log(s);
 export const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
 export const positional = (a: string[]) => a.filter((x, i) => !x.startsWith('--') && !(i > 0 && a[i - 1].startsWith('--')));
 
-/** A file's text, or stdin for "-". */
+/** Where `crewdeck jobs` reads and writes files named on its command line: Jobs' home and workspace (E5, src/files.ts). */
+export const jobsFileRoots = (): FileRoots => { const c = loadConfig(); return { roots: [...new Set([c.jobs.home, c.jobs.workspace])] }; };
+
+/** A file's text (inside Jobs' home or workspace), or stdin for "-". */
 export function textFrom(path: string | undefined, what: string): string {
   if (!path) throw new Error(`${what} is required`);
-  return readFileSync(path === '-' ? 0 : path, 'utf8');
+  return readChecked(path, what, jobsFileRoots());
 }
 
 function context() {
@@ -74,7 +78,7 @@ function warnBroken(issues: Issue[]) {
 /** The value: positional, --value-file <f>, or "-" for stdin. */
 function valueArg(args: string[]): string {
   const file = flag(args, 'value-file');
-  if (file) return readFileSync(file, 'utf8').replace(/\n$/, '');
+  if (file) return textFrom(file, '--value-file').replace(/\n$/, '');
   const v = positional(args)[2];
   if (v === undefined) throw new Error('give a value, --value-file <file>, or - for stdin');
   return v === '-' ? readFileSync(0, 'utf8').replace(/\n$/, '') : v;

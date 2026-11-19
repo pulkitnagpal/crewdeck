@@ -69,7 +69,8 @@ Not in P5: journey tests (P6), the security review (P7).
    (which the permission model would refuse without `--allow-worker`) and see every import, static and dynamic. `resolve`
    allows built-ins outside the denied list and `file:` URLs listed in the manifest inside the providers dir; everything
    else (bare packages, `data:`, `http:`, unlisted files, paths outside) throws. `load` returns the verified source.
-9. **Child flags** (checked on this Mac with Node 25.9; CI runs 22 and 24):
+9. **Child flags** (checked on this Mac with Node 25.9; CI runs 22 and 24). *Superseded in P7 pass B: never `--allow-net`,
+   sourcing needs Node ≥ 25, the providers' fetches go through the parent; see [07-security-review.md](07-security-review.md).*
    `node --permission --allow-fs-read=<providers/<commit>> --allow-fs-read=<provider-runner.ts> [--allow-net]
    --disallow-code-generation-from-strings --max-old-space-size=512 <provider-runner.ts> <providers/<commit>>`, `env: {}`.
    - No `--allow-fs-write`, `--allow-child-process`, `--allow-worker`, `--allow-addons`, `--allow-wasi`.
@@ -84,7 +85,8 @@ Not in P5: journey tests (P6), the security review (P7).
     the grant it is a caught ENOENT.
 11. **Runaway pages.** `ctx.maxPages` is 10 (themuse would otherwise page up to 1500, jobstreet 500, neogov 200); each entry
     has a 90 s timeout and at most 2000 jobs; the whole child is killed after 15 min. Entries run 4 at a time.
-12. **Output channel.** The runner keeps a private reference to `process.stdout.write` and sends `console.*` to stderr before
+12. **Output channel.** *Superseded in P7 pass B: the protocol is on fd 3 with a per-run nonce; stdout and stderr are
+    only logged.* The runner keeps a private reference to `process.stdout.write` and sends `console.*` to stderr before
     importing providers, so a provider's log line can't corrupt the protocol: JSON lines `{"t":"job"|"entry"|"fatal"|"done"}`.
     The parent ignores anything else, caps lines (50 000) and bytes (64 MB), and validates every job: url http(s), ≤ 2000
     chars, no credentials, not X, LinkedIn only when `linkedin_links` is on; title 1–300; company ≤ 200 (empty → the entry's

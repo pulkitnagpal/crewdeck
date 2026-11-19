@@ -120,6 +120,16 @@ export async function installProviders(c: Pick<Config, 'jobs'>, o: InstallOption
   }
 }
 
+/**
+ * Whether this Node can run the sandbox (E1): only from Node 25 does the permission model deny the network (and
+ * `--allow-net` exist); on 22 and 24 a provider could open sockets, so sourcing refuses instead.
+ */
+export function sandboxSupport(version = process.versions.node, flags: ReadonlySet<string> = process.allowedNodeEnvironmentFlags): { ok: true } | { ok: false; why: string } {
+  const major = Number(String(version).split('.')[0]);
+  if (major >= 25 && flags.has('--allow-net')) return { ok: true };
+  return { ok: false, why: `job-board providers need Node 25 or newer (this is Node ${version}): before 25 Node's permission model can't keep their code off the network. Install Node 25+ to fetch from boards; pasted links, Prepare and Apply work on this Node` };
+}
+
 /** Quick check (doctor, the server's timer): the verified install for the pinned commit is in place. */
 export function providersStatus(c: Pick<Config, 'jobs'>, m: Manifest = loadManifest()): ProvidersStatus {
   const dir = providersDir(c, m);

@@ -15,8 +15,9 @@ machine, say so and keep nothing.
 
 ## The rule for every write
 Their words and anything else that isn't a fixed word or number go into files written with the **Write tool**, never
-into the command line, and never through a heredoc or `echo` (their words could end it early). `<T>` is a scratch
-folder written out in full (in the jobs workspace: `<jobs home>/out/tmp`). For example, write `I'm OK with hybrid now`
+into the command line, and never through a heredoc or `echo` (their words could end it early). `<T>` is the scratch
+folder `<jobs home>/out/tmp` (by default `~/.crewdeck/jobs/out/tmp`), written out in full, in every session: Crewdeck
+reads files only from Jobs' home or workspace. For example, write `I'm OK with hybrid now`
 to `<T>/quote.txt` with the Write tool. Run each `crewdeck` command as its own Bash call (in the jobs workspace's
 sandbox only a plain call, with no `cd`, `&&`, variables or redirects, reaches Crewdeck).
 After writing, run `crewdeck jobs check`. If a value is refused, the message names the field and the fix.

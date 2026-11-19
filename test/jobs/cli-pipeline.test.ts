@@ -22,7 +22,7 @@ test('the pipeline end to end through the CLI: add, prefilter, judge, pick, form
   assert.match(ok(jobs(s.home, ['pick', '--n', '3'])), new RegExp(`^${a}  Example 1 — Senior Data Analyst$`, 'm'));
 
   ok(jobs(s.home, ['form', a, '--fields-file', file('f.json', [{ label: 'Full name', kind: 'text', required: true }, { label: 'Email', kind: 'text', required: true }, { label: 'Experience with Looker', kind: 'radio', required: true, options: ['Some', 'A lot'] }])]));
-  const brief = join(s.root, 'brief.json');
+  const brief = textFile(s.root, 'brief.json', '');
   assert.match(ok(jobs(s.home, ['draft', a, '--brief', brief])), /2 answered from your profile and memory; 0 need you; brief written: 1 for Claude \(Q3\)/);
   assert.match(JSON.parse(readFileSync(brief, 'utf8')).prompt, /for Ada Example \(the user\)/);
   const ans = JSON.parse(ok(jobs(s.home, ['answer', a, '--question', 'Q3', '--text-file', file('t.txt', 'A lot'), '--quote-file', file('q.txt', 'I use Looker every day')])));
@@ -57,7 +57,7 @@ test('not interested, preference change and refilter through the CLI; remember a
   assert.deepEqual(r.roles.map((x: any) => x.id), [remote]);
 
   ok(jobs(s.home, ['form', remote, '--fields-file', file('f.json', [{ label: 'Earliest start date', kind: 'text' }])]));
-  ok(jobs(s.home, ['draft', remote, '--brief', join(s.root, 'b.json')]));
+  ok(jobs(s.home, ['draft', remote, '--brief', textFile(s.root, 'b.json', '')]));
   const remembered = ok(jobs(s.home, ['remember', '--kind', 'answer', '--key', 'earliest_start_date', '--text-file', file('t.txt', 'January 2027'), '--quote-file', file('q.txt', 'I can start in January')]));
   assert.match(remembered, /remembered m-5 \(answer\)\napplied to 1 open question/);
   assert.match(ok(jobs(s.home, ['undo'])), /memory m-5/);
@@ -80,6 +80,5 @@ test('switches and the D11 rule hold on the command line', () => {
   assert.match(jobs(s.home, ['pick', '--day', '19-11-2026']).err, /YYYY-MM-DD/);
   // A URL is never an argument: add-role takes a file.
   assert.match(jobs(s.home, ['add-role', '--url', 'https://jobs.example.com/1']).err, /--role-file/);
-  writeFileSync(join(s.root, 'bad.json'), '{ not json');
-  assert.match(jobs(s.home, ['add-role', '--role-file', join(s.root, 'bad.json')]).err, /not valid JSON/);
+  assert.match(jobs(s.home, ['add-role', '--role-file', textFile(s.root, 'bad.json', '{ not json')]).err, /not valid JSON/);
 });

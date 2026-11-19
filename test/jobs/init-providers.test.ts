@@ -38,7 +38,7 @@ test('jobs init with the fixture server: providers installed and verified; the C
   });
   try {
     const lines = await jobsInit({ providers: { base: srv.base('raw.example.test'), net: { testHosts: { 'raw.example.test': '127.0.0.1' } }, manifest: m } });
-    assert.ok(lines.some((l) => /^✓ job-board providers: 8 from example\/providers@aaaaaaa \(MIT\), 10 files verified$/.test(l)), lines.join('\n'));
+    assert.ok(lines.some((l) => /^✓ job-board providers: 11 from example\/providers@aaaaaaa \(MIT\), 13 files verified$/.test(l)), lines.join('\n'));
   } finally { await srv.close(); }
   // The CLI checks the real pinned manifest: this home holds the fixture commit, so it reports "not installed".
   const { jobs } = await import('./helpers.ts');

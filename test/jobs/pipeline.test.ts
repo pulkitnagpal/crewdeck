@@ -227,3 +227,23 @@ test('follow-ups: day 3-4 nudge and day 10-12 final, counted in local days, skip
   addEvent(w.ctx.db, ids[2].r, 'reply', 'interested');
   assert.deepEqual(followups(w.ctx, '2026-11-20').map((d) => [d.message_id, d.step, d.days]), [[ids[0].m, 'nudge', 4], [ids[1].m, 'final', 10]]);
 });
+
+test('C2: status by hand never reaches picked or prepared from outside the pipeline; allowed moves are listed', () => {
+  const w = world('berlin-analyst');
+  const fresh = role(w.ctx, { company: 'Example Labs' });
+  assert.throws(() => setRoleStatus(w.ctx, fresh, 'picked'), /picked is set by crewdeck jobs pick/);
+  assert.throws(() => setRoleStatus(w.ctx, fresh, 'prepared'), /from new to prepared is not allowed/);
+  const out = role(w.ctx, { company: 'Sample Retail' }, 'prefiltered_out');
+  assert.throws(() => setRoleStatus(w.ctx, out, 'new'), /from prefiltered_out to new is not allowed.*refilter/);
+  const done = role(w.ctx, { company: 'Sample AG' }, 'applied');
+  assert.throws(() => setRoleStatus(w.ctx, done, 'skipped'), /from applied to skipped is not allowed/);
+  // The pipeline's own moves.
+  const picked = role(w.ctx, { company: 'Example Co' }, 'picked');
+  setRoleStatus(w.ctx, picked, 'prepared');
+  assert.equal(status(w, picked), 'prepared');
+  setRoleStatus(w.ctx, picked, 'expired', 'the posting is closed');
+  assert.equal(status(w, picked), 'expired');
+  setRoleStatus(w.ctx, fresh, 'skipped');
+  setRoleStatus(w.ctx, fresh, 'new');
+  assert.equal(status(w, fresh), 'new');
+});

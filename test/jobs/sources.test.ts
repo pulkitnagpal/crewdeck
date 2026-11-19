@@ -1,13 +1,16 @@
 // The provider sandbox and `crewdeck jobs source` (design D7, §15): the real runner in a real `node --permission` child,
-// against a fictional provider tree and a local server. Misbehaving providers try to read, write, spawn and import their
-// way out; the parent refuses bad jobs. Nothing here reaches a real site.
+// against a fictional provider tree and a local server. Misbehaving providers try to read, write, spawn, import, connect
+// and forge their way out; the parent refuses bad jobs. Nothing here reaches a real site.
+//
+// The sandbox needs Node ≥ 25 (its permission model denies the network, E1). On Node 22/24 the tests that spawn it are
+// skipped with that reason, and the refusal itself is asserted instead; the parent's fetch bridge is tested everywhere.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { type Plan, cleanJob, cleanEntry, readSourcesState, runProviders, runSources, runnerArgs, sourcePlan, spawnRunner } from '../../src/jobs/sources.ts';
-import { normalizeJob } from '../../src/jobs/provider-runner.ts';
+import { type Plan, FETCH_CAPS, answerFetch, cleanJob, cleanEntry, readSourcesState, runProviders, runSources, runnerArgs, sandboxSupport, sourcePlan, spawnRunner } from '../../src/jobs/sources.ts';
+import { type FetchAsk, normalizeJob } from '../../src/jobs/provider-runner.ts';
 import { loadManifest } from '../../src/jobs/providers.ts';
 import { notesOf } from '../../src/jobs/ctx.ts';
 import { jobs, world } from './helpers.ts';
@@ -21,22 +24,46 @@ const plan = (entries: { name: string; entry: Record<string, unknown>; kind?: 'a
   skipped: [],
 });
 
-async function runOne(p: Plan, o: { dir: string; manifest: any; entryTimeoutMs?: number }) {
+const support = sandboxSupport();
+/** Tests that spawn the sandbox: skipped on Node < 25, where sourcing refuses (asserted below). */
+const sandbox = { skip: support.ok ? false : support.why };
+const BOARD = 'board.example.test';
+const net = { testHosts: testHosts(BOARD) };
+
+async function runOne(p: Plan, o: { dir: string; manifest: any; entryTimeoutMs?: number; net?: any }) {
   const lines: any[] = [];
-  const r = await spawnRunner(p, (l) => lines.push(l), o);
+  const r = await spawnRunner(p, (l) => lines.push(l), { net, ...o });
   return { ...r, lines, jobs: lines.filter((l) => l.t === 'job'), entries: lines.filter((l) => l.t === 'entry') };
 }
 
-test('runner flags: permission model, read grants for the providers and the runner only, no write/process/worker grants', () => {
+test('runner flags: permission model, read grants for the providers and the runner only, no network/write/process/worker grants', () => {
   const a = runnerArgs('/p/dir', '/r/provider-runner.ts');
   assert.deepEqual(a.slice(0, 3), ['--permission', '--allow-fs-read=/p/dir', '--allow-fs-read=/r/provider-runner.ts']);
-  assert.equal(a.includes('--allow-net'), process.allowedNodeEnvironmentFlags.has('--allow-net'));
   assert.ok(a.includes('--disallow-code-generation-from-strings'));
-  for (const f of a) assert.doesNotMatch(f, /allow-(fs-write|child-process|worker|addons|wasi|inspector)/);
+  for (const f of a) assert.doesNotMatch(f, /allow-(net|fs-write|child-process|worker|addons|wasi|inspector)/);
   assert.deepEqual(a.slice(-2), ['/r/provider-runner.ts', '/p/dir']);
 });
 
-test('sandbox: a provider can\'t read or write outside its folder, start a process, read the environment, or import unlisted code', async () => {
+test('E1: sourcing needs Node 25+ (the permission model denies the network from 25 on); older Node refuses with a clear message', () => {
+  const old = sandboxSupport('24.11.1', new Set());
+  assert.equal(old.ok, false);
+  assert.match((old as any).why, /need Node 25 or newer \(this is Node 24\.11\.1\).*off the network.*pasted links, Prepare and Apply work/);
+  assert.equal(sandboxSupport('22.18.0', new Set()).ok, false);
+  assert.equal(sandboxSupport('25.0.0', new Set()).ok, false, 'no --allow-net flag: the model does not gate the network');
+  assert.equal(sandboxSupport('25.9.0', new Set(['--allow-net'])).ok, true);
+  assert.equal(support.ok, Number(process.versions.node.split('.')[0]) >= 25, 'this Node');
+});
+
+test('E1: on this Node (< 25) a run refuses before spawning anything, and says why', { skip: support.ok ? 'this Node runs the sandbox (the refusal is for Node < 25)' : false }, async () => {
+  const { dir, manifest } = installedFixture();
+  await assert.rejects(spawnRunner(plan([{ name: 'Board', entry: { provider: 'fixture-board', api: 'https://board.example.test/' } }]), () => {}, { dir, manifest }), /need Node 25 or newer/);
+  const w = world('berlin-analyst');
+  const s = await runSources(w.ctx, { dir, manifest, details: 0, plan: plan([{ name: 'Board', entry: { provider: 'fixture-board', api: 'https://board.example.test/' } }]) });
+  assert.deepEqual([(s.providers as any).ran, (s.providers as any).why], [false, (support as any).why]);
+  assert.ok(s.prefilter, 'the rules still ran');
+});
+
+test('sandbox: a provider can\'t read or write outside its folder, start a process, read the environment, or import unlisted code', sandbox, async () => {
   const { dir, manifest } = installedFixture();
   const secretDir = mkdtempSync(join(tmpdir(), 'cd-secret-'));
   const secret = join(secretDir, 'notes.md');
@@ -54,7 +81,7 @@ test('sandbox: a provider can\'t read or write outside its folder, start a proce
   assert.equal(title('evil-import'), 'unlisted refused / package refused');
 });
 
-test('sandbox: a file changed after install never runs (every hash is checked before anything is imported)', async () => {
+test('sandbox: a file changed after install never runs (every hash is checked before anything is imported)', sandbox, async () => {
   const { dir, manifest } = installedFixture();
   const f = join(dir, 'providers', 'fixture-board.mjs');
   chmodSync(f, 0o600);
@@ -66,7 +93,7 @@ test('sandbox: a file changed after install never runs (every hash is checked be
   assert.equal(r.code, 3);
 });
 
-test('runner end to end: a board and a careers page from a local server; timeouts, errors and console noise stay per entry', async () => {
+test('runner end to end: a board and a careers page from a local server; timeouts, errors and console noise stay per entry', sandbox, async () => {
   const srv = await serve((req, res) => {
     res.setHeader('content-type', 'application/json');
     if (req.url === '/board') res.end(JSON.stringify({ jobs: [
@@ -79,8 +106,8 @@ test('runner end to end: a board and a careers page from a local server; timeout
   try {
     const { dir, manifest } = installedFixture();
     const r = await runOne(plan([
-      { name: 'Board', entry: { provider: 'fixture-board', api: `${srv.base()}/board` } },
-      { name: 'Example GmbH', kind: 'ats', entry: { careers_url: 'https://ats.example.test/example', api: srv.base() } },
+      { name: 'Board', entry: { provider: 'fixture-board', api: `${srv.base(BOARD)}/board` } },
+      { name: 'Example GmbH', kind: 'ats', entry: { careers_url: 'https://ats.example.test/example', api: srv.base(BOARD) } },
       { name: 'Slow board', entry: { provider: 'slow' } },
       { name: 'Down board', entry: { provider: 'broken' } },
       { name: 'Chatty board', entry: { provider: 'noisy' } },
@@ -100,7 +127,7 @@ test('runner end to end: a board and a careers page from a local server; timeout
   } finally { await srv.close(); }
 });
 
-test('jobs source: providers → validation → tracker (ats/board labels, refusals counted) → prefilter → state file', async () => {
+test('jobs source: providers → validation → tracker (ats/board labels, refusals counted) → prefilter → state file', sandbox, async () => {
   const srv = await serve((req, res) => {
     res.setHeader('content-type', 'application/json');
     if (req.url === '/board') res.end(JSON.stringify({ jobs: [
@@ -113,10 +140,10 @@ test('jobs source: providers → validation → tracker (ats/board labels, refus
   try {
     const { dir, manifest } = installedFixture();
     const s = await runSources(w.ctx, {
-      dir, manifest, details: 0, entryTimeoutMs: 1500,
+      dir, manifest, details: 0, entryTimeoutMs: 1500, net,
       plan: plan([
-        { name: 'Board', entry: { provider: 'fixture-board', api: `${srv.base()}/board` } },
-        { name: 'Example GmbH', kind: 'ats', entry: { careers_url: 'https://ats.example.test/example', api: srv.base() } },
+        { name: 'Board', entry: { provider: 'fixture-board', api: `${srv.base(BOARD)}/board` } },
+        { name: 'Example GmbH', kind: 'ats', entry: { careers_url: 'https://ats.example.test/example', api: srv.base(BOARD) } },
         { name: 'Chatty board', entry: { provider: 'noisy' } },
       ]),
     });
@@ -134,7 +161,7 @@ test('jobs source: providers → validation → tracker (ats/board labels, refus
     assert.equal(st.new, 4);
     assert.ok(st.finished);
     // Running again finds nothing new.
-    const again = await runSources(w.ctx, { dir, manifest, details: 0, plan: plan([{ name: 'Board', entry: { provider: 'fixture-board', api: `${srv.base()}/board` } }]) });
+    const again = await runSources(w.ctx, { dir, manifest, details: 0, net, plan: plan([{ name: 'Board', entry: { provider: 'fixture-board', api: `${srv.base(BOARD)}/board` } }]) });
     assert.equal(again.new, 0);
   } finally { await srv.close(); }
 });
@@ -192,7 +219,7 @@ test('normalizeJob: the Hacker News "Company | Role | Place" split, pay text and
   assert.equal(normalizeJob({ title: 'X', url: 'u', postedAt: 'yesterday' }, 'b').posted_at, undefined);
 });
 
-test('runProviders reports a runner that dies early', async () => {
+test('runProviders reports a runner that dies early', sandbox, async () => {
   const w = world('berlin-analyst');
   const { dir, manifest } = installedFixture();
   const broken = { ...manifest, files: { ...manifest.files, 'providers/missing.mjs': '0'.repeat(64) } };
@@ -201,13 +228,90 @@ test('runProviders reports a runner that dies early', async () => {
   assert.equal(r.entries[0].ok, false);
 });
 
+test('E1: no network in the sandbox (TCP, DNS, Unix sockets, node:http, loopback through the bridge); fetch to a public host goes through netguard in the parent', sandbox, async () => {
+  const { createServer } = await import('node:net');
+  const sockDir = mkdtempSync(join(tmpdir(), 'cd-sock-'));
+  const sock = join(sockDir, 's');
+  const unix = createServer((c) => c.end('secret'));
+  await new Promise<void>((ok) => unix.listen(sock, ok));
+  const bodies: any[] = [];
+  const srv = await serve((req, res) => {
+    let b = '';
+    req.on('data', (d) => (b += d));
+    req.on('end', () => { bodies.push({ method: req.method, url: req.url, type: req.headers['content-type'], board: req.headers['x-board'], body: b }); res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ echo: JSON.parse(b || '{}').q ?? null })); });
+  });
+  try {
+    const { dir, manifest } = installedFixture();
+    const r = await runOne(plan([{ name: 'Net', entry: { provider: 'evil-net', port: srv.port, socket: sock, api: `${srv.base(BOARD)}/search` } }]), { dir, manifest });
+    assert.equal(r.done, true, r.stderr);
+    const title = r.jobs[0]?.job.title ?? '';
+    assert.match(title, /^tcp ERR_ACCESS_DENIED \/ dns ERR_ACCESS_DENIED \/ unix ERR_ACCESS_DENIED \/ http ERR_ACCESS_DENIED \/ loopback blocked \/ public 200 analyst$/, title);
+    assert.deepEqual(bodies, [{ method: 'POST', url: '/search', type: 'application/json', board: 'evil', body: '{"q":"analyst"}' }], 'only the public fetch arrived, made by the parent');
+    assert.equal(r.fetches, 2, 'the loopback fetch was asked for and refused by netguard');
+  } finally { await srv.close(); unix.close(); }
+});
+
+test('E2: getBuiltinModule, module.registerHooks, vm, child_process, workers and WebAssembly are refused inside the sandbox', sandbox, async () => {
+  const { dir, manifest } = installedFixture();
+  const r = await runOne(plan([{ name: 'Escape', entry: { provider: 'evil-escape' } }]), { dir, manifest });
+  assert.equal(r.done, true, r.stderr);
+  assert.equal(r.jobs[0]?.job.title, 'vm refused / hooks refused / spawn refused / worker refused / replace refused / assign refused / wasm refused / wasmModule refused / wasmInstantiate refused / import refused / fs ran');
+});
+
+test('E9: forged protocol lines on stdout, the console or the private channel itself (no nonce) are never stored', sandbox, async () => {
+  const w = world('berlin-analyst');
+  const { dir, manifest } = installedFixture();
+  const lines: any[] = [];
+  const out = await spawnRunner(plan([{ name: 'Forge', entry: { provider: 'evil-forge', target: 0 } }]), (l) => lines.push(l), { dir, manifest, net });
+  assert.equal(out.done, true, out.stderr);
+  assert.deepEqual(lines.filter((l) => l.t === 'job').map((l) => l.job.title), ['Honest Analyst']);
+  assert.ok(out.bad >= 2, `lines without the nonce were counted and dropped (${out.bad})`);
+  assert.match(out.stderr, /"title":"stdout"/, 'stdout is only a log');
+  const r = await runProviders(w.ctx, plan([{ name: 'Forge', entry: { provider: 'evil-forge', target: 0 } }]), { dir, manifest, net });
+  assert.equal(r.fetched, 1);
+  assert.deepEqual((w.ctx.db.prepare('select title from roles').all() as any[]).map((x) => x.title), ['Honest Analyst']);
+});
+
+test('E1: the parent\'s fetch for providers: netguard on every request and redirect, POST bodies, redirect modes, methods and budgets', async () => {
+  const srv = await serve((req, res) => {
+    let b = '';
+    req.on('data', (d) => (b += d));
+    req.on('end', () => {
+      if (req.url === '/hop') { res.writeHead(302, { location: '/ok' }).end(); return; }
+      if (req.url === '/local') { res.writeHead(302, { location: `http://127.0.0.1:${srv.port}/ok` }).end(); return; }
+      res.writeHead(200, { 'content-type': 'application/json', 'x-seen': `${req.method} ${b}`, 'set-cookie': ['a=1', 'b=2'] }).end(JSON.stringify({ ok: true }));
+    });
+  });
+  try {
+    const base = srv.base(BOARD);
+    const budget = { requests: 0, bytes: 0 };
+    const ask = (o: Partial<FetchAsk>) => answerFetch({ t: 'fetch', id: 1, url: `${base}/ok`, method: 'GET', headers: [], body: null, redirect: 'follow', ...o }, { net, budget });
+    const ok = await ask({ method: 'POST', body: Buffer.from('{"q":1}').toString('base64'), headers: [['content-type', 'application/json'], ['host', 'evil.example'], ['x-bad', 'a\r\nb']] });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(ok.headers!.filter(([k]) => k === 'x-seen' || k === 'set-cookie').sort(), [['set-cookie', 'a=1'], ['set-cookie', 'b=2'], ['x-seen', 'POST {"q":1}']]);
+    assert.equal(Buffer.from(ok.body!, 'base64').toString(), '{"ok":true}');
+    assert.deepEqual((await ask({ url: `${base}/hop` })).redirected, true);
+    assert.deepEqual([(await ask({ url: `${base}/hop`, redirect: 'error' })).code], ['redirect'], 'career-ops asks for redirect: error');
+    assert.equal((await ask({ url: `${base}/hop`, redirect: 'manual' })).status, 302);
+    assert.equal((await ask({ url: `${base}/local` })).code, 'blocked', 'a redirect to loopback is refused');
+    assert.equal((await ask({ url: `http://127.0.0.1:${srv.port}/ok` })).code, 'blocked');
+    assert.equal((await ask({ url: 'file:///etc/passwd' })).code, 'scheme');
+    assert.equal((await ask({ method: 'DELETE' })).code, 'method');
+    const small = { ...FETCH_CAPS, requests: 1 };
+    const b2 = { requests: 0, bytes: 0 };
+    assert.equal((await answerFetch({ t: 'fetch', id: 2, url: `${base}/ok`, method: 'GET', headers: [], body: null, redirect: 'follow' }, { net, budget: b2, caps: small })).status, 200);
+    assert.equal((await answerFetch({ t: 'fetch', id: 3, url: `${base}/ok`, method: 'GET', headers: [], body: null, redirect: 'follow' }, { net, budget: b2, caps: small })).code, 'budget');
+  } finally { await srv.close(); }
+});
+
 test('fitness: the runner imports node: built-ins only (one read grant is enough) and the parent spawns it with an empty environment', () => {
   const runner = readFileSync(new URL('../../src/jobs/provider-runner.ts', import.meta.url), 'utf8');
   const specs = [...runner.matchAll(/^import [^;]*? from '([^']+)'/gm)].map((m) => m[1]);
   assert.ok(specs.length > 0);
   assert.deepEqual(specs.filter((s) => !s.startsWith('node:')), []);
   const parent = readFileSync(new URL('../../src/jobs/sources.ts', import.meta.url), 'utf8');
-  assert.match(parent, /spawn\(process\.execPath, runnerArgs\(dir, runner\), \{ env: \{\}/);
+  assert.match(parent, /spawn\(process\.execPath, runnerArgs\(dir, runner\), \{ env: \{\}, stdio: \['pipe', 'pipe', 'pipe', 'pipe', 'pipe'\] \}\)/);
+  assert.match(runner, /lockDownRuntime\(\);\n\n  \/\/ 4\. The providers/, 'locked down right before the first provider import');
 });
 
 test('jobs source: LinkedIn guest search runs after the boards only when the user switched it on', async () => {
