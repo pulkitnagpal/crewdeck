@@ -13,7 +13,9 @@
 // Delivery rules learned the hard way:
 // - Claim only while idle: a message queued during a busy turn is dropped if the turn is interrupted.
 // - At the end of each turn, put back anything delivered but not closed; after an interrupt, wait a
-//   minute so the person can talk first. Crewdeck fails a request after 3 tries instead of looping.
+//   minute so the person can talk first. Crewdeck fails a request after 3 tries instead of looping. A request Claude
+//   already took up (read with `request show`, or posted progress on) stays with this session: Crewdeck keeps it, so
+//   an interview or an apply that waits on the person isn't delivered again at every turn.
 // - While busy, keep saying "still here" (a claim that takes nothing) so the page shows Claude connected and the
 //   requests this session holds keep their lease; on start, put back what a previous load of this session held.
 import { atom, read, update } from 'claude-code'

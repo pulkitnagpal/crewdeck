@@ -99,6 +99,7 @@ export function createShell(c: Config, requests = new Requests(), opts: ShellOpt
       const lane = laneFor(c, b.cwd);
       if (lane !== r.lane) throw new HttpError(403, `request ${id} belongs to the ${r.lane} lane, not ${lane}: run this from that lane's session`);
       if (m![2] === 'show') {
+        requests.take(id);
         const context = r.lane === 'jobs' && jobsOn() ? (await jobsApi()).contextFor(r) : undefined;
         return json(res, 200, { id: r.id, lane: r.lane, kind: r.kind ?? null, ref: r.ref ?? null, status: r.status, text: r.kind ? undefined : r.text, payload: r.payload ?? null, result: r.result ?? null, context });
       }

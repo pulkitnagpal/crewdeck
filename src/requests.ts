@@ -16,6 +16,8 @@ export type Request = {
   id: number; lane: string; text: string; status: 'new' | 'picked' | 'done' | 'failed';
   by?: string; result?: string; tries: number; created: string; updated: string;
   kind?: JobKind; ref?: string; payload?: Record<string, unknown>; progress?: Progress[];
+  /** When Claude took it up (read it with `request show` or posted progress): from then on it is that session's work. */
+  taken?: string;
 };
 export type Typed = { kind: JobKind; ref?: string; payload?: Record<string, unknown> };
 
@@ -131,7 +133,7 @@ export class Requests {
     this.expire();
     for (const r of this.items) if (r.lane === lane && r.status === 'picked' && r.by === by) this.heard.set(r.id, Date.now());
     const out = take ? this.items.filter((r) => r.lane === lane && r.status === 'new') : [];
-    for (const r of out) { r.status = 'picked'; r.by = by; r.updated = now(); this.heard.set(r.id, Date.now()); }
+    for (const r of out) { r.status = 'picked'; r.by = by; r.updated = now(); r.taken = undefined; this.heard.set(r.id, Date.now()); }
     if (out.length) this.save();
     return out;
   }
@@ -152,7 +154,7 @@ export class Requests {
     return back;
   }
   private putBack(r: Request, failText: string) {
-    r.tries += 1; r.updated = now(); r.by = undefined; this.heard.delete(r.id);
+    r.tries += 1; r.updated = now(); r.by = undefined; r.taken = undefined; this.heard.delete(r.id);
     if (r.tries >= 3) { r.status = 'failed'; r.result = failText; r.payload = undefined; }
     else r.status = 'new';
   }
@@ -180,14 +182,26 @@ export class Requests {
     if (!t) throw new RequestError('empty progress line');
     r.progress = [...(r.progress ?? []), { at: now(), text: t }].slice(-MAX_PROGRESS);
     r.updated = now(); // progress renews the lease (updated); presence comes only from claims
+    if (r.status === 'picked' && !r.taken) r.taken = now();
     this.save();
     return r;
   }
-  /** Put back what a session took but didn't close; after 3 tries it fails instead of looping. */
+  /** Claude read a picked request (`request show`): it has taken it up, so a turn ending no longer puts it back. */
+  take(id: number): void {
+    const r = this.items.find((x) => x.id === id);
+    if (!r || r.status !== 'picked' || r.taken) return;
+    r.taken = now(); this.heard.set(id, Date.now()); this.save();
+  }
+  /**
+   * Put back what a session was given but didn't take up (a turn interrupted before Claude read it); after 3 tries it
+   * fails instead of looping. A request Claude took up (`request show`, progress) stays with its session across turns:
+   * an interview or an apply waits for the person's answers. If that session goes away, the lease puts it back.
+   */
   requeue(ids: number[], by: string): number[] {
     const back: number[] = [];
     for (const r of this.items) {
       if (!ids.includes(r.id) || r.status !== 'picked' || r.by !== by) continue;
+      if (r.taken) { this.heard.set(r.id, Date.now()); continue; }
       this.putBack(r, 'Delivered 3 times without being finished: ask Claude about it in the chat.');
       if (r.status === 'new') back.push(r.id);
     }

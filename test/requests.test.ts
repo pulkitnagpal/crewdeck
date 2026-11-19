@@ -23,6 +23,30 @@ test('requests: claimed once per lane, closed once, put back, failed after 3 tri
   assert.throws(() => q.finish(b.id, 'again'), /not open/);
 });
 
+test('a request Claude took up (request show, progress) stays with its session across turns; the lease still applies', () => {
+  const q = new Requests(join(mkdtempSync(join(tmpdir(), 'cdq-')), 'requests.json'));
+  // The setup interview: delivered, read with request show, then many turns waiting for the person's answers.
+  const a = q.add('jobs', 'Set up Jobs', { kind: 'setup' });
+  q.claim('jobs', 's1');
+  q.take(a.id);
+  for (let turn = 0; turn < 5; turn++) assert.deepEqual(q.requeue([a.id], 's1'), [], 'a turn ending never puts it back');
+  let r = q.list().find((x) => x.id === a.id)!;
+  assert.equal(r.status, 'picked'); assert.equal(r.tries, 0); assert.equal(r.by, 's1');
+  assert.equal(q.claim('jobs', 's1').length, 0, 'never delivered again');
+  // Progress counts as taking it up too.
+  const b = q.add('jobs', 'Apply', { kind: 'apply', ref: 'r1' });
+  q.claim('jobs', 's1'); q.progress(b.id, 'Reading the form');
+  assert.deepEqual(q.requeue([b.id], 's1'), []);
+  // Given but never read (the turn was interrupted first): back to the queue as before, untaken again.
+  const c = q.add('jobs', 'Find', { kind: 'find' });
+  q.claim('jobs', 's1');
+  assert.deepEqual(q.requeue([c.id], 's1'), [c.id]);
+  // The session goes away (no claims): the lease puts a taken request back, and the next session takes it fresh.
+  q.expire(Date.now() + LEASE_MS + 1000);
+  r = q.list().find((x) => x.id === a.id)!;
+  assert.equal(r.status, 'new'); assert.equal(r.taken, undefined); assert.equal(r.tries, 1);
+});
+
 test('lanes: a project folder or its worktrees → that project; anything else → cockpit', () => {
   const c: any = { projects: [{ name: 'myapp', path: '/code/myapp' }] };
   assert.equal(laneFor(c, '/code/myapp'), 'project:myapp');
