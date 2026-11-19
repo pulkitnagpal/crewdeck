@@ -2,7 +2,12 @@
 tags: jobs
 # What you want. Change it here, on the Jobs page, or by telling Claude (it runs `crewdeck jobs pref set …`).
 roles:
-  titles: []                 # a job title must contain one of these, e.g. [data analyst, analytics engineer]
+  # One entry per kind of job you want: your name for it, the titles postings use (any language), its field. A posting
+  # passes when its title has every word of one of them, in any order; plurals, gendered forms and seniority don't block.
+  # e.g. - { name: Nurse, titles: [registered nurse, RN, staff nurse], families: [healthcare] }
+  targets: []
+  titles: []                 # more titles, read as one more kind of job
+  level: any                 # entry | experienced | senior | any
   seniority_prefer: []       # ordering, not a filter, e.g. [senior, lead]
   exclude_title_words: []    # whole words, e.g. [intern, internship, sales]
 workplace: []                # remote | hybrid | onsite
@@ -26,7 +31,7 @@ pay:
   unlisted: keep             # keep | drop postings that show no pay
   fx: {}                     # 1 unit of another currency in yours, e.g. { USD: 0.92 }
 schedule: { timezone: "", daily_picks: 5, cooldown_days: 60 }
-judge_notes: ""              # anything else, in your words, for the judging step
+judge_notes: ""              # anything else, in your words, for the judging step (shifts, hours, moving, right to work)
 ---
 # Job search
 

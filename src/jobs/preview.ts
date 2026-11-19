@@ -7,7 +7,7 @@ import { overlayChanges, overlayFields } from './edit.ts';
 import { type JobNotes, NOTES } from './notes.ts';
 import { type Compiled, type Drop, RULE_GROUP, allDrops, compileRules } from './rules.ts';
 import { type Search, normalise } from './schema.ts';
-import { abbreviationsFor, closest, readTitle, wordHit } from './titles.ts';
+import { abbreviationsFor, closest, matchTitle, readTitle, wordHit } from './titles.ts';
 import { findPlaces, placeName, reducePlaces } from './places.ts';
 import { payCheck } from './pay.ts';
 
@@ -44,6 +44,8 @@ export type Preview = {
   passing: { title: string; company: string; location: string }[];
   dropped: { rule: string; title: string; company: string; reason: string }[];
   by_source: { key: string; name: string; in: number; pass: number }[];
+  /** Passing postings per kind of job (the target whose title they match): setup checks each target catches some. */
+  by_target: { name: string; pass: number }[];
   broad: number | null;
   suggestions: Suggestion[];
   ms: number; partial: boolean;
@@ -117,8 +119,9 @@ export function runPreview(ctx: Ctx, o: { days?: number; source?: string; change
     days, pool: rows.length, capped, sources: new Set(rows.map((r) => r.source_key ?? r.source)).size, pass, was,
     drops: count(first.map((d) => d.rule)).map(([rule, n]) => ({ rule, label: REASON_LABEL[rule] ?? rule, n })),
     single: count(singles.map((d) => d.group)).map(([group, n]) => ({ group, label: GROUP_LABEL[group] ?? group, n })),
-    near: [], passing: [], dropped: [], by_source: [], broad: null, suggestions: [], ms: 0, partial: false,
+    near: [], passing: [], dropped: [], by_source: [], by_target: c.titles.targets.map((t) => ({ name: t.name, pass: 0 })), broad: null, suggestions: [], ms: 0, partial: false,
   };
+  if (c.titles.targets.length) rows.forEach((r, i) => { if (drops[i].length) return; const m = matchTitle(c.titles, r.title, r.language); if (m) out.by_target[m.target].pass++; });
   rows.forEach((r, i) => { if (!drops[i].length && out.passing.length < 5) out.passing.push({ title: r.title, company: r.company, location: r.location }); });
   for (const d of out.drops.slice(0, 3)) {
     rows.forEach((r, i) => { if (drops[i][0]?.rule === d.rule && out.dropped.filter((x) => x.rule === d.rule).length < 2) out.dropped.push({ rule: d.rule, title: r.title, company: r.company, reason: drops[i][0].reason }); });
@@ -272,6 +275,7 @@ export function previewLines(p: Preview): string[] {
   if (p.near.length) L.push(`Near misses on title: ${p.near.map((g) => `${g.head} → ${g.items.map((x) => `${x.label} (${fmt(x.n)})`).join(', ')}`).join('; ')}`);
   if (p.passing.length) L.push(`Passing, e.g.: ${p.passing.map((x) => `${x.title} — ${x.company}${x.location ? ` (${x.location})` : ''}`).join(' · ')}`);
   for (const d of [...new Set(p.dropped.map((x) => x.rule))]) L.push(`Dropped, e.g. (${REASON_LABEL[d] ?? d}): ${p.dropped.filter((x) => x.rule === d).map((x) => `${x.title} — ${x.company}`).join(' · ')}`);
+  if (p.by_target.length > 1 || p.by_target.some((t) => !t.pass)) L.push(`By kind of job: ${p.by_target.map((t) => `${t.name} ${fmt(t.pass)}`).join(' · ')}`);
   if (p.by_source.length) L.push(`By source: ${p.by_source.map((s) => `${s.name} ${fmt(s.in)} → ${fmt(s.pass)}`).join(' · ')}`);
   if (p.suggestions.length) {
     L.push('Suggested (each is offered to the user, never applied without their yes):');

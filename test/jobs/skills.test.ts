@@ -79,6 +79,15 @@ test('skills: the four playbooks, each with a name that matches its folder and a
   assert.match(daily, /run\.done/, 'the skill stops where the budgeted candidates say so');
   assert.match(daily, /judged 20 of 40; 112 left in the pool/, 'the Find result reports judged and remaining');
   assert.match(read('plugin', 'skills', 'crewdeck-memory', 'SKILL.md'), /refilter --days 14/);
+  // Setup v2 (§24.4, §24.10): equal resume / no-resume paths, the situations, where to look, fetch once, the preview loop.
+  const setup = read('plugin', 'skills', 'jobs-setup', 'SKILL.md');
+  for (const re of [/Resume, or no resume/, /Starting out/, /Changing field/, /Coming back after a break/, /break: true/, /roles\.level/,
+    /sources suggest --json/, /coverage line/, /sources resolve <key>/, /source --only-new-sources/, /preview --search-file <T>\/change\.yaml --json/,
+    /by_target/, /\*\*14 days\*\* for\s+healthcare, education, retail, hospitality-food and logistics-transport/, /\*\*60 days\*\* otherwise/, /Never switch it\s+on/]) assert.match(setup, re);
+  const order = ['## 1. Resume', '## 2. Who they are', '## 3. Their career', '## 4. What they want, part one', '## 5. Where to look', '## 6. Fetch once', '## 7. What they want, part two', '## 8. Check'];
+  assert.deepEqual(order.map((h) => setup.indexOf(h)).every((x, i, a) => x >= 0 && (i === 0 || x > a[i - 1])), true, 'the design\'s order');
+  assert.match(daily, /run\.funnel\.sources\.empty/);
+  assert.match(read('plugin', 'skills', 'crewdeck-memory', 'SKILL.md'), /roles\.targets[\s\S]*crewdeck jobs sources add --careers-url-file/);
 });
 
 // ---- the command lint ----

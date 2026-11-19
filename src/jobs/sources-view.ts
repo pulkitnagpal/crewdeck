@@ -49,6 +49,9 @@ export function sourcesScreen(ctx: Ctx, o: { resolving?: Map<string, ResolveStat
   const within: Record<string, string[]> = {};
   for (const id of new Set([...regionIds, ...mine])) within[id] = anc(id);
   const linkedin = notes.sources.data.items.some((x) => x.linkedin);
+  // Before setup (no places, no country), "N boards fit anywhere" would be noise: say what the proposal needs instead.
+  const places = notes.search.data.places;
+  const unset = !places.onsite.length && !places.remote_from.length && !notes.profile.data.identity.country;
   return {
     note: { file: NOTES.sources, page: o.notesPage(NOTES.sources), path: join(ctx.vault, NOTES.sources), exists: notes.sources.exists, source: notes.sources.source,
       // A missing note isn't an error here: the first source added creates it.
@@ -57,8 +60,10 @@ export function sourcesScreen(ctx: Ctx, o: { resolving?: Map<string, ResolveStat
     rows,
     linkedin: { in_list: linkedin, risk: RISK.linkedin_search,
       switches: { linkedin_search: ctx.features.linkedin_search, linkedin_links: ctx.features.linkedin_links, easy_apply: ctx.features.easy_apply } },
-    coverage: { line: s.coverage.line, missing: s.coverage.missing, works: s.coverage.works, fits: s.sources.length },
-    suggested: s.sources.filter((x) => !have.has(x.id)).slice(0, 8).map((x) => ({ id: x.id, reasons: x.reasons })),
+    coverage: unset
+      ? { unset: true, line: 'Crewdeck proposes job boards once it knows where you can work and the kinds of job you want: set up Jobs with Claude on Today, or add sources yourself below.', missing: [], works: [], fits: 0 }
+      : { unset: false, line: s.coverage.line, missing: s.coverage.missing, works: s.coverage.works, fits: s.sources.length },
+    suggested: unset ? [] : s.sources.filter((x) => !have.has(x.id)).slice(0, 8).map((x) => ({ id: x.id, reasons: x.reasons })),
     catalog: entries.map((c) => ({
       id: c.id, name: c.name, kind: c.kind, kind_label: KIND_LABEL[c.kind] ?? c.kind, needs: c.needs, regions: c.regions,
       region_names: c.regions.slice(0, 4).map((x) => (x === 'world' ? 'worldwide' : placeName(x))), families: c.families, coverage: c.coverage,

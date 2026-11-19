@@ -91,8 +91,8 @@ test('LinkedIn\'s row: placed like any source, switched on only through the conf
 });
 
 /** Every visible text in the screen: its computed size and its contrast with the first opaque background behind it. */
-async function audit(page: Page) {
-  return page.evaluate(() => {
+async function audit(page: Page, root = '.srcs') {
+  return page.evaluate((root) => {
     const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
     const lum = ([r, g, b]: number[]) => { const f = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
     const bg = (el: Element | null): number[] => {
@@ -100,7 +100,7 @@ async function audit(page: Page) {
       return [255, 255, 255];
     };
     const out: { text: string; size: number; ratio: number }[] = [];
-    const walker = document.createTreeWalker(document.querySelector('.srcs')!, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(document.querySelector(root)!, NodeFilter.SHOW_TEXT);
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       const el = n.parentElement!;
       const t = n.textContent!.trim();
@@ -112,7 +112,7 @@ async function audit(page: Page) {
       out.push({ text: t.slice(0, 40), size: parseFloat(cs.fontSize), ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) });
     }
     return out;
-  });
+  }, root);
 }
 
 for (const scheme of ['light', 'dark'] as const) {
@@ -142,3 +142,24 @@ for (const scheme of ['light', 'dark'] as const) {
     await page.close();
   });
 }
+
+test('the setup card a new user sees first: no text under 14 px and AA contrast, light and dark; it says no resume is fine', { skip: noBrowser, timeout: 60_000 }, async () => {
+  const fresh = await jobsServer('template');
+  fresh.c.appearance = 'auto';
+  try {
+    for (const scheme of ['light', 'dark'] as const) {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: scheme });
+      await page.goto(`http://localhost:${fresh.port}/jobs/`);
+      await page.locator('.setup').waitFor({ timeout: 15_000 });
+      const text = await page.locator('.setup').textContent() ?? '';
+      assert.match(text, /no resume is fine too/);
+      assert.match(text, /If no job board covers your field where you live, it says so/);
+      await page.getByRole('button', { name: 'I\'ll edit the files' }).click();
+      const items = await audit(page, '.setup');
+      assert.deepEqual(items.filter((x) => x.size < 14), [], 'nothing under 14 px');
+      assert.deepEqual(items.filter((x) => x.ratio < 4.5), [], 'AA contrast');
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, `setup-${scheme}.png`), fullPage: false });
+      await page.close();
+    }
+  } finally { await fresh.close(); }
+});

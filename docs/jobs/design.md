@@ -1321,6 +1321,11 @@ placeable first, the preview shows the near misses, and Find returns N or explai
   career-ops; any provider is added only through the reviewed re-pin (§15), after checking the site's terms.
 
 ## Changelog
+- **P9f built (2026-11-20):** `jobs-setup` v2 in the design's order (resume or no resume; starting out, changing field,
+  a break; targets with variants checked on postings; where to look with the coverage line; one fetch; the preview loop;
+  the cooldown proposed by field), the setup card, `jobs-daily-run` (priority, the funnel close line), `crewdeck-memory`
+  (targets, sources). `preview` reports passes per kind of job; `sections[].break`. Scripted setups for E, N and W end
+  with a clean check and every target passing. Details: [impl/09f-setup-v2.md](impl/09f-setup-v2.md).
 - **P9e built (2026-11-20):** the Sources screen (Yours with Move up/down, on/off, remove and each source's last fetch;
   Add a company and Add a web address checked in the sandbox with Claude's help when unreadable; the catalog with region,
   field and kind filters and suggestions; LinkedIn's row through the native confirm; the coverage line; where it lives),

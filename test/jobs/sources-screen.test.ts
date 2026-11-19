@@ -69,9 +69,20 @@ test('a new user without jobs/sources.md: no error, and the first source added f
     rmSync(file);
     const v = (await s.get('sources')).json;
     assert.deepEqual([v.note.exists, v.note.errors, v.rows], [false, [], []]);
+    assert.equal(v.coverage.unset, false, 'the example person has places');
     assert.match(text(render(html`<${Sources} data=${v} />`)), /No sources yet\. .*jobs\/sources\.md \(made when you add your first source\)/);
     assert.equal((await s.action('sources', { op: 'add', provider: 'remotive' })).status, 200);
     assert.match(readFileSync(file, 'utf8'), /sources:\n {2}- \{ key: remotive, name: Remotive, provider: remotive, added: [\d-]+ \}\n/);
+  } finally { await s.close(); }
+});
+
+test('before setup (no places, no country) the screen says what the proposal needs instead of "boards fit anywhere"', async () => {
+  const s = await jobsServer('template');
+  try {
+    const v = (await s.get('sources')).json;
+    assert.deepEqual([v.coverage.unset, v.coverage.fits, v.suggested], [true, 0, []]);
+    assert.match(text(render(html`<${Sources} data=${v} />`)), /Where to look starts with setup Crewdeck proposes job boards once it knows where you can work/);
+    assert.ok(v.catalog.length > 50, 'the catalog is still there to add from');
   } finally { await s.close(); }
 });
 

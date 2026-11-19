@@ -221,7 +221,7 @@ export function Sources({ data, state = null, onAct = async () => null, onFeatur
   const addLinkedIn = async () => { const x = await onAct('sources', { op: 'add', linkedin: true }); if (x) setSay('LinkedIn placed at the end of your list'); };
 
   const fetchable = rows.filter((r) => r.enabled && r.fetch === 'auto' && r.kind !== 'linkedin').length;
-  const bare = !data.coverage.fits && !fetchable;
+  const bare = !data.coverage.unset && !data.coverage.fits && !fetchable;
   return html`<div class="page srcs">
     <div class="page-head">
       <div><h1>Sources</h1>
@@ -231,7 +231,7 @@ export function Sources({ data, state = null, onAct = async () => null, onFeatur
     <p class="sr" role="status" aria-live="polite">${say}</p>
     ${data.note.errors.length ? html`<div class="banner bad"><div class="body"><b>jobs/sources.md has errors</b><span class="fix">${data.note.errors.slice(0, 3).join('; ')}. Fix them in Notes first: changes here wait until then.</span></div></div>` : null}
     <section class=${cls('card section coverage', bare && 'bare')} aria-labelledby="cov-title">
-      <header><h2 id="cov-title">${bare ? 'No job board covers you yet' : 'What\'s covered'}</h2></header>
+      <header><h2 id="cov-title">${data.coverage.unset ? 'Where to look starts with setup' : bare ? 'No job board covers you yet' : 'What\'s covered'}</h2></header>
       <p>${data.coverage.line}</p>
       ${bare ? html`<div class="row-flex">
         <button type="button" class="btn small primary" onClick=${() => companyRef.current?.querySelector('input')?.focus()}>Add a company</button>

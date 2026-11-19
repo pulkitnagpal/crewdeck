@@ -270,6 +270,11 @@ fieldset.f legend { padding: 0; margin-bottom: 5px; font-size: 12.5px; font-weig
 .srcs h3 { font-size: 1rem; font-weight: 650; }
 .srcs .small, .srcs .hint, .srcs .chip, .srcs .btn.small, .srcs .btn, .srcs .linkbtn, .srcs .field, .srcs .check,
 .srcs .f > label, .srcs .f > .lab, .srcs code, .srcs .kv, .srcs .banner, .srcs .banner .fix { font-size: 0.875rem; }
+/* The setup card (a new user's first screen) to the same baseline. */
+.setup { font-size: 0.9375rem; }
+.setup h1 { font-size: 1.375rem; }
+.setup .small, .setup .chip, .setup .btn, .setup .btn.small, .setup code, .setup .files li, .setup ol.how li::before { font-size: 0.875rem; }
+.setup .soft, .setup .hint { color: var(--soft); }
 .srcs .soft, .srcs .hint, .srcs .kv dt { color: var(--soft); }
 .srcs .chip { font-weight: 600; padding: 0.125rem 0.5rem; }
 .srcs .btn.small { padding: 0.3125rem 0.75rem; }

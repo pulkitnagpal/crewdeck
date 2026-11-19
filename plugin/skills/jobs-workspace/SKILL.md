@@ -37,8 +37,10 @@ names (for example `node <checkout>/src/cli.ts`).
 6. Keep the chat reply to a line or two: the Jobs page is where the user looks.
 
 ## setup: "Set up with Claude"
-Payload `{}`. Run the **jobs-setup** skill (the first-run interview) with this request id for progress lines, then close
-it `done` with a one-line summary ("Set up: 24 facts in 5 sections; searching for analyst roles, hybrid in Berlin").
+Payload `{}`. Run the **jobs-setup** skill (the first-run interview: with or without a resume, where to look, one fetch,
+the preview) with this request id for progress lines, then close it `done` with a one-line summary from the real
+numbers ("Set up: 24 facts in 5 sections; searching 6 sources for 2 kinds of job; on the last fetch, 46 postings passed
+your rules").
 
 ## find: "Find N jobs"
 Payload `{ count }` (1–20; `context.daily_picks` is the user's usual number). Run the **jobs-daily-run** skill for `count`

@@ -79,6 +79,8 @@ export const SCHEMAS: Record<string, Schema> = {
     sections: list(obj({
       id: str({ pattern: SECTION_ID, hint: 'lowercase letters, digits, - and _ (e.g. example-gmbh)' }), kind: oneOf(SECTION_KINDS),
       title: str(), org: str(), where: str(), dates: str(), max_bullets: num({ int: true, min: 1, max: 20 }), required: bool(),
+      // A career break (§24.10): an experience entry with no organisation.
+      break: bool(),
     }, { required: ['id', 'kind'] })),
     facts: list(obj({ id: str({ pattern: FACT_ID, hint: '<section id>.<slug>, e.g. example-gmbh.dashboards' }), text: str({ required: true }), tags: list(str()) }, { required: ['id', 'text'] })),
     skills: list(str()),
@@ -105,6 +107,9 @@ export const SCHEMAS: Record<string, Schema> = {
       fx: map(num({ min: 0 }), /^[A-Z]{3}$/, 'a three-letter currency code (USD)'), fx_updated: { t: 'date' },
     }),
     schedule: obj({ timezone: str({ check: tzCheck }), daily_picks: num({ int: true, min: 0, max: 50 }), cooldown_days: num({ int: true, min: 0, max: 365 }) }),
+    // P9g (§24.8) adds work_pattern, places.relocate_to, places.authorized_in, schedule.cooldown_scope and per_company
+    // here. Until then setup (jobs-setup §4) writes shifts, hours, moving and right to work into judge_notes, in the
+    // user's words, and moving cities into places.onsite.
     judge_notes: str(),
     rules: map({ t: 'regex' }),
   }),
@@ -247,7 +252,7 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
     sections.forEach((s, i) => {
       if (typeof s.id === 'string' && seen.has(s.id)) add('error', `sections[${i}].id`, `"${s.id}" is used twice`, 'give each section its own id');
       seen.add(s.id);
-      if (s.kind === 'experience') for (const k of ['title', 'org']) if (!s[k]) add('error', `sections[${i}].${k}`, `is missing (experience sections need a title and org)`, `add ${k}: …`);
+      if (s.kind === 'experience') for (const k of s.break === true ? ['title'] : ['title', 'org']) if (!s[k]) add('error', `sections[${i}].${k}`, `is missing (experience sections need a title and org${k === 'org' ? '; a career break is break: true without one' : ''})`, `add ${k}: …`);
       if (s.kind === 'list' && !s.title) add('error', `sections[${i}].title`, 'is missing (list sections need a title)', 'add title: …');
     });
     const citable = sections.filter((s) => ['summary', 'experience', 'list'].includes(s.kind)).map((s) => s.id);
@@ -350,7 +355,7 @@ export type Profile = {
   education: { school: string; degree?: string; discipline?: string; start_year?: number; end_year?: number }[];
   copy_only_hosts: string[];
 };
-export type Section = { id: string; kind: (typeof SECTION_KINDS)[number]; title?: string; org?: string; where?: string; dates?: string; max_bullets?: number; required?: boolean };
+export type Section = { id: string; kind: (typeof SECTION_KINDS)[number]; title?: string; org?: string; where?: string; dates?: string; max_bullets?: number; required?: boolean; break?: boolean };
 export type Career = { resume: { file_name: string; paper: 'A4' | 'Letter'; max_pages: number }; sections: Section[]; facts: { id: string; text: string; tags: string[] }[]; skills: string[]; terms: { extra: string[] } };
 export type Search = {
   roles: { titles: string[]; seniority_prefer: string[]; exclude_title_words: string[]; targets: { name: string; titles: string[]; families: string[]; skills: string[] }[]; match: MatchMode; level: LevelWanted };
