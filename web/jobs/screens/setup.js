@@ -22,10 +22,11 @@ export function SetupCard({ state, onSetup = noop, onNotes = noop, onToast = noo
       <p class="lead">Claude reads your resume, proposes your career facts word for word, and asks what you are looking for: titles, places, workplace, pay, languages. Everything lands in notes you can read and change in Notes at any time.</p>
     </div>
     <ol class="how">
-      <li><div class="stack"><span>Open a Claude session in your jobs folder</span>
+      <li><div class="stack"><span>In Claude desktop, start a new <b>Code</b> session in your jobs folder and say hello</span>
         <span class="row-flex"><code>${a.workspace}</code><${CopyButton} text=${a.workspace} label="Copy" onCopied=${onToast} />
-          ${a.connected ? html`<span class="chip ok">Claude connected</span>` : html`<span class="chip">not connected yet</span>`}</span></div></li>
-      <li><span>Click <b>Set up with Claude</b> and answer its questions in the chat. Have your resume file ready.</span></li>
+          ${a.connected ? html`<span class="chip ok">Claude connected</span>` : html`<span class="chip">not connected yet</span>`}</span>
+        <span class="small soft">Pick the folder in the session's folder chooser (or paste the path). Claude works on Jobs only from there, with its own safety rules.</span></div></li>
+      <li><span>Click <b>Set up with Claude</b> and answer its questions in that chat. Have your resume file ready.</span></li>
       <li><span>Review what Claude wrote in Notes. Nothing is used until you are happy with it.</span></li>
     </ol>
     ${req ? html`<div class="state info" role="status"><span class="title"><span class=${`dot ${req.status === 'picked' ? 'busy' : 'wait'}`}></span>${req.status === 'picked' ? 'Claude is setting up Jobs with you in the chat' : 'Waiting for Claude to start the setup'}</span>

@@ -176,16 +176,17 @@ async function features(args: string[]) {
   for (const ch of changes) say(`${ch.name}: ${typeof ch.value === 'boolean' ? (ch.value ? 'on' : 'off') : ch.value}`);
 }
 
-/** crewdeck jobs init [--preset <name>] [--home <dir>]: switch Jobs on and set it up (idempotent). */
+/** crewdeck jobs init [--preset <name>] [--home <dir>] [--workspace <dir>]: switch Jobs on and set it up (idempotent). */
 async function init(args: string[]) {
   const { jobsInit, PRESETS } = await import('./setup.ts');
-  const preset = flag(args, 'preset'), home = flag(args, 'home');
-  if ((args.includes('--preset') && !preset) || (args.includes('--home') && !home)) throw new Error(`usage: crewdeck jobs init [--preset ${PRESETS.join('|')}] [--home <dir>] [--no-providers]`);
-  for (const l of await jobsInit({ preset, home, providers: args.includes('--no-providers') ? false : undefined })) say(l);
+  const preset = flag(args, 'preset'), home = flag(args, 'home'), workspace = flag(args, 'workspace');
+  if ((args.includes('--preset') && !preset) || (args.includes('--home') && !home) || (args.includes('--workspace') && !workspace)) throw new Error(`usage: crewdeck jobs init [--preset ${PRESETS.join('|')}] [--home <dir>] [--workspace <dir>] [--no-providers]`);
+  for (const l of await jobsInit({ preset, home, workspace, providers: args.includes('--no-providers') ? false : undefined })) say(l);
 }
 
 const USAGE = `usage: crewdeck jobs <command>
-  init [--preset <name>] [--home <dir>] [--no-providers]   switch Jobs on: notes, tracker, guard rails, job-board providers
+  init [--preset <name>] [--home <dir>] [--workspace <dir>] [--no-providers]
+                                          switch Jobs on: notes, tracker, guard rails, job-board providers
   check                                   validate your job notes (errors and warnings)
   rules                                   the hard drops compiled from your notes
   judge-brief                             the judging instructions built from your notes
@@ -205,6 +206,8 @@ export const JOBS_COMMANDS = ['init', 'check', 'rules', 'judge-brief', 'me', 'pr
 
 export async function main(args: string[]) {
   const [cmd, ...rest] = args;
+  // --help never runs a command (init would otherwise set Jobs up).
+  if (rest.includes('--help') || rest.includes('-h')) { say(USAGE); say((await import('./commands.ts')).USAGE); return; }
   const run: Record<string, (a: string[]) => unknown> = { init, check, rules: rulesCmd, 'judge-brief': briefCmd, me, pref, remember: rememberCmd, features };
   if (cmd && P2.includes(cmd)) {
     const m = await import('./commands.ts');

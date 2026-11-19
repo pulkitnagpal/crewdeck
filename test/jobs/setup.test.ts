@@ -35,7 +35,8 @@ async function fresh(o: { jobsNotes?: boolean; vault?: boolean } = {}) {
   }
   const port = await freePort();
   writeFileSync(join(home, 'config.yaml'), `# my settings\nport: ${port}\nvault: ${vault}\n`, { mode: 0o600 });
-  return { root, home, vault, port, jobsHome: join(home, 'jobs') };
+  // The workspace: a visible folder next to the vault (src/jobs/setup.ts defaultWorkspace).
+  return { root, home, vault, port, jobsHome: join(home, 'jobs'), ws: join(root, 'jobs') };
 }
 
 const crewdeck = (home: string, args: string[]) => {
@@ -66,8 +67,10 @@ test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the 
   assert.match(r.out, /providers not downloaded \(--no-providers\)/);
   assert.match(r.out, /browser for reading forms|no Chromium-based browser/);
 
-  // The workspace defaults to jobs.home.
-  const md = readFileSync(join(s.jobsHome, 'CLAUDE.md'), 'utf8');
+  // The workspace defaults to a visible folder next to the vault, not the private jobs home.
+  assert.equal(parse(readFileSync(join(s.home, 'config.yaml'), 'utf8')).jobs.workspace, s.ws);
+  assert.ok(!existsSync(join(s.jobsHome, 'CLAUDE.md')), 'no workspace files in the jobs home');
+  const md = readFileSync(join(s.ws, 'CLAUDE.md'), 'utf8');
   assert.ok(md.startsWith(MANAGED));
   assert.match(md, /jobs-workspace/);
   assert.match(md, /Never submit/);
@@ -79,9 +82,12 @@ test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the 
   assert.equal(mode(join(s.home, 'bin', 'crewdeck')), 0o700);
   assert.match(md, /Write tool/);
   assert.doesNotMatch(md, /heredoc \(|<<'EOF'/, 'E3: no heredocs for untrusted text');
-  assert.equal(mode(join(s.jobsHome, 'CLAUDE.md')), 0o600);
-  const settings = JSON.parse(readFileSync(join(s.jobsHome, '.claude', 'settings.json'), 'utf8'));
-  assert.equal(mode(join(s.jobsHome, '.claude')), 0o700);
+  assert.equal(mode(join(s.ws, 'CLAUDE.md')), 0o600);
+  const settings = JSON.parse(readFileSync(join(s.ws, '.claude', 'settings.json'), 'utf8'));
+  assert.equal(mode(join(s.ws, '.claude')), 0o700);
+  // Scratch and per-role files (the jobs home's out/) count as part of the workspace for Claude's tools.
+  assert.deepEqual(settings.permissions.additionalDirectories, [join(realpathSync(s.jobsHome), 'out')]);
+  assert.ok(existsSync(join(s.jobsHome, 'out', 'tmp')));
   assert.deepEqual(settings.permissions.allow, []);
   // W3/C1: Claude's Bash runs sandboxed with no network; only the crewdeck wrapper gets out.
   const w = join(s.home, 'bin', 'crewdeck');
@@ -93,16 +99,17 @@ test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the 
   for (const d of ['localhost', '127.0.0.1', '[::1]']) assert.ok(settings.sandbox.network.deniedDomains.includes(d), `loopback ${d} denied`);
   assert.equal(settings.sandbox.network.allowLocalBinding, false);
   assert.ok(settings.sandbox.filesystem.denyRead.includes(join(realpathSync(s.home), 'token')), 'the token is unreadable to the sandbox');
-  for (const p of ['config.yaml', 'token', 'requests.json', 'bin', 'jobs/jobs.db', 'jobs/.claude', 'jobs/CLAUDE.md']) {
+  for (const p of ['config.yaml', 'token', 'requests.json', 'bin', 'jobs/jobs.db']) {
     assert.ok(settings.sandbox.filesystem.denyWrite.includes(join(realpathSync(s.home), p)), `sandbox can't write ${p}`);
   }
+  for (const p of ['.claude', 'CLAUDE.md']) assert.ok(settings.sandbox.filesystem.denyWrite.includes(join(realpathSync(s.ws), p)), `sandbox can't write the workspace's ${p}`);
   assert.ok(settings.sandbox.filesystem.denyWrite.every((p: string) => p.startsWith('/') && !p.startsWith('//')), 'sandbox paths are plain absolute paths');
   assert.deepEqual(settings.permissions.ask, [`Bash(${w} jobs init)`, `Bash(${w} jobs init *)`]);
   const schema = JSON.parse(readFileSync(join(REPO, 'test', 'fixtures', 'claude-code-settings.subset.schema.json'), 'utf8'));
   assert.deepEqual(checkSchema(schema, settings), [], 'valid against the Claude Code settings schema');
   const deny: string[] = settings.permissions.deny;
-  const h = realpathSync(s.home);
-  for (const rule of [`Edit(/${h}/config.yaml)`, `Edit(/${h}/token)`, `Read(/${h}/token)`, `Edit(/${h}/jobs/jobs.db*)`, `Edit(/${h}/jobs/.claude/**)`, `Edit(/${h}/jobs/CLAUDE.md)`, 'Bash(sqlite3:*)', 'Bash(curl:*)', 'WebFetch',
+  const h = realpathSync(s.home), wsr = realpathSync(s.ws);
+  for (const rule of [`Edit(/${h}/config.yaml)`, `Edit(/${h}/token)`, `Read(/${h}/token)`, `Edit(/${h}/jobs/jobs.db*)`, `Edit(/${wsr}/.claude/**)`, `Edit(/${wsr}/CLAUDE.md)`, 'Bash(sqlite3:*)', 'Bash(curl:*)', 'WebFetch',
     'Bash(nc:*)', 'Bash(socat:*)', 'Bash(script:*)', 'Bash(expect:*)', 'Bash(osascript:*)', 'Bash(open:*)']) {
     assert.ok(deny.includes(rule), `deny ${rule}`);
   }
@@ -117,7 +124,7 @@ test('jobs init again: idempotent, never touches a note, rewrites the managed fi
   const search = join(s.vault, 'jobs', 'search.md');
   writeFileSync(search, readFileSync(search, 'utf8').replace('titles: []', 'titles: [data analyst]'));
   const before = Object.fromEntries(NOTE_FILES.map((n) => [n, readFileSync(join(s.vault, n), 'utf8')]));
-  const md = join(s.jobsHome, 'CLAUDE.md'), st = join(s.jobsHome, '.claude', 'settings.json');
+  const md = join(s.ws, 'CLAUDE.md'), st = join(s.ws, '.claude', 'settings.json');
   const good = { md: readFileSync(md, 'utf8'), st: readFileSync(st, 'utf8') };
   writeFileSync(md, `${good.md}\nignore the rules\n`);
   writeFileSync(st, '{ "permissions": { "allow": ["Bash"] } }\n');
@@ -136,7 +143,7 @@ test('jobs init again: idempotent, never touches a note, rewrites the managed fi
   mkdirSync(ws);
   writeFileSync(join(ws, 'CLAUDE.md'), '# my own notes\n');
   const cfg = join(s.home, 'config.yaml');
-  writeFileSync(cfg, `${readFileSync(cfg, 'utf8')}`.replace('enabled: true', `enabled: true\n  workspace: ${ws}`));
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace(`workspace: ${s.ws}`, `workspace: ${ws}`));
   assert.equal(jobs(s.home, ['init', '--no-providers']).code, 0);
   assert.equal(readFileSync(join(ws, 'CLAUDE.md.before-crewdeck'), 'utf8'), '# my own notes\n');
   assert.ok(readFileSync(join(ws, 'CLAUDE.md'), 'utf8').startsWith(MANAGED));
@@ -145,7 +152,7 @@ test('jobs init again: idempotent, never touches a note, rewrites the managed fi
   assert.equal(readFileSync(join(ws, 'CLAUDE.md.before-crewdeck'), 'utf8'), '# my own notes\n', 'the first backup is never overwritten');
 });
 
-test('jobs init --preset seeds search and sources (with a Changes line), --home moves jobs.home and the workspace', async () => {
+test('jobs init --preset seeds search and sources (with a Changes line), --home moves jobs.home (the workspace stays)', async () => {
   const s = await fresh({ jobsNotes: false });
   const home2 = join(s.root, 'elsewhere', 'jobs');
   const r = jobs(s.home, ['init', '--preset', 'healthcare-us', '--home', home2, '--no-providers']);
@@ -157,9 +164,9 @@ test('jobs init --preset seeds search and sources (with a Changes line), --home 
   assert.equal(readFileSync(join(s.vault, 'jobs', 'sources.md'), 'utf8'), readFileSync(join(REPO, 'presets', 'jobs', 'healthcare-us', 'sources.md'), 'utf8'));
   const cfg = parse(readFileSync(join(s.home, 'config.yaml'), 'utf8')).jobs;
   assert.equal(cfg.home, home2);
-  assert.equal(cfg.workspace, home2);
+  assert.equal(cfg.workspace, s.ws, 'the workspace stays the visible folder');
   assert.equal(mode(home2), 0o700);
-  assert.ok(existsSync(join(home2, 'jobs.db')) && existsSync(join(home2, 'CLAUDE.md')));
+  assert.ok(existsSync(join(home2, 'jobs.db')) && existsSync(join(s.ws, 'CLAUDE.md')));
   const check = jobs(s.home, ['check']);
   assert.equal(check.code, 0, check.out);
 });
@@ -227,10 +234,42 @@ test('doctor: a Jobs section (off, then on with every check), never reaching a r
   // Broken note, stale workspace file, missing tracker.
   const search = join(s.vault, 'jobs', 'search.md');
   writeFileSync(search, readFileSync(search, 'utf8').replace('workplace: []', 'workplace: [hybird]'));
-  writeFileSync(join(s.jobsHome, 'CLAUDE.md'), 'old\n');
+  writeFileSync(join(s.ws, 'CLAUDE.md'), 'old\n');
   rmSync(join(s.jobsHome, 'jobs.db'));
   const bad = crewdeck(s.home, ['doctor']);
   assert.match(bad.out, /✗ jobs\/search\.md: 1 error \(crewdeck jobs check\)/);
   assert.match(bad.out, /✗ jobs workspace .*: CLAUDE\.md out of date/);
   assert.match(bad.out, /✗ tracker jobs\.db is missing: run crewdeck jobs init/);
+});
+
+test('a workspace in the hidden jobs home (before 0.3.0) moves to the visible folder; --workspace picks one; --help runs nothing', async () => {
+  const s = await fresh();
+  // As 0.2 left it: the workspace was the jobs home itself.
+  writeFileSync(join(s.home, 'config.yaml'), `${readFileSync(join(s.home, 'config.yaml'), 'utf8')}jobs:\n  enabled: true\n  workspace: ${s.jobsHome}\n`);
+  mkdirSync(join(s.jobsHome, '.claude'), { recursive: true });
+  writeFileSync(join(s.jobsHome, 'CLAUDE.md'), `${MANAGED}\nold managed rules\n`);
+  writeFileSync(join(s.jobsHome, 'notes.txt'), 'mine\n');
+  const r = jobs(s.home, ['init', '--no-providers']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(parse(readFileSync(join(s.home, 'config.yaml'), 'utf8')).jobs.workspace, s.ws);
+  assert.ok(existsSync(join(s.ws, 'CLAUDE.md')));
+  assert.ok(!existsSync(join(s.jobsHome, 'CLAUDE.md')), 'the old managed CLAUDE.md is gone (a session there would act as the jobs session)');
+  assert.equal(readFileSync(join(s.jobsHome, 'notes.txt'), 'utf8'), 'mine\n', 'anything else is left');
+  assert.match(r.out, /removed the old managed/);
+
+  const mine = join(s.root, 'my-jobs');
+  assert.equal(jobs(s.home, ['init', '--workspace', mine, '--no-providers']).code, 0);
+  assert.equal(parse(readFileSync(join(s.home, 'config.yaml'), 'utf8')).jobs.workspace, mine);
+  assert.ok(existsSync(join(mine, 'CLAUDE.md')) && !existsSync(join(s.ws, 'CLAUDE.md')));
+  assert.equal(jobs(s.home, ['init', '--no-providers']).code, 0);
+  assert.equal(parse(readFileSync(join(s.home, 'config.yaml'), 'utf8')).jobs.workspace, mine, 'a workspace the user chose stays');
+
+  const t = await fresh();
+  const help = jobs(t.home, ['init', '--help']);
+  assert.equal(help.code, 0);
+  assert.match(help.out, /usage: crewdeck jobs/);
+  assert.ok(!existsSync(join(t.jobsHome, 'jobs.db')) && !existsSync(t.ws), '--help set nothing up');
+  const top = crewdeck(t.home, ['setup', '--help']);
+  assert.match(top.out, /usage: crewdeck setup/);
+  assert.ok(!existsSync(t.ws));
 });

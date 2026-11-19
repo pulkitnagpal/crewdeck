@@ -141,5 +141,5 @@ test('W4: a new token on every start (0600); the CLI wrapper runs this checkout 
   assert.ok(readFileSync(w, 'utf8').includes(`CREWDECK_HOME='${home}'`));
   const r = spawnSync(w, [], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /usage: crewdeck init/);
+  assert.match(r.stdout, /usage: crewdeck setup .*\| init /);
 });

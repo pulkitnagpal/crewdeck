@@ -733,6 +733,9 @@ The first acceptance test (§2.3 for a new user) is reachable after P4.
 2. Keep Node ≥ 22.18 (D15)?
 
 ## Changelog
+- **Onboarding (2026-11-19):** from the owner's first run as a new user: `crewdeck setup` does init, jobs init and the
+  plugin install in one command; the jobs workspace defaults to a visible `~/Crewdeck/jobs` next to the vault (the jobs
+  home stays private; its `out/` is an additional directory of the workspace); `--help` never runs a command.
 - **P8 (2026-11-19):** docs for a brand-new user ([impl/08-docs-visual.md](impl/08-docs-visual.md)): README rewritten
   (features, requirements with Node 25 for sourcing, quick start, plugin install from a local checkout or GitHub and
   removing `crewdeck-bridge`, where knowledge lives, presets, daily use, preferences, sources, custom rules, risky

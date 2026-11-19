@@ -80,7 +80,8 @@ crewdeck/ (this repo)      src/ (CLI + server, TypeScript run directly)  web/ (s
                            bin/silverbullet (pinned)   bin/crewdeck (managed wrapper: this checkout + this home)
 ~/.crewdeck/jobs/ (0700)   jobs.db (tracker)   out/<role>/ (PDFs, scratch)   out/tmp/ (Claude's files)
                            providers/<commit>/ (read-only, hash-checked)   state/ (last-valid notes, sources run)
-                           CLAUDE.md + .claude/settings.json (the jobs workspace: managed, rewritten on init and up)
+~/Crewdeck/jobs/           CLAUDE.md + .claude/settings.json (the jobs workspace, visible, next to the vault: managed,
+                           rewritten on init and up; the jobs home's out/ is an additional directory of it)
 <vault>/                   CLAUDE.md (rules for agents)   raw/   wiki/   journal/   projects/<name>/
                            me/profile.md  me/career.md  me/preferences.md
                            jobs/search.md  jobs/memory.md  jobs/sources.md   Library/Crewdeck/ (theme, appearance)

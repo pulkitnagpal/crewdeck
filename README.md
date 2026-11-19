@@ -55,8 +55,7 @@ A step-by-step walk-through for a new user, with what you should see at each ste
 git clone https://github.com/pulkitnagpal/crewdeck.git
 cd crewdeck
 npm ci
-node src/cli.ts init            # ~/.crewdeck (config, token), SilverBullet, your vault at ~/Crewdeck/vault
-node src/cli.ts jobs init       # Jobs on: your job notes, the tracker, the guard rails, the job-board providers
+node src/cli.ts setup           # everything: ~/.crewdeck, your vault, Jobs, your jobs folder, the plugin in Claude
 node src/cli.ts up              # start it: http://localhost:4848
 ```
 
@@ -65,19 +64,21 @@ node src/cli.ts up              # start it: http://localhost:4848
 
 Then:
 
-1. Open **http://localhost:4848** in Claude desktop's browser pane (or any browser).
-2. Install the `crewdeck` plugin (next section).
-3. Open a Claude Code session in the jobs folder `jobs init` printed (`~/.crewdeck/jobs` by default). Its status line
-   shows `Crewdeck · jobs`, and the Jobs page shows **Claude connected**.
-4. On the Jobs page click **Set up with Claude** and answer Claude's questions in the chat.
+1. Open **http://localhost:4848** in Claude desktop's browser pane (or any browser) and click **Jobs**.
+2. In Claude desktop, start a new Code session in your jobs folder, **`~/Crewdeck/jobs`**, and say hello. Its status
+   line shows `Crewdeck · jobs`, and the Jobs page shows **Claude connected**.
+3. On the Jobs page click **Set up with Claude** and answer Claude's questions in that chat.
 
-`init` options: `--vault <path>` puts the vault elsewhere. `jobs init` options: `--preset <name>` (see Presets),
-`--home <dir>` for the tracker, `--no-providers` to skip the download (`crewdeck jobs providers install` later).
+`setup` options: `--preset <name>` (see Presets), `--vault <path>` puts the vault elsewhere, `--no-plugin` skips the
+plugin. It runs the same steps as `crewdeck init`, `crewdeck jobs init` and the plugin install below, each of which also
+works on its own (`jobs init` also takes `--home <dir>` for the tracker, `--workspace <dir>` for the jobs folder and
+`--no-providers` to skip the download). Running any of them again is safe.
 Add a project board with `crewdeck add-project <name> <path-to-git-repo>`.
 
 ## Install the plugin
 
 The plugin is called `crewdeck` (version 0.4.0). The repo is its own plugin marketplace, also called `crewdeck`.
+`crewdeck setup` installs it for you from your checkout; the commands below do the same by hand.
 
 **From your checkout** (works before anything is published; the plugin is read from the checkout, so `git pull` updates
 it after a restart of Claude):
@@ -337,7 +338,7 @@ apps:                      # optional: other local web apps in the rail, started
 jobs:                      # written by `crewdeck jobs init`
   enabled: true
   home: ~/.crewdeck/jobs   # tracker, PDFs, providers
-  workspace: ~/.crewdeck/jobs   # the folder a Claude session opens to work Jobs
+  workspace: ~/Crewdeck/jobs    # the folder a Claude session opens to work Jobs (next to the vault)
   browser: auto            # or the full path of a Chromium-based browser
   fetch_every: 12h         # at least 30m
   features: {}             # the risky switches: change them only as above

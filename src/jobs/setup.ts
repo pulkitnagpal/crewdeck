@@ -158,11 +158,17 @@ export function sandboxSettings(c: Config) {
   };
 }
 
+const outDir = (c: Config) => join(c.jobs.home, 'out');
+const isInside = (root: string, p: string) => { const r = real(root), q = real(p); return q === r || q.startsWith(r.endsWith('/') ? r : `${r}/`); };
+
 export function workspaceSettings(c: Config): string {
   const settings = {
     $schema: 'https://json.schemastore.org/claude-code-settings.json',
     sandbox: sandboxSettings(c),
     permissions: {
+      // Scratch and per-role files live in the jobs home's out/ (the skills write there): part of this workspace for
+      // Claude's tools, so a workspace outside the home doesn't ask about every scratch file.
+      ...(isInside(c.jobs.workspace, outDir(c)) ? {} : { additionalDirectories: [real(outDir(c))] }),
       allow: [] as string[],
       // A new home or workspace moves the guard rails: the user says yes to that.
       ask: [`Bash(${cliCommand()} jobs init)`, `Bash(${cliCommand()} jobs init *)`],
@@ -254,6 +260,7 @@ export function writeWorkspaceFiles(c: Config): { written: string[]; backedUp: s
   const out = { written: [] as string[], backedUp: [] as string[] };
   writeCliWrapper(); // the one command the workspace's sandbox lets out
   if (!existsSync(c.jobs.workspace)) mkdirSync(c.jobs.workspace, { recursive: true, mode: 0o700 });
+  mkdirSync(join(outDir(c), 'tmp'), { recursive: true, mode: 0o700 });
   const state = readState(c);
   for (const f of workspaceFiles(c)) {
     mkdirSync(dirname(f.path), { recursive: true, mode: 0o700 });
@@ -285,18 +292,25 @@ export function workspaceStatus(c: Config): { name: string; path: string; exists
 
 // ---- init ----
 
-export async function jobsInit(o: { preset?: string; home?: string; providers?: false | InstallOptions } = {}): Promise<string[]> {
+/**
+ * The default jobs workspace: a visible folder next to the vault (`~/Crewdeck/jobs` by default), so a new user can pick
+ * it in Claude desktop's folder picker. Machine state stays in the private jobs home.
+ */
+export const defaultWorkspace = (vault: string) => join(dirname(vault), 'jobs');
+
+export async function jobsInit(o: { preset?: string; home?: string; workspace?: string; quiet?: boolean; providers?: false | InstallOptions } = {}): Promise<string[]> {
   if (o.preset !== undefined && !(PRESETS as readonly string[]).includes(o.preset)) throw new Error(`unknown preset "${o.preset}" (presets: ${PRESETS.join(', ')})`);
   let c = loadConfig(); // "No config yet. Run: crewdeck init"
   if (!existsSync(join(c.vault, 'CLAUDE.md'))) throw new Error(`No Crewdeck vault at ${c.vault}: run crewdeck init first.`);
   const lines: string[] = [];
 
+  const before = c.jobs.workspace;
   const changes: { enabled: boolean; home?: string; workspace?: string } = { enabled: true };
-  if (o.home) {
-    const home = expand(o.home);
-    changes.home = home;
-    if (c.jobs.workspace === c.jobs.home) changes.workspace = home; // the workspace follows a home it was sitting in
-  }
+  if (o.home) changes.home = expand(o.home);
+  // An explicit --workspace wins; a workspace still sitting in the (hidden) jobs home, as before 0.3.0, moves out to the
+  // visible default. One the user chose elsewhere stays.
+  if (o.workspace) changes.workspace = expand(o.workspace);
+  else if (c.jobs.workspace === c.jobs.home) changes.workspace = defaultWorkspace(c.vault);
   setJobsSettings(changes);
   c = loadConfig();
   lines.push(`✓ Jobs is on (${CONFIG_PATH})`);
@@ -316,6 +330,7 @@ export async function jobsInit(o: { preset?: string; home?: string; providers?: 
   const ws = writeWorkspaceFiles(c);
   lines.push(`✓ jobs workspace ${c.jobs.workspace}: CLAUDE.md and .claude/settings.json (managed: rewritten on every init and up)`);
   for (const b of ws.backedUp) lines.push(`  your earlier file was kept as ${b}`);
+  if (before !== c.jobs.workspace) for (const r of removeOldWorkspaceFiles(c, before)) lines.push(`  removed the old managed ${r} (the workspace moved)`);
 
   const b = findBrowser(c.jobs.browser);
   lines.push(b ? `✓ browser for reading forms and resume PDFs: ${b.name}` : `✗ no Chromium-based browser (needed to read forms and make resume PDFs). ${installHint()}`);
@@ -327,12 +342,27 @@ export async function jobsInit(o: { preset?: string; home?: string; providers?: 
     lines.push(`${p.ready ? '✓' : '✗'} ${p.message}`);
   }
 
-  lines.push('', 'Next:',
-    '  1. Install the crewdeck plugin in Claude desktop (+ → Plugins → Add marketplace pulkitnagpal/crewdeck → crewdeck).',
+  if (!o.quiet) lines.push('', 'Next:',
+    '  1. Install the crewdeck plugin in Claude desktop (+ → Plugins → Add marketplace pulkitnagpal/crewdeck → crewdeck),',
+    '     or run crewdeck setup, which does it for you.',
     '  2. Start Crewdeck: crewdeck up (it rewrites the workspace files too), and open Jobs.',
     `  3. Open a Claude session in ${c.jobs.workspace}`,
     '  4. Click "Set up with Claude" on the Jobs page.');
   return lines;
+}
+
+/**
+ * After the workspace moved: the old folder's CLAUDE.md and .claude/settings.json, only when they are still exactly what
+ * Crewdeck wrote (a session opened there would otherwise keep acting as the jobs session). Anything else is left.
+ */
+export function removeOldWorkspaceFiles(c: Config, oldWs: string): string[] {
+  const removed: string[] = [];
+  for (const f of workspaceFiles({ ...c, jobs: { ...c.jobs, workspace: oldWs } })) {
+    if (!existsSync(f.path)) continue;
+    const cur = readFileSync(f.path, 'utf8');
+    if (cur.startsWith(MANAGED) || cur === f.text) { rmSync(f.path); removed.push(f.path); }
+  }
+  return removed;
 }
 
 /** Folder mode check for doctor: private to the user. */

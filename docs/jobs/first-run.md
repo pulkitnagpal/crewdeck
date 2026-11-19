@@ -29,7 +29,7 @@ moves are backups you can put back.
    claude plugin marketplace remove crewdeck
    ```
    If `claude plugin list` shows `crewdeck@crewdeck` already, uninstall that too (`claude plugin uninstall
-   crewdeck@crewdeck`) so step 6 installs the version from your checkout.
+   crewdeck@crewdeck`) so step 2 installs the version from your checkout.
 
 Your project repos keep their boards (`backlog/` lives in each repo); you can add them again with
 `crewdeck add-project`.
@@ -52,69 +52,54 @@ sourcing says why it doesn't. On macOS, `brew install node` gives the current re
 **If not:** on a Node older than 22.18, npm warns `EBADENGINE` and Crewdeck's commands fail to start (it runs its
 TypeScript directly, which needs 22.18): install a newer Node and run `npm ci` again.
 
-## 2. Create your Crewdeck home and vault
+## 2. Set everything up (one command)
 
 ```bash
-crewdeck init
+crewdeck setup
 ```
 
-**You should see:**
+(Add `--preset <name>` to start your search from typical boards and settings: `remote-any-country`, `onsite-city`,
+`healthcare-us` or `non-engineering`. `--vault <path>` puts your notes somewhere else.)
+
+It does, in order:
+- **Crewdeck's home** `~/.crewdeck/` (private: config, the bridge token, SilverBullet) and **your vault**
+  `~/Crewdeck/vault`: your notes.
+- **Jobs:** the job notes in the vault (`me/profile.md`, `me/career.md`, `jobs/search.md`, `jobs/memory.md`,
+  `jobs/sources.md`), the private tracker in `~/.crewdeck/jobs/`, and the job-board providers (downloaded and checked
+  file by file).
+- **Your jobs folder** `~/Crewdeck/jobs`: the folder you open a Claude session in to work on Jobs. Crewdeck writes a
+  `CLAUDE.md` (the hard rules) and `.claude/settings.json` (Claude Code's sandbox) there and rewrites them on every
+  start, so don't edit them.
+- **The `crewdeck` plugin** in Claude (from this checkout, so it always matches): it brings your clicks on the Jobs
+  page into that session and carries the Jobs skills.
+
+**You should see** a list of ✓ lines ending with:
 ```
-Downloading SilverBullet 2.12.1…
-Installed ~/.crewdeck/bin/silverbullet
-Vault ready: ~/Crewdeck/vault
+✓ installed the crewdeck plugin in Claude (it loads in new sessions)
 
-Config: ~/.crewdeck/config.yaml
-Next: crewdeck add-project <name> <path-to-git-repo>, then crewdeck up
+Done. Now:
+  1. Start Crewdeck: crewdeck up   (leave it running)
+  2. Open http://localhost:4848 (in Claude desktop: ask Claude to open it in the browser pane) and click Jobs.
+  3. In Claude desktop, start a new Code session in the folder ~/Crewdeck/jobs
+     and say hello. Then click "Set up with Claude" on the Jobs page: Claude interviews you there.
 ```
-(Full paths in place of `~`.) This made `~/.crewdeck/` (private), the bridge token, and a starter vault: your notes.
-
-**If not:** the download needs internet and `unzip`. `--vault <path>` puts the vault somewhere else.
-
-## 3. Switch Jobs on
-
-```bash
-crewdeck jobs init
-```
-
-or with a preset that fills in typical boards and settings: `--preset remote-any-country`, `onsite-city`,
-`healthcare-us` or `non-engineering`.
-
-**You should see:**
-```
-✓ Jobs is on (~/.crewdeck/config.yaml)
-✓ ~/.crewdeck/jobs (private), tracker jobs.db (schema v1)
-✓ kept your me/profile.md, me/career.md, jobs/search.md, jobs/memory.md, jobs/sources.md
-✓ jobs workspace ~/.crewdeck/jobs: CLAUDE.md and .claude/settings.json (managed: rewritten on every init and up)
-✓ browser for reading forms and resume PDFs: Google Chrome
-✓ job-board providers: 137 from career-ops-hq/career-ops@f3b043d (MIT), 166 files verified
-
-Next:
-  1. Install the crewdeck plugin in Claude desktop (+ → Plugins → Add marketplace pulkitnagpal/crewdeck → crewdeck).
-  2. Start Crewdeck: crewdeck up (it rewrites the workspace files too), and open Jobs.
-  3. Open a Claude session in ~/.crewdeck/jobs
-  4. Click "Set up with Claude" on the Jobs page.
-```
-"kept your …" means the empty job notes `init` copied into the vault are in place; Jobs never overwrites a note you
-have. The jobs workspace (`~/.crewdeck/jobs`) is the folder a Claude session opens to work Jobs; its `CLAUDE.md` and
-`.claude/settings.json` hold the hard rules and Claude Code's sandbox settings.
+(Full paths in place of `~`.) Running it again is safe: it never overwrites a note you changed.
 
 **If not:**
+- The SilverBullet download needs internet and `unzip`.
 - "no Chromium-based browser": install Chrome, Chromium, Brave or Edge (or set `jobs.browser` in the config to its
   full path). Jobs needs one to read forms and print resume PDFs.
 - The providers line failed (offline, GitHub down): pasted links still work; run `crewdeck jobs providers install`
   later.
+- The plugin line failed: "claude is not on PATH" means Claude Code's command line isn't installed; in Claude desktop
+  use + → Plugins → Add marketplace with the path of your checkout, then install `crewdeck`. "a marketplace called
+  crewdeck is already added from somewhere else": see step 0.3, then run `crewdeck setup` again.
 
-Check everything:
+`crewdeck doctor` checks everything; until the next step its last line is "✗ Crewdeck isn't running on port 4848".
+(Prefer separate steps? `crewdeck init`, then `crewdeck jobs init [--preset …]`, then install the plugin by hand:
+`claude plugin marketplace add /path/to/crewdeck` and `claude plugin install crewdeck@crewdeck --config port=4848`.)
 
-```bash
-crewdeck doctor
-```
-
-Every line should be ✓ except the last, "✗ Crewdeck isn't running on port 4848", until the next step. `jobs/search.md
-(2 warnings)` is normal before setup: your search is still empty.
-
-## 4. Start Crewdeck and open it in Claude's browser pane
+## 3. Start Crewdeck and open it in Claude's browser pane
 
 Either:
 
@@ -127,7 +112,7 @@ Either:
 
 **You should see** the Crewdeck page: a rail on the left with **Notes** and **Jobs** (a **Board** per project once you
 add one), in the same light or dark as Claude. Notes shows your vault's home page. Jobs shows a **Set up Jobs** card with
-"No Claude session" and the jobs folder.
+"No Claude session" and your jobs folder.
 
 ![The setup card on a new install](../img/jobs-setup-light.png)
 
@@ -136,42 +121,26 @@ add one), in the same light or dark as Claude. Notes shows your vault's home pag
   `silverbullet.port` in `~/.crewdeck/config.yaml`.
 - Notes is blank: wait a few seconds on first start (it indexes the vault). The browser pane logs a service worker error
   for Notes; that is harmless.
+- Notes is light while the rest is dark (or the other way) on the very first load after an older Crewdeck: reload the
+  page once; it then follows Claude's light/dark.
 
-## 5. Install the plugin
+## 4. Open a Claude Code session in your jobs folder
 
-The plugin carries the bridge (your clicks reach the right Claude session) and the Jobs skills. From your checkout:
-
-```bash
-claude plugin marketplace add /path/to/crewdeck
-claude plugin install crewdeck@crewdeck --config port=4848
-claude plugin list
-```
-
-**You should see** "Successfully added marketplace: crewdeck", "Successfully installed plugin: crewdeck@crewdeck", and
-in the list `crewdeck@crewdeck`, version 0.4.0, enabled. (From GitHub instead of a checkout:
-`claude plugin marketplace add pulkitnagpal/crewdeck`, or in the app: + → Plugins → Add marketplace.) Use the port
-Crewdeck runs on if you changed it.
-
-**If not:** "already exists" means a marketplace called `crewdeck` is still there: see step 0.3. Restart the Claude app
-if a new session doesn't pick the plugin up.
-
-## 6. Open a Claude Code session in the jobs workspace
-
-In the Code tab, start a new session in `~/.crewdeck/jobs` (the folder the setup card shows; **Copy** puts it on your
-clipboard). It is a hidden folder: in the macOS folder picker press Cmd-Shift-G and paste the path, or Cmd-Shift-. to
-show hidden folders. Trust the folder when Claude Code asks.
+In Claude desktop's Code tab, start a new session and pick the folder `~/Crewdeck/jobs` (the setup card shows it;
+**Copy** puts it on your clipboard). Trust the folder when Claude Code asks, then say hello.
 
 **You should see** within a few seconds: the session's status line reads `Crewdeck · jobs`, and the Jobs page says
 **Claude connected** (the card's "not connected yet" turns into "Claude connected").
 
 **If not:**
-- Still "No Claude session": check `claude plugin list`, and that the plugin's `port` is Crewdeck's port. Send any
-  message in the session to wake it: the bridge checks in every few seconds.
+- Still "No Claude session": check `claude plugin list` shows `crewdeck@crewdeck` enabled, and that the plugin's `port`
+  is Crewdeck's port. Restart the Claude app if a session started before the plugin was installed. Send any message in
+  the session to wake it: the bridge checks in every few seconds.
 - "Crewdeck: server failed its identity check": Crewdeck isn't running on that port, or it restarted with a new token.
   Start it, then send a message.
-- On Linux, Bash refuses to run here without `bubblewrap` and `socat` (the jobs workspace's sandbox): install them.
+- On Linux, Bash refuses to run here without `bubblewrap` and `socat` (the jobs folder's sandbox): install them.
 
-## 7. Set up with Claude
+## 5. Set up with Claude
 
 Click **Set up with Claude** on the Jobs page. Keep your resume file handy (PDF, Word export, Markdown or text).
 
@@ -202,7 +171,7 @@ What it wrote, in your vault (open them in **Notes**; edit anything):
 it is idle. If Claude stops, the card says why; click **Set up with Claude** again. Claude may ask permission for its
 first commands: it runs `~/.crewdeck/bin/crewdeck jobs …` (the one command the sandbox lets out).
 
-## 8. Paste a job link
+## 6. Paste a job link
 
 Copy the link of any posting (the company's own careers page works best) into **Paste a job link** at the top of Jobs
 and click **Add link**.
@@ -222,10 +191,10 @@ The role appears in **Today** with its answers.
 **If not:**
 - A warning (cooldown, already applied, a role at that company in progress): Claude asks in the chat; **Add it anyway**
   is your call on the page.
-- "Pasted LinkedIn links are off": see step 12, or paste the company's own posting.
+- "Pasted LinkedIn links are off": see step 11, or paste the company's own posting.
 - The posting needs sign-in: Claude stops and says so. Sign in yourself in the pane, then ask Claude to continue.
 
-## 9. Answer first-time questions
+## 7. Answer first-time questions
 
 First-time questions sit at the top of the role, marked **First time**. Answer each on the page (type, or pick an
 option) or tell Claude in the chat. Each answer is remembered in `jobs/memory.md` with your words and reused on every
@@ -233,7 +202,7 @@ later form. **Edit** changes any answer; **Ask Claude** asks for a rewrite (it m
 
 **You should see** the Apply box's "first time" count go to 0 and **Apply** become clickable.
 
-## 10. Apply, then you click Submit
+## 8. Apply, then you click Submit
 
 Click **Apply**.
 
@@ -261,21 +230,21 @@ cooldown (60 days by default, `schedule.cooldown_days`).
 - Stuck on "filling" with no progress: **Cancel** closes the request; a request whose session stops answering goes back
   to the queue after 15 minutes on its own.
 
-## 11. Find jobs within a budget
+## 9. Find jobs within a budget
 
-Sourcing needs the providers (step 3), boards in `jobs/sources.md`, and Crewdeck running on Node 25+.
+Sourcing needs the providers (step 2), boards in `jobs/sources.md`, and Crewdeck running on Node 25+.
 
 1. The status strip shows "N new roles since …". Crewdeck fetches every 12 hours (`jobs.fetch_every`); **Refresh
    sources** fetches now. Fetching is plain code: no tokens. Your rules then drop what clearly doesn't fit, and the rest
    is ranked by title, skills, freshness and source.
 2. Click **Find N jobs** (N is your daily picks). Claude judges candidates best first, in batches of 10, and stops once
    N pass; at most 40 postings per Find. Progress lines show on the page.
-3. The picks appear in **Today**, one per company, each prepared as in step 8.
+3. The picks appear in **Today**, one per company, each prepared as in step 6.
 
 **If not:** "Job boards not set up": `crewdeck jobs providers install`. "need Node 25 or newer": restart `crewdeck up`
 with Node 25. "0 new roles": add boards or companies to `jobs/sources.md` (see the README, "Add a source").
 
-## 12. Change a preference
+## 10. Change a preference
 
 In any Claude session, say what changed: "I'm OK with hybrid now."
 
@@ -284,7 +253,7 @@ dropped in the last 14 days (`crewdeck jobs refilter --days 14`). In Notes, `job
 line under **Changes**: `- 2026-11-20: workplace: remote → remote, hybrid. "I'm OK with hybrid now."` The Preferences
 tab shows it too, and the next Find uses it.
 
-## 13. Turn LinkedIn on (optional)
+## 11. Turn LinkedIn on (optional)
 
 LinkedIn's terms forbid automated access; turning these on can get your IP rate-limited or your account restricted.
 Read the README's "Safety and terms of service" first.

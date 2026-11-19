@@ -40,7 +40,10 @@ Crewdeck is not released yet: versions below name the `crewdeck` plugin's versio
     text), off by default, changed only by you in Jobs → Settings or your own terminal, confirmed in a native dialog.
   - Presets: `remote-any-country`, `onsite-city`, `healthcare-us`, `non-engineering`.
   - `crewdeck jobs …` CLI (`crewdeck jobs help`), `crewdeck doctor` Jobs checks.
-- The jobs workspace (`~/.crewdeck/jobs`): a managed `CLAUDE.md` with the hard rules and a `.claude/settings.json` that
+- `crewdeck setup`: one command for a new user (home, vault, Jobs, the jobs folder, the plugin in Claude from the
+  checkout). `--help` never runs a command.
+- The jobs workspace (`~/Crewdeck/jobs`, a visible folder next to the vault; a workspace left in the hidden jobs home
+  moves there on `jobs init`): a managed `CLAUDE.md` with the hard rules and a `.claude/settings.json` that
   runs Claude's Bash in Claude Code's sandbox.
 - The request queue grew typed requests, progress lines, presence ("Claude connected"), leases (a stuck request goes
   back after 15 minutes), **Cancel**, and per-kind caps.

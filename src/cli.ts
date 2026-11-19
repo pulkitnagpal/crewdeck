@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// crewdeck — init | up | add-project <name> <path> | doctor | jobs <cmd>
+// crewdeck — setup | init | up | add-project <name> <path> | doctor | jobs <cmd>
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync, chmodSync, rmSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, sep } from 'node:path';
@@ -58,14 +58,55 @@ function initBoard(path: string, name: string) {
   writeFileSync(cfg, readFileSync(cfg, 'utf8').replace(/^statuses:.*$/m, 'statuses: ["To Do", "In Progress", "Needs you", "Done"]'));
 }
 
-async function init(args: string[]) {
+async function init(args: string[], quiet = false) {
   const c: Config = existsSync(CONFIG_PATH) ? (loadConfigRaw()) : defaults();
   const v = flag(args, 'vault'); if (v) c.vault = v;
   saveConfig(c);
   ensureToken();
   await installSilverBullet(c.silverbullet.version);
   initVault(expand(c.vault));
-  say(`\nConfig: ${CONFIG_PATH}\nNext: crewdeck add-project <name> <path-to-git-repo>, then crewdeck up`);
+  if (!quiet) say(`\nConfig: ${CONFIG_PATH}\nNext: crewdeck add-project <name> <path-to-git-repo>, then crewdeck up`);
+}
+
+/** The plugin in the user's Claude Code (and Claude desktop): from this checkout, so it always matches this server. */
+function installPlugin(port: number): { ok: boolean; text: string } {
+  const claude = (a: string[]) => execFileSync('claude', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000 });
+  try { claude(['--version']); } catch {
+    return { ok: false, text: 'Claude Code\'s command line (claude) is not on PATH, so the plugin was not installed. In Claude desktop: + → Plugins → Add marketplace ' + REPO + ' → install crewdeck.' };
+  }
+  const markets = (() => { try { return claude(['plugin', 'marketplace', 'list']); } catch { return ''; } })();
+  if (!/^\s*❯\s*crewdeck\s*$/m.test(markets)) {
+    try { claude(['plugin', 'marketplace', 'add', REPO]); } catch (e: any) { return { ok: false, text: `adding the crewdeck marketplace failed: ${String(e?.stderr || e?.message).trim().slice(0, 300)}` }; }
+  } else if (!markets.includes(REPO)) {
+    return { ok: false, text: `a marketplace called crewdeck is already added from somewhere else. To use this checkout: claude plugin marketplace remove crewdeck, then crewdeck setup again.` };
+  }
+  const plugins = (() => { try { return claude(['plugin', 'list']); } catch { return ''; } })();
+  if (/crewdeck-bridge@/.test(plugins)) say('  note: the old crewdeck-bridge plugin is installed; remove it with claude plugin uninstall crewdeck-bridge@crewdeck');
+  if (/❯\s*crewdeck@crewdeck/.test(plugins)) return { ok: true, text: 'the crewdeck plugin is already installed' };
+  try { claude(['plugin', 'install', 'crewdeck@crewdeck', '--config', `port=${port}`]); }
+  catch (e: any) { return { ok: false, text: `installing the crewdeck plugin failed: ${String(e?.stderr || e?.message).trim().slice(0, 300)}` }; }
+  return { ok: true, text: 'installed the crewdeck plugin in Claude (it loads in new sessions)' };
+}
+
+/**
+ * crewdeck setup [--vault <path>] [--preset <name>] [--no-plugin]: everything a new user needs, in one command —
+ * Crewdeck's home and vault, Jobs, and the plugin in Claude. Safe to run again.
+ */
+async function setup(args: string[]) {
+  say('Setting up Crewdeck…');
+  await init(args, true);
+  const { jobsInit } = await import('./jobs/setup.ts');
+  const preset = flag(args, 'preset');
+  for (const l of await jobsInit({ preset, quiet: true })) say(l);
+  const c = loadConfig();
+  if (args.includes('--no-plugin')) say('· plugin not installed (--no-plugin)');
+  else { const p = installPlugin(c.port); say(`${p.ok ? '✓' : '✗'} ${p.text}`); }
+  say(['', 'Done. Now:',
+    '  1. Start Crewdeck: crewdeck up   (leave it running)',
+    `  2. Open http://localhost:${c.port} (in Claude desktop: ask Claude to open it in the browser pane) and click Jobs.`,
+    `  3. In Claude desktop, start a new Code session in the folder ${c.jobs.workspace}`,
+    '     and say hello. Then click "Set up with Claude" on the Jobs page: Claude interviews you there.',
+  ].join('\n'));
 }
 
 function loadConfigRaw(): Config {
@@ -192,6 +233,9 @@ const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return
 const [cmd, ...rest] = process.argv.slice(2);
 // Jobs loads only when used.
 const jobs = (a: string[]) => import('./jobs/cli.ts').then((m) => m.main(a));
-const run: Record<string, (a: string[]) => unknown> = { init, up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, progress: progressCmd, jobs };
-if (!cmd || !Object.hasOwn(run, cmd)) { say('usage: crewdeck init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>'); process.exit(cmd ? 1 : 0); }
+const run: Record<string, (a: string[]) => unknown> = { setup, init: (a: string[]) => init(a), up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, progress: progressCmd, jobs };
+const USAGE = 'usage: crewdeck setup [--vault <path>] [--preset <name>] [--no-plugin] | init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>';
+if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help' || !Object.hasOwn(run, cmd)) { say(USAGE); process.exit(cmd && !['--help', '-h', 'help'].includes(cmd) ? 1 : 0); }
+// --help never runs a command (jobs has its own help).
+if (cmd !== 'jobs' && (rest.includes('--help') || rest.includes('-h'))) { say(USAGE); process.exit(0); }
 Promise.resolve(run[cmd](rest)).catch((e) => { console.error(e?.message ?? e); process.exit(1); });
