@@ -29,7 +29,7 @@ export type RunnerJob = {
   entries: { i: number; entry: Record<string, unknown> }[];
   since_ms?: number; timeout_ms?: number; max_jobs?: number; max_pages?: number; concurrency?: number;
 };
-export type Normalised = { url: string; title: string; company: string; location: string; description: string; pay_text?: string; posted_at?: string };
+export type Normalised = { url: string; title: string; company: string; location: string; description: string; pay_text?: string; posted_at?: string; language?: string; visa_text?: string; employment_type?: string };
 /** A fetch the child asks the parent to make. */
 export type FetchAsk = { t: 'fetch'; id: number; url: string; method: string; headers: [string, string][]; body: string | null; redirect: 'follow' | 'manual' | 'error' };
 /** The parent's answer (one line on fd 3). */
@@ -64,6 +64,10 @@ export function normalizeJob(job: any, provider: string): Normalised {
   return {
     url: text(job.url).trim(), title, company, location, description: text(job.description),
     pay_text: payText(job.salary), posted_at: at && !Number.isNaN(at.getTime()) ? at.toISOString() : undefined,
+    // Kept when a provider states them (design §24.2): the posting's language, its visa line, its employment type.
+    language: typeof job.language === 'string' ? job.language : undefined,
+    visa_text: typeof job.visaText === 'string' ? job.visaText : undefined,
+    employment_type: typeof job.employmentType === 'string' ? job.employmentType : undefined,
   };
 }
 

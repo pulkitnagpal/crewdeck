@@ -121,7 +121,7 @@ it only through `crewdeck jobs …` commands that validate what they write and k
 | `me/career.md` | Your resume sections and the fact bank: every bullet Claude may use, word for word |
 | `jobs/search.md` | What you want: titles, places, workplace, pay, languages, exclusions, daily picks. Its **Changes** log keeps each change with the date and your words |
 | `jobs/memory.md` | What Claude learned from you: answers, facts, style rules, "not interested" reasons, each with your quote |
-| `jobs/sources.md` | Where to look: job boards and a company watchlist |
+| `jobs/sources.md` | Where to look, in priority order: job boards, employers' careers pages, LinkedIn's place in the list |
 | `journal/YYYY-MM-DD.md` | An "Applied to …" line for each application |
 
 Machine state is in `~/.crewdeck/jobs/` (private, 0700): `jobs.db` (roles, answers, form questions), `out/<role>/`
@@ -135,21 +135,24 @@ Machine state is in `~/.crewdeck/jobs/` (private, 0700): `jobs.db` (roles, answe
   this repo (`src/jobs/data/sources-catalog.yaml`), updated only with the pinned providers.
 - **What happened at the last fetch:** counts, errors and when. It is machine state in `~/.crewdeck/jobs/state/`.
 
-LinkedIn can sit in your list like any other source, but switching it on stays yours alone (Jobs → Settings, with your
-computer's confirmation dialog). Design v0.4 adds a Sources screen over these: see
-[docs/jobs/design.md](docs/jobs/design.md) §24.
+The list is ordered: the first source is fetched first and its roles rank first (pasted links still come before
+everything). Order never changes what your rules drop. LinkedIn can sit in your list like any other source, but switching
+it on stays yours alone (Jobs → Settings, with your computer's confirmation dialog). Design v0.4 adds a Sources screen
+over these: see [docs/jobs/design.md](docs/jobs/design.md) §24.
 
-## Presets
+## Presets (deprecated)
 
-`crewdeck jobs init --preset <name>` seeds `jobs/search.md` and `jobs/sources.md` (only notes you haven't changed).
-Who you are and your career always come from you.
+Setup with Claude proposes sources from your own profile (`crewdeck jobs sources suggest`), so presets are going away.
+For one more release, `crewdeck jobs init --preset <name>` still seeds `jobs/search.md` (only if you haven't changed it)
+and writes the catalog's proposal for the preset's query as your first `jobs/sources.md`, with a line saying what is
+and isn't covered. Who you are and your career always come from you.
 
-| Preset | Seeds |
-|---|---|
-| `remote-any-country` | Remote job boards |
-| `onsite-city` | Regional boards and a company watchlist to fill in |
-| `healthcare-us` | Healthcare titles, state-level places, hourly pay, licences |
-| `non-engineering` | General boards |
+| Preset | Seeds `search.md` with | Sources: the catalog's proposal for |
+|---|---|---|
+| `remote-any-country` | Remote work | Remote boards |
+| `onsite-city` | On-site and hybrid work | Your places (none until you name them) |
+| `healthcare-us` | Healthcare titles, state-level places, hourly pay, licences | Healthcare in the US (no such board runs in Crewdeck: hospitals' careers pages do) |
+| `non-engineering` | Any field | General boards |
 
 ## Daily use
 
@@ -187,15 +190,20 @@ also edit the note in Notes or use the **Preferences** tab; both go through the 
 invalid, Jobs shows the field and the fix, and the last valid version stays in use. `crewdeck jobs check` validates all
 the notes; `crewdeck jobs rules` prints the drops your notes compile to.
 
-**Add a source.** Edit `jobs/sources.md` in Notes (or ask Claude): a board by provider id, or a company by its careers
-page, then run `crewdeck jobs check`:
+**Where to look.** Ask Claude, or use the commands it uses (names and addresses go in files, never on the command line):
 
-```yaml
-boards:
-  - { name: Remotive, provider: remotive }
-watchlist:
-  - { name: Example Co, careers_url: "https://jobs.example.com/careers" }
+```bash
+crewdeck jobs sources suggest                 # sources that fit your notes, and what isn't covered
+crewdeck jobs sources add --provider remotive # a board from the catalog
+crewdeck jobs sources add --careers-url-file url.txt --name-file name.txt --employer   # an employer's careers page
+crewdeck jobs sources move remotive first     # or up | down | last | --to N
+crewdeck jobs sources list                    # your list in order, with each source's last fetch
 ```
+
+Boards that search by keyword or country (the Bundesagentur für Arbeit, Built In, OCC, Welcome to the Jungle, JobStreet,
+Glints …) get their keywords from your job titles and their country from your places at fetch time; values you set in
+the note yourself win. A note written before v0.4 (`boards:` and `watchlist:`) keeps working; the first change moves both
+into one ordered `sources:` list.
 
 **A custom rule.** Most nuance belongs to the judge: write it in `judge_notes` in `jobs/search.md`, or tell Claude
 "remember: no agency roles" (an `avoid` item in `jobs/memory.md`; Claude respects it on every run). For a hard drop,

@@ -13,13 +13,14 @@ import { type Plan, FETCH_CAPS, answerFetch, cleanJob, cleanEntry, readSourcesSt
 import { type FetchAsk, normalizeJob } from '../../src/jobs/provider-runner.ts';
 import { loadManifest } from '../../src/jobs/providers.ts';
 import { notesOf } from '../../src/jobs/ctx.ts';
+import { sourceItems } from '../../src/jobs/schema.ts';
 import { jobs, world } from './helpers.ts';
 import { serve, testHosts } from './net-helpers.ts';
 import { CARD, DETAIL } from './linkedin-fixtures.ts';
 import { installedFixture } from './provider-helpers.ts';
 
 const plan = (entries: { name: string; entry: Record<string, unknown>; kind?: 'ats' | 'board' }[]): Plan => ({
-  entries: entries.map((e, i) => ({ i, name: e.name, list: e.kind === 'ats' ? 'watchlist' : 'boards', kind: e.kind ?? 'board', entry: { name: e.name, ...e.entry } })),
+  entries: entries.map((e, i) => ({ i, key: `k${i}`, name: e.name, kind: e.kind ?? 'board', entry: { name: e.name, ...e.entry } })),
   ids: [...new Set(entries.map((e) => e.entry.provider).filter((p): p is string => typeof p === 'string'))].sort(),
   skipped: [],
 });
@@ -180,7 +181,7 @@ test('the plan: enabled entries only, known providers only, careers pages labell
   const p = sourcePlan(notes, loadManifest());
   assert.deepEqual(p.entries.map((e) => [e.name, e.kind]), [['Arbeitnow', 'board'], ['Berlin Startup Jobs', 'ats'], ['Example GmbH', 'ats']]);
   assert.deepEqual(p.ids, ['arbeitnow', 'sitemap']);
-  const fake = { sources: { data: { boards: [{ name: 'Off', provider: 'remotive', enabled: false }, { name: 'Gone', provider: 'vdab' }, { name: 'Nothing' }], watchlist: [] } } } as any;
+  const fake = { sources: { data: sourceItems({ boards: [{ name: 'Off', provider: 'remotive', enabled: false }, { name: 'Gone', provider: 'vdab' }, { name: 'Nothing' }], watchlist: [] }) } } as any;
   const q = sourcePlan(fake, loadManifest());
   assert.deepEqual(q.entries, []);
   assert.deepEqual(q.skipped.map((s) => s.name), ['Gone', 'Nothing']);

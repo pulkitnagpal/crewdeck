@@ -75,7 +75,7 @@ test('sources: parser entries and unknown providers are refused', () => {
   const e = errors('sources', { boards: [{ name: 'A', parser: 'x', careers_url: 'https://jobs.example.com' }, { name: 'B', provider: 'greenhous' }, { name: 'C' }, { name: 'D', provider: 'local-parser' }] });
   assert.ok(e.some((i) => i.path === 'boards[0].parser'));
   assert.ok(e.some((i) => i.path === 'boards[1].provider' && /did you mean "greenhouse"/.test(i.fix!)));
-  assert.ok(e.some((i) => i.path === 'boards[2]' && /provider or a careers_url/.test(i.message)));
+  assert.ok(e.some((i) => i.path === 'boards[2]' && /needs a provider, a careers_url or a url/.test(i.message)));
   assert.ok(e.some((i) => i.path === 'boards[3].provider'));
   assert.deepEqual(errors('sources', { watchlist: [{ name: 'E', careers_url: 'https://jobs.example.com/e', any_option: 3 }] }), []);
 });

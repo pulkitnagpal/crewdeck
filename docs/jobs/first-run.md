@@ -164,7 +164,7 @@ What it wrote, in your vault (open them in **Notes**; edit anything):
 | `me/profile.md` | Your identity, links, education and standard answers |
 | `me/career.md` | Resume sections and the fact bank |
 | `jobs/search.md` | What you want, and a **Changes** log starting today |
-| `jobs/sources.md` | Boards and companies to watch (from the preset, or empty) |
+| `jobs/sources.md` | Where to look, in priority order (filled in the interview from `crewdeck jobs sources suggest`) |
 | `jobs/memory.md` | Empty until you tell Claude things along the way |
 
 **If not:** the card says "Waiting for Claude to start the setup" while the session is busy: requests arrive only when
@@ -232,17 +232,18 @@ cooldown (60 days by default, `schedule.cooldown_days`).
 
 ## 9. Find jobs within a budget
 
-Sourcing needs the providers (step 2), boards in `jobs/sources.md`, and Crewdeck running on Node 25+.
+Sourcing needs the providers (step 2), sources in `jobs/sources.md`, and Crewdeck running on Node 25+.
 
 1. The status strip shows "N new roles since …". Crewdeck fetches every 12 hours (`jobs.fetch_every`); **Refresh
    sources** fetches now. Fetching is plain code: no tokens. Your rules then drop what clearly doesn't fit, and the rest
-   is ranked by title, skills, freshness and source.
+   is ranked by title, skills, freshness and your sources' order.
 2. Click **Find N jobs** (N is your daily picks). Claude judges candidates best first, in batches of 10, and stops once
    N pass; at most 40 postings per Find. Progress lines show on the page.
 3. The picks appear in **Today**, one per company, each prepared as in step 6.
 
 **If not:** "Job boards not set up": `crewdeck jobs providers install`. "need Node 25 or newer": restart `crewdeck up`
-with Node 25. "0 new roles": add boards or companies to `jobs/sources.md` (see the README, "Add a source").
+with Node 25. "0 new roles": `crewdeck jobs sources list` shows each source's last fetch; `crewdeck jobs sources suggest`
+proposes more (see the README, "Where to look").
 
 ## 10. Change a preference
 

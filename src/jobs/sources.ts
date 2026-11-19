@@ -12,7 +12,7 @@ import { ensureHome } from '../config.ts';
 import { type Ctx, notesOf, nowIso } from './ctx.ts';
 import { addEvent, upsertRole } from './db.ts';
 import type { JobNotes } from './notes.ts';
-import type { SourceEntry } from './schema.ts';
+import { catalogEntry, fillEntry } from './catalog.ts';
 import { checkRoleUrl } from './fields.ts';
 import { type Manifest, loadManifest, providersDir, providersStatus, sandboxSupport } from './providers.ts';
 
@@ -25,17 +25,22 @@ export const RUNNER = join(import.meta.dirname, 'provider-runner.ts');
 const MAX_LINES = 50_000;
 const MAX_BYTES = 64 * 1024 * 1024;
 
-// ---- the plan: which entries, which providers ----
+// ---- the plan: which entries, which providers, in the user's order ----
 
-export type PlannedEntry = { i: number; name: string; list: 'boards' | 'watchlist'; kind: 'ats' | 'board'; entry: Record<string, unknown> };
-export type Plan = { entries: PlannedEntry[]; ids: string[]; skipped: { name: string; why: string }[] };
+export type PlannedEntry = { i: number; key: string; name: string; kind: 'ats' | 'board'; entry: Record<string, unknown>; filled?: string[] };
+/**
+ * The entries in priority order (design D21). `linkedinAt` is how many provider entries come before LinkedIn's row
+ * (all of them when the note has no LinkedIn row). `skipped` names every switched-on source that can't run and why.
+ */
+export type Plan = { entries: PlannedEntry[]; ids: string[]; skipped: { key?: string; name: string; why: string }[]; linkedinAt?: number; linkedinKey?: string };
 
 /** Only plain values reach third-party code: strings (≤ 2000), finite numbers, booleans, and lists of strings. */
-export function cleanEntry(e: SourceEntry): Record<string, unknown> {
+export function cleanEntry(e: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const ok = (v: unknown): boolean => (typeof v === 'string' && v.length <= 2000) || (typeof v === 'number' && Number.isFinite(v)) || typeof v === 'boolean';
   for (const [k, v] of Object.entries(e)) {
-    if (!/^[A-Za-z_][\w-]{0,40}$/.test(k) || k === 'parser' || k === 'enabled') continue;
+    // Crewdeck's own keys stay here; `url` (a page no provider reads) is never handed over.
+    if (!/^[A-Za-z_][\w-]{0,40}$/.test(k) || ['parser', 'enabled', 'key', 'employer', 'added', 'fetch', 'why', 'url', 'linkedin'].includes(k)) continue;
     if (ok(v)) out[k] = v;
     else if (Array.isArray(v) && v.length <= 100 && v.every((x) => typeof x === 'string' && x.length <= 300)) out[k] = [...v];
     else if (v && typeof v === 'object' && !Array.isArray(v)) {
@@ -48,19 +53,28 @@ export function cleanEntry(e: SourceEntry): Record<string, unknown> {
   return out;
 }
 
-export function sourcePlan(notes: Pick<JobNotes, 'sources'>, m: Manifest = loadManifest()): Plan {
+export function sourcePlan(notes: Pick<JobNotes, 'sources'> & Partial<Pick<JobNotes, 'search' | 'profile'>>, m: Manifest = loadManifest()): Plan {
   const allowed = new Set(m.providers);
   const plan: Plan = { entries: [], ids: [], skipped: [] };
   const ids = new Set<string>();
+  const search = notes.search?.data ?? ({ roles: { titles: [], targets: [] }, places: { onsite: [], remote_from: [] } } as any);
   let i = 0;
-  for (const list of ['boards', 'watchlist'] as const) for (const e of notes.sources.data[list]) {
-    if (e.enabled === false) continue;
-    const name = String(e.name ?? '').slice(0, 200) || '(no name)';
-    if (typeof e.provider === 'string' && e.provider) {
-      if (!allowed.has(e.provider)) { plan.skipped.push({ name, why: `provider ${e.provider} is not one Crewdeck runs` }); continue; }
-      ids.add(e.provider);
-    } else if (typeof e.careers_url !== 'string' || !/^https?:\/\//.test(e.careers_url)) { plan.skipped.push({ name, why: 'needs a provider or a careers_url' }); continue; }
-    plan.entries.push({ i: i++, name, list, kind: list === 'watchlist' || typeof e.careers_url === 'string' ? 'ats' : 'board', entry: cleanEntry(e) });
+  for (const it of notes.sources.data.items) {
+    if (!it.enabled) continue;
+    const name = it.name.slice(0, 200) || '(no name)';
+    if (it.linkedin) { plan.linkedinAt ??= plan.entries.length; plan.linkedinKey ??= it.key; continue; }
+    if (it.fetch === 'none') { plan.skipped.push({ key: it.key, name, why: it.why ? `not fetched: ${it.why}` : 'not fetched (fetch: none)' }); continue; }
+    let entry = cleanEntry(it.entry);
+    let filled: string[] | undefined;
+    if (it.provider) {
+      if (!allowed.has(it.provider)) { plan.skipped.push({ key: it.key, name, why: `provider ${it.provider} is not one Crewdeck runs` }); continue; }
+      const f = fillEntry(entry, catalogEntry(it.provider), { search, country: notes.profile?.data.identity.country });
+      if (f.missing) { plan.skipped.push({ key: it.key, name, why: f.missing }); continue; }
+      entry = f.entry;
+      if (f.filled.length) filled = f.filled;
+      ids.add(it.provider);
+    } else if (typeof it.careers_url !== 'string' || !/^https?:\/\//.test(it.careers_url)) { plan.skipped.push({ key: it.key, name, why: 'needs a provider or a careers_url' }); continue; }
+    plan.entries.push({ i: i++, key: it.key, name, kind: it.employer || it.careers_url ? 'ats' : 'board', entry, ...(filled ? { filled } : {}) });
   }
   plan.ids = [...ids].sort();
   return plan;
@@ -75,7 +89,12 @@ export function runnerArgs(dir: string, runner = RUNNER): string[] {
 
 export type RunnerLine = { t: 'job'; i: number; provider: string; job: any } | { t: 'entry'; i: number; ok: boolean; provider?: string; jobs?: number; old?: number; error?: string; ms?: number } | { t: 'fatal'; error: string } | { t: 'done' };
 
-export type SpawnOptions = { dir?: string; runner?: string; manifest?: Manifest; timeoutMs?: number; entryTimeoutMs?: number; sinceDays?: number; maxPages?: number; /** netguard test options for the providers' fetches */ net?: NetOptions };
+export type SpawnOptions = {
+  dir?: string; runner?: string; manifest?: Manifest; timeoutMs?: number; entryTimeoutMs?: number; sinceDays?: number; maxPages?: number;
+  /** netguard test options for the providers' fetches */ net?: NetOptions;
+  /** One request/byte budget shared by every sandbox run of one fetch (the runs around LinkedIn's position). */ budget?: { requests: number; bytes: number };
+  /** Jobs kept per entry (resolve: a test fetch). */ maxJobs?: number;
+};
 
 // What the parent fetches for the providers (E1): netguard's checks on every request and redirect, its 15 s deadline
 // and 5 redirects; 10 MB per body (career-ops' own cap: some boards send their whole list in one answer), at most 8 in
@@ -141,7 +160,7 @@ export function spawnRunner(plan: Plan, onLine: (l: RunnerLine) => void, o: Spaw
   const nonce = randomBytes(24).toString('hex');
   const input = JSON.stringify({
     nonce, files: m.files, ids: plan.ids, detectors: m.detectors, entries: plan.entries.map((e) => ({ i: e.i, entry: e.entry })),
-    since_ms: o.sinceDays ? Date.now() - o.sinceDays * 86_400_000 : 0, timeout_ms: o.entryTimeoutMs ?? 90_000, max_jobs: 2000, max_pages: o.maxPages ?? 10, concurrency: 4,
+    since_ms: o.sinceDays ? Date.now() - o.sinceDays * 86_400_000 : 0, timeout_ms: o.entryTimeoutMs ?? 90_000, max_jobs: o.maxJobs ?? 2000, max_pages: o.maxPages ?? 10, concurrency: 4,
   });
   return new Promise((resolve) => {
     // An empty environment: no proxy variables, no tokens, nothing of the user's. fd 3 (lines from the child) and fd 4
@@ -150,7 +169,7 @@ export function spawnRunner(plan: Plan, onLine: (l: RunnerLine) => void, o: Spaw
     const child = spawn(process.execPath, runnerArgs(dir, runner), { env: {}, stdio: ['pipe', 'pipe', 'pipe', 'pipe', 'pipe'] });
     const chan = child.stdio[3] as unknown as Readable, answers = child.stdio[4] as unknown as Writable;
     let log = '', done = false, killed = false, bad = 0, fetches = 0, inFlight = 0;
-    const budget = { requests: 0, bytes: 0 };
+    const budget = o.budget ?? { requests: 0, bytes: 0 };
     const queued: FetchAsk[] = [];
     const kill = () => { if (!killed) { killed = true; child.kill('SIGKILL'); } };
     const timer = setTimeout(kill, o.timeoutMs ?? 15 * 60_000);
@@ -194,7 +213,8 @@ const isoOk = (s: unknown, at: Date) => typeof s === 'string' && Number.isFinite
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim() : '').slice(0, max);
 
 /** A job from the sandbox as a role, or why it was refused. Every field is typed and bounded; URLs are http(s) only. */
-export function cleanJob(raw: any, o: { features: { linkedin_links: boolean }; at: Date; fallbackCompany?: string }): { ok: true; role: { url: string; title: string; company: string; location: string; description: string; pay_text: string | null; posted_at: string | null } } | { ok: false; why: string } {
+export type CleanRole = { url: string; title: string; company: string; location: string; description: string; pay_text: string | null; posted_at: string | null; language: string | null; visa_text: string | null; employment_type: string | null };
+export function cleanJob(raw: any, o: { features: { linkedin_links: boolean }; at: Date; fallbackCompany?: string }): { ok: true; role: CleanRole } | { ok: false; why: string } {
   if (!raw || typeof raw !== 'object') return { ok: false, why: 'not an object' };
   if (typeof raw.url !== 'string' || raw.url.length > 2000) return { ok: false, why: 'url missing or too long' };
   let url: string;
@@ -210,17 +230,23 @@ export function cleanJob(raw: any, o: { features: { linkedin_links: boolean }; a
       description: typeof raw.description === 'string' ? raw.description.slice(0, 200_000) : '',
       pay_text: str(raw.pay_text, 200) || null,
       posted_at: isoOk(raw.posted_at, o.at) ? new Date(raw.posted_at).toISOString() : null,
+      // What the provider says beyond the text (design §24.2): kept for the rules and the judge, never trusted further.
+      language: /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(str(raw.language, 20)) ? str(raw.language, 20) : null,
+      visa_text: str(raw.visa_text, 500) || null,
+      employment_type: str(raw.employment_type, 60) || null,
     },
   };
 }
 
-export type EntryResult = { name: string; provider?: string; ok: boolean; jobs: number; new: number; refused: number; error?: string; ms?: number };
+export type EntryResult = { key: string; name: string; provider?: string; ok: boolean; jobs: number; new: number; refused: number; error?: string; ms?: number; /** roles this entry stored (for "kept") */ roles?: string[] };
 export type ProvidersResult = { ran: boolean; fetched: number; new: number; refused: number; entries: EntryResult[]; skipped: Plan['skipped']; error?: string };
 
-/** Run the plan's entries in the sandbox and store what passes. */
+const BUDGET_STOP = /more than \d+ (requests|MB) in one run: stopped/;
+
+/** Run the plan's entries in the sandbox and store what passes, each role with its source's key. */
 export async function runProviders(ctx: Ctx, plan: Plan, o: SpawnOptions & { dir: string }): Promise<ProvidersResult> {
   const res: ProvidersResult = { ran: true, fetched: 0, new: 0, refused: 0, entries: [], skipped: plan.skipped };
-  const byI = new Map(plan.entries.map((e) => [e.i, { e, r: { name: e.name, ok: false, jobs: 0, new: 0, refused: 0 } as EntryResult }]));
+  const byI = new Map(plan.entries.map((e) => [e.i, { e, r: { key: e.key, name: e.name, ok: false, jobs: 0, new: 0, refused: 0, roles: [] } as EntryResult }]));
   const at = ctx.clock();
   let fatal = '';
   const support = sandboxSupport();
@@ -230,32 +256,38 @@ export async function runProviders(ctx: Ctx, plan: Plan, o: SpawnOptions & { dir
     const x = byI.get((l as any).i);
     if (!x) return;
     if (l.t === 'entry') {
-      Object.assign(x.r, { ok: !!l.ok, provider: typeof l.provider === 'string' ? l.provider.slice(0, 60) : undefined, error: l.ok ? undefined : String(l.error ?? 'failed').slice(0, 300), ms: typeof l.ms === 'number' ? l.ms : undefined });
+      const error = l.ok ? undefined : String(l.error ?? 'failed').slice(0, 300);
+      Object.assign(x.r, { ok: !!l.ok, provider: typeof l.provider === 'string' ? l.provider.slice(0, 60) : undefined, error: error && BUDGET_STOP.test(error) ? `not run: the fetch's cap was reached before this source (${error})` : error, ms: typeof l.ms === 'number' ? l.ms : undefined });
       return;
     }
     if (l.t !== 'job') return;
     const c = cleanJob(l.job, { features: ctx.features, at, fallbackCompany: x.e.kind === 'ats' ? x.e.name : undefined });
     if (!c.ok) { x.r.refused++; res.refused++; return; }
-    const { id, isNew } = upsertRole(ctx.db, { ...c.role, source: x.e.kind });
+    const { id, isNew } = upsertRole(ctx.db, { ...c.role, source: x.e.kind, source_key: x.e.key });
     x.r.jobs++; res.fetched++;
+    x.r.roles!.push(id);
     if (isNew) { x.r.new++; res.new++; addEvent(ctx.db, id, 'added', `from ${x.e.name} (${String(l.provider).slice(0, 60)})`, nowIso(ctx)); }
   }, o);
   res.entries = [...byI.values()].map((x) => x.r);
   if (fatal) res.error = fatal;
   else if (out.killed) res.error = 'the provider sandbox was stopped (too slow or too much output)';
   else if (!out.done) res.error = `the provider sandbox exited early (code ${out.code})${out.stderr ? `: ${out.stderr.trim().split('\n').slice(-2).join(' ').slice(0, 300)}` : ''}`;
-  for (const r of res.entries) if (!r.ok && !r.error) r.error = res.error ?? 'no answer';
+  for (const r of res.entries) if (!r.ok && !r.error) r.error = out.killed ? 'not run: the fetch\'s 15-minute limit was reached first' : res.error ?? 'no answer';
   return res;
 }
 
 // ---- the whole run ----
 
+/** One source's last fetch (design §24.2): counts, the error in plain words, or why it didn't run. */
+export type KeyState = { at: string; ok: boolean; jobs: number; new: number; kept: number; refused: number; error?: string; why?: string; ms?: number };
 export type SourcesState = {
   started: string; finished?: string; ok: boolean; trigger?: string;
   providers?: ProvidersResult | { ran: false; why: string };
   linkedin?: { ran: boolean; stored?: number; cards?: number; stopped?: string; errors?: string[]; why?: string };
   prefilter?: { kept: number; dropped: number }; details?: { tried: number; found: number; closed: number; errors: number };
   new: number; error?: string;
+  /** Per source key: the last fetch, and up to five before it (newest first). Carried over from run to run. */
+  by_key?: Record<string, KeyState & { history?: KeyState[] }>;
 };
 
 export const stateFile = (home: string) => join(home, 'state', 'sources.json');
@@ -269,33 +301,80 @@ export function writeSourcesState(home: string, s: SourcesState) {
   renameSync(tmp, f);
 }
 
-export type SourceOptions = SpawnOptions & { plan?: Plan; linkedin?: Parameters<typeof import('./linkedin.ts').searchLinkedin>[1]; net?: NetOptions; details?: number; trigger?: string };
+export type SourceOptions = SpawnOptions & { plan?: Plan; linkedin?: Parameters<typeof import('./linkedin.ts').searchLinkedin>[1]; net?: NetOptions; details?: number; trigger?: string; /** setup's first fetch: only sources never fetched before */ onlyNew?: boolean };
 
-/** Providers → LinkedIn (gated) → prefilter → descriptions for the best roles → prefilter. */
+const FETCHED_BEFORE = 'fetched before (only new sources this time)';
+
+/** Keep only the sources with no state yet (`--only-new-sources`). */
+export function onlyNewSources(plan: Plan, prev: SourcesState | null): Plan {
+  const seen = prev?.by_key ?? {};
+  const entries = plan.entries.filter((e) => !seen[e.key]);
+  const before = plan.linkedinAt === undefined ? undefined : plan.entries.slice(0, plan.linkedinAt).filter((e) => !seen[e.key]).length;
+  return { ...plan, entries, ids: [...new Set(entries.map((e) => e.entry.provider).filter((p): p is string => typeof p === 'string'))].sort(), linkedinAt: before, skipped: plan.skipped.filter((s) => !s.key || !seen[s.key]) };
+}
+
+function mergeProviders(a: ProvidersResult | undefined, b: ProvidersResult): ProvidersResult {
+  if (!a) return b;
+  return { ran: true, fetched: a.fetched + b.fetched, new: a.new + b.new, refused: a.refused + b.refused, entries: [...a.entries, ...b.entries], skipped: a.skipped, error: a.error ?? b.error };
+}
+
+/**
+ * Providers → LinkedIn (gated) → prefilter → descriptions for the best roles → prefilter. Sources run in the user's
+ * order: the providers before LinkedIn's row, then LinkedIn, then the rest, sharing one request budget and one
+ * deadline, so when a cap is hit it is the later sources that miss out (and their state says so).
+ */
 export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<SourcesState> {
   const state: SourcesState = { started: nowIso(ctx), ok: true, new: 0, trigger: o.trigger };
+  const prev = readSourcesState(ctx.home);
   const notes = notesOf(ctx);
   const st = o.dir ? { ready: existsSync(o.dir), message: '' } : providersStatus({ jobs: { home: ctx.home } } as any, o.manifest);
   const support = sandboxSupport();
-  if (st.ready && !support.ok) state.providers = { ran: false, why: support.why };
-  else if (st.ready) {
-    const plan = o.plan ?? sourcePlan(notes, o.manifest);
-    if (plan.entries.length) {
-      const r = await runProviders(ctx, plan, { ...o, dir: o.dir ?? providersDir({ jobs: { home: ctx.home } } as any, o.manifest) });
-      state.providers = r;
-      state.new += r.new;
-      if (r.error) { state.ok = false; state.error = r.error; }
-    } else state.providers = { ran: false, why: plan.skipped.length ? `no usable entries in jobs/sources.md (${plan.skipped.map((s) => `${s.name}: ${s.why}`).join('; ')})` : 'jobs/sources.md has no boards or watchlist entries switched on' };
-  } else state.providers = { ran: false, why: st.message };
+  let plan = o.plan ?? sourcePlan(notes, o.manifest);
+  if (o.onlyNew) plan = onlyNewSources(plan, prev);
+  const liKey = plan.linkedinKey ?? 'linkedin';
+  const liWanted = ctx.features.linkedin_search && !(o.onlyNew && prev?.by_key?.[liKey]);
+  const cut = Math.min(plan.linkedinAt ?? plan.entries.length, plan.entries.length);
+  const segments = [plan.entries.slice(0, cut), plan.entries.slice(cut)];
+  const budget = { requests: 0, bytes: 0 };
+  const deadline = Date.now() + (o.timeoutMs ?? 15 * 60_000);
+  let providers: ProvidersResult | undefined;
 
-  if (ctx.features.linkedin_search) {
+  const runSegment = async (entries: PlannedEntry[]) => {
+    if (!entries.length || !st.ready || !support.ok) return;
+    const left = deadline - Date.now();
+    const sub: Plan = { ...plan, entries, ids: [...new Set(entries.map((e) => e.entry.provider).filter((p): p is string => typeof p === 'string'))].sort() };
+    if (left <= 1000) {
+      providers = mergeProviders(providers, { ran: true, fetched: 0, new: 0, refused: 0, skipped: plan.skipped, entries: entries.map((e) => ({ key: e.key, name: e.name, ok: false, jobs: 0, new: 0, refused: 0, error: 'not run: the fetch\'s 15-minute limit was reached first' })) });
+      return;
+    }
+    const r = await runProviders(ctx, sub, { ...o, budget, timeoutMs: left, dir: o.dir ?? providersDir({ jobs: { home: ctx.home } } as any, o.manifest) });
+    providers = mergeProviders(providers, r);
+  };
+
+  const runLinkedin = async () => {
+    if (!ctx.features.linkedin_search) { state.linkedin = { ran: false, why: 'LinkedIn search is off' }; return; }
+    if (!liWanted) { state.linkedin = { ran: false, why: FETCHED_BEFORE }; return; }
     try {
       const { searchLinkedin } = await import('./linkedin.ts');
       const r = await searchLinkedin(ctx, { days: Math.min(30, Math.max(1, o.sinceDays ?? 7)), ...o.linkedin });
       state.linkedin = { ran: true, stored: r.stored, cards: r.cards, stopped: r.stopped, errors: r.errors };
+      (state as any)._liRoles = r.roles;
       state.new += r.stored;
     } catch (e: any) { state.linkedin = { ran: false, why: String(e.message).slice(0, 300) }; }
-  } else state.linkedin = { ran: false, why: 'LinkedIn search is off' };
+  };
+
+  await runSegment(segments[0]);
+  await runLinkedin();
+  await runSegment(segments[1]);
+
+  if (!plan.entries.length) state.providers = { ran: false, why: plan.skipped.length ? `no usable entries in jobs/sources.md (${plan.skipped.map((s) => `${s.name}: ${s.why}`).join('; ')})` : o.onlyNew ? 'no new sources to fetch' : 'jobs/sources.md has no sources switched on' };
+  else if (!st.ready) state.providers = { ran: false, why: st.message };
+  else if (!support.ok) state.providers = { ran: false, why: support.why };
+  else if (providers) {
+    state.providers = providers;
+    state.new += providers.new;
+    if (providers.error) { state.ok = false; state.error = providers.error; }
+  }
 
   const p1 = runPrefilter(ctx);
   const { fetchDescriptions } = await import('./pipeline/rank.ts');
@@ -303,8 +382,32 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
   const p2 = state.details.found || state.details.closed ? runPrefilter(ctx) : { kept: p1.kept, dropped: 0 };
   state.prefilter = { kept: p2.kept, dropped: p1.dropped + p2.dropped };
   state.finished = nowIso(ctx);
+  state.by_key = keyStates(ctx, state, plan, prev, (state as any)._liRoles ?? [], liKey);
+  delete (state as any)._liRoles;
+  if (state.providers && 'entries' in state.providers) for (const e of state.providers.entries) delete e.roles;
   writeSourcesState(ctx.home, state);
   return state;
+}
+
+/** Each source's line for this run, with the earlier ones carried over (five per key). */
+function keyStates(ctx: Ctx, state: SourcesState, plan: Plan, prev: SourcesState | null, liRoles: string[], liKey: string): NonNullable<SourcesState['by_key']> {
+  const out: NonNullable<SourcesState['by_key']> = { ...(prev?.by_key ?? {}) };
+  const at = state.finished ?? state.started;
+  const q = ctx.db.prepare(`select count(*) n from roles where id in (select value from json_each(?)) and status not in ('prefiltered_out','expired')`);
+  const kept = (ids: string[]) => (ids.length ? Number((q.get(JSON.stringify(ids)) as any).n) : 0);
+  const put = (key: string, s: KeyState) => {
+    const old = out[key];
+    const history = old ? [{ ...old, history: undefined }, ...(old.history ?? [])].map(({ history: _, ...h }) => h).slice(0, 5) : [];
+    out[key] = { ...s, history };
+  };
+  const ran = state.providers && 'entries' in state.providers ? state.providers.entries : [];
+  for (const e of ran) put(e.key, { at, ok: e.ok, jobs: e.jobs, new: e.new, kept: kept(e.roles ?? []), refused: e.refused, ...(e.error ? { error: e.error } : {}), ...(e.ms !== undefined ? { ms: e.ms } : {}) });
+  const why = !state.providers || !('entries' in state.providers) ? (state.providers as any)?.why : undefined;
+  if (why) for (const e of plan.entries) put(e.key, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why });
+  for (const s of plan.skipped) if (s.key) put(s.key, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why: s.why });
+  if (state.linkedin?.ran) put(liKey, { at, ok: !state.linkedin.errors?.length, jobs: state.linkedin.cards ?? 0, new: state.linkedin.stored ?? 0, kept: kept(liRoles), refused: 0, ...(state.linkedin.stopped ? { error: state.linkedin.stopped } : {}) });
+  else if (ctx.features.linkedin_search && state.linkedin?.why && state.linkedin.why !== FETCHED_BEFORE) put(liKey, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why: state.linkedin.why });
+  return out;
 }
 
 /** "30m", "12h", "1d" → milliseconds (at least 30 minutes). */

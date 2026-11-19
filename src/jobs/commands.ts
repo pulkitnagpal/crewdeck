@@ -138,12 +138,12 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     const since = intArg(flag(args, 'since'), 'since', 14);
     if (since < 1 || since > 90) throw new Error('--since must be from 1 to 90 days');
     const { runSources } = await import('./sources.ts');
-    const r = await runSources(ctx, { sinceDays: since, trigger: args.includes('--scheduled') ? 'scheduled' : 'command' });
+    const r = await runSources(ctx, { sinceDays: since, trigger: args.includes('--scheduled') ? 'scheduled' : 'command', onlyNew: args.includes('--only-new-sources') });
     if (args.includes('--json')) return json(r);
     const p = r.providers as any;
     if (p?.ran) {
       say(`boards: ${p.fetched} postings, ${p.new} new${p.refused ? `, ${p.refused} refused by the checks` : ''}`);
-      for (const e of p.entries) say(`  ${e.ok ? '✓' : '✗'} ${e.name}${e.provider ? ` (${e.provider})` : ''}: ${e.ok ? `${e.jobs} postings, ${e.new} new` : e.error}`);
+      for (const e of p.entries) say(`  ${e.ok ? '✓' : '✗'} ${e.name}${e.provider ? ` (${e.provider})` : ''}: ${e.ok ? `${e.jobs} postings, ${e.new} new${r.by_key?.[e.key] ? `, ${r.by_key[e.key].kept} kept by your rules` : ''}` : e.error}`);
       for (const s of p.skipped) say(`  · ${s.name}: ${s.why}`);
     } else say(`boards: not run (${p?.why})`);
     const l = r.linkedin;
@@ -152,6 +152,8 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     say(`after your rules: ${r.prefilter?.kept} waiting to be judged, ${r.prefilter?.dropped} dropped`);
     if (r.error) { say(`error: ${r.error}`); process.exitCode = 1; }
   }),
+
+  sources: async (args) => (await import('./sources-cmd.ts')).sourcesCmd(args),
 
   providers: async (args) => {
     const [verb] = positional(args);
@@ -406,7 +408,8 @@ export const COMMANDS = cmds;
 export const USAGE = `
 tracker and pipeline (text from postings and the user's words only through files or - for stdin):
   prefilter | refilter --days N           drop roles your notes rule out / bring back ones they now allow
-  source [--since N]                      fetch new roles: job-board providers (sandboxed), LinkedIn if on, then your rules
+  source [--since N] [--only-new-sources]  fetch new roles from your sources in priority order (sandboxed), then your rules
+  sources list|suggest|add|remove|move|enable|disable   your ordered list of sources (crewdeck jobs sources --help)
   providers install | status | verify     the pinned job-board providers (download, check, re-hash)
   candidates [--limit N]                  unjudged roles, best first (JSON)
   candidates --budget N [--batch 10] [--need N] [--start]   the next batch for a Find within a budget (≤ 40)

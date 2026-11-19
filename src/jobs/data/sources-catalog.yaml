@@ -1,12 +1,14 @@
-# Crewdeck Jobs — job-source catalog (design draft; no code reads this file yet).
+# Crewdeck Jobs — job-source catalog (design §24.2, D18). Read by src/jobs/catalog.ts; test/jobs/catalog.test.ts keeps
+# it in step with providers.manifest.json (one entry per allow-listed or excluded provider).
 #
 # What it is: a read-only description of every job-source "provider" Crewdeck ships, so the setup interview can
 # propose sources from a user's profile (country, field, workplace) and the UI can filter them. It is shipped in the
 # repo and never edited per user: the user's own selection lives in their vault note `jobs/sources.md`.
 #
 # Where the providers come from: career-ops (https://github.com/career-ops-hq/career-ops, MIT), pinned at commit
-# f3b043d3dd212f04d2dabdb0d8e5c4b288a5c50d (see providers.manifest.json). Descriptions follow upstream
-# docs/SUPPORTED_JOB_BOARDS.md and each provider's own header comment and config/resolve code.
+# f3b043d3dd212f04d2dabdb0d8e5c4b288a5c50d (see providers.manifest.json). Every entry was checked against the
+# provider's own code at that commit (P9a, 2026-11-20): header comment, option parsing, host allow-lists, country and
+# locale codes, page constants and detect().
 #
 # Entry fields (one entry per provider id, sorted by id):
 #   id          career-ops provider id (= file name minus .mjs)
@@ -14,7 +16,14 @@
 #   kind        one of `kinds` below
 #   needs       one of `needs` below: what an entry must carry before the provider returns anything useful
 #   config      option keys the provider reads that matter for targeting (dotted = nested block, e.g. amazon.loc_query)
-#   detect      true when the provider is in manifest.detectors (a pasted careers_url auto-routes to it)
+#   fill        (needs: config and keyword-driven boards) how Crewdeck fills those keys from the user's notes at fetch
+#               time; never written to the note, and a key the user set by hand keeps their value:
+#                 <key>: { from: titles | first_title | onsite_place | country | country_name,
+#                          max: N (titles), map: { <country id>: value }, format: "…{CC}…{cc}…", required: true }
+#               A `required` fill that can't be made (no titles, no country in `map`) skips the source with the reason.
+#   detect      true only when the provider's detect() claims an entry that has just a careers_url (no provider:), so a
+#               pasted careers page auto-routes to it. Narrower than manifest.detectors, which lists every file with a
+#               detect function (some only match `provider: <id>` or explicit config).
 #   regions     where the jobs are: region ids and lowercase ISO 3166-1 alpha-2 countries from places.yaml
 #   families    role families from `families` below; ATSes are [any] (or their sector) plus a `note` on typical employers
 #   workplace   which of onsite / hybrid / remote it mostly carries
@@ -22,10 +31,14 @@
 #   seniority   any | entry | experienced
 #   runnable    false for manifest.excluded providers (cannot run in Crewdeck's sandbox); `why` says why
 #   retired     true when the upstream provider is kept only so old configs fail loudly: its fetch() always throws
+#   blocked     true when the site currently refuses automated reads (e.g. a Cloudflare challenge on every request):
+#               never suggested; it may still be added by hand
 #   coverage    one factual line on limits (caps, truncation, required keys, blocking)
-#   note        (ATS only) what kinds of employers typically use it
-#   confidence  high = doc + code are explicit; medium = partly inferred (usually regions/families); low = a guess
-#   unsure      what could not be confirmed from the local doc and code
+#   note        (ATS only) what kinds of employers typically use it: market knowledge, never measured
+#   confidence  grades the fields Crewdeck acts on (kind, needs, config, detect, regions, families, workplace, languages):
+#               high = the code or its header confirms them; medium = one of them (usually regions or families) is
+#               market knowledge the code doesn't confirm, named in `unsure`; low = kind or regions is a guess
+#   unsure      what the code could not confirm
 #
 # Region/family claims for ATSes and remote boards are about the vendor's typical customers or the board's typical
 # mix, not measured from live data (nothing here was fetched); `unsure` says so wherever it matters.
@@ -106,7 +119,7 @@ sources:
     runnable: true
     coverage: "Only 4-day-week / reduced-hours employers; default 3 pages x 25 = about 75 newest postings (cap 50 pages)."
     confidence: medium
-    unsure: "Field and country mix not measured; looks startup/tech-heavy, US/UK-heavy."
+    unsure: "Field and country mix not measured; the code names no countries or fields (looks startup/tech-heavy, US/UK-heavy)."
 
   - id: a16z-speedrun-talent
     name: a16z speedrun talent network
@@ -120,15 +133,15 @@ sources:
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "a16z speedrun and portfolio startups (~200 companies, ~17k postings); default 3 pages x 50 = 150 unless q: narrows it or max_pages is raised."
+    coverage: a16z speedrun and portfolio startups (~200 companies, ~17.6k postings as of 2026-08); default 6 pages x 50 = 300 unless q:/keywords narrow it; max_pages up to 1000 (runaway cap, stops at total_pages).
     confidence: medium
-    unsure: "Country split not measured; assumed mostly US startup hubs."
+    unsure: "Country split not measured; the code names no countries (assumed mostly US startup hubs)."
 
   - id: adp-myjobs
     name: ADP Recruiting Management (myjobs)
     kind: ats
     needs: careers_url
-    config: [adpMyjobs.orgoid, adpMyjobs.fetchDetails, max_pages]
+    config: [adpMyjobs.orgoid, adpMyjobs.fetchDetails, adpMyjobs.detailLimit, max_pages]
     detect: true
     regions: [us]
     families: [any]
@@ -137,33 +150,32 @@ sources:
     seniority: [any]
     runnable: true
     note: "ADP payroll customers: mid-size and large US employers across healthcare, retail, manufacturing, services."
-    coverage: "One career site per entry (myjobs.adp.com/<site>/cx/...); list has no description or date unless fetchDetails is set."
+    coverage: One career site per entry (myjobs.adp.com/<site>/cx/...); default 100 pages x 200 (cap 1500); every request is sent as Accept-Language en-US; no description or date unless fetchDetails (at most detailLimit, default 25, max 100).
     confidence: medium
-    unsure: "Employer mix and country spread inferred from ADP's market, not from the code."
+    unsure: "Regions [us]: the code only pins Accept-Language en-US and shows a US address example; which countries tenants are in is market knowledge."
 
   - id: adp-workforcenow
     name: ADP Workforce Now
     kind: ats
     needs: careers_url
-    config: [adpWorkforcenow.fetchDetails, max_pages]
+    config: [adpWorkforcenow.fetchDetails, adpWorkforcenow.detailLimit, max_pages]
     detect: true
-    regions: [us]
+    regions: [us, ca]
     families: [any]
     workplace: [onsite, hybrid, remote]
     languages: [en]
     seniority: [any]
     runnable: true
     note: "Small and mid-size US employers on ADP payroll: clinics, nonprofits, local manufacturers, dealerships, services."
-    coverage: "One tenant per entry (workforcenow.adp.com recruitment.html?cid=...&ccId=...); no JD text unless fetchDetails is set."
-    confidence: medium
-    unsure: "Employer mix inferred from ADP's market."
+    coverage: One tenant per entry (workforcenow.adp.com recruitment.html?cid=...&ccId=...[&lang=en_CA]); default 100 pages x 20 = 2000 (cap 1500 pages); no JD text unless fetchDetails (detailLimit default 25, max 100).
+    confidence: high
 
   - id: agentic-jobs
     name: Agentic Engineering Jobs
     kind: field
     needs: none
     config: []
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it, data]
     workplace: [remote, hybrid, onsite]
@@ -186,9 +198,9 @@ sources:
     languages: [de, nl, fr, es, pt, pl]
     seniority: [any]
     runnable: true
-    coverage: "One country site per entry (www.aldi-nord.de, aldi.nl/.be/.lu/.fr/.es/.pt/.pl); fetch throws without one of those hosts; no descriptions."
-    confidence: high
-    unsure: "Family mix inferred (store, warehouse and head-office roles); ALDI Sud (UK, US, AT, CH, IT) is a different company and not covered."
+    coverage: One country site per entry (www.aldi-nord.de, aldi.nl/.be/.lu/.fr/.es/.pt/.pl; Belgium reads nl-BE and fr-BE); fetch throws without one of those hosts; 10-row pages, default 500 (cap 1000); no descriptions.
+    confidence: medium
+    unsure: "Family mix inferred; the code confirms only IT postings (on aldi.pl), not store or warehouse roles. ALDI Sud is a different company and not covered."
 
   - id: alibaba
     name: Alibaba Group Careers
@@ -202,15 +214,15 @@ sources:
     languages: [zh]
     seniority: [experienced]
     runnable: true
-    coverage: "Whole group board (~4,100 postings) in zh-CN; each keyword is a separate server-side query."
+    coverage: Whole group board (~4,100 postings) in zh only (request language fixed to zh); each keyword is a separate server-side query; 100 per page, default 100 pages per keyword (no hard cap).
     confidence: medium
-    unsure: "Seniority 'experienced' assumed from the off-campus (social hiring) channel; non-China share not measured."
+    unsure: "Non-China share not measured; the code has no country filter. Seniority 'experienced' rests on the /off-campus/ URL path only: the API body sends no campus/social filter."
 
   - id: amazon
     name: Amazon / AWS
     kind: employer
     needs: config
-    config: [amazon.loc_query, amazon.base_query, amazon.category]
+    config: [amazon.loc_query, amazon.base_query, amazon.category, amazon.normalized_country_code, amazon.sort]
     detect: true
     regions: [world]
     families: [engineering-it, data, product-project, logistics-transport, operations, customer-service, sales, finance-accounting, people-hr, marketing, legal]
@@ -219,8 +231,11 @@ sources:
     seniority: [any]
     runnable: true
     coverage: "100k+ global postings; not enforced, but without amazon.loc_query/base_query it returns only the newest slice (cap 100 pages / 10,000)."
-    confidence: high
-    unsure: "Warehouse/hourly roles may live on a separate Amazon hiring site and not appear here."
+    confidence: medium
+    unsure: "Family mix is employer knowledge the code doesn't state; whether warehouse/hourly roles are on amazon.jobs is not answerable from the code."
+    fill:
+      amazon.base_query: {from: first_title}
+      amazon.loc_query: {from: onsite_place}
 
   - id: apple
     name: Apple
@@ -235,14 +250,16 @@ sources:
     seniority: [any]
     runnable: true
     coverage: "Throws without apple.queries or apple.teams; location defaults to the US; default 2 pages x 20 per query (cap 50)."
-    confidence: high
-    unsure: "Whether Apple Store retail roles show under the same search was not checked."
+    confidence: medium
+    unsure: "Family mix is employer knowledge; whether Apple Store retail roles show in the same search is not answerable from the code."
+    fill:
+      apple.queries: {from: titles, max: 5, required: true}
 
   - id: applicantpro
     name: ApplicantPro (isolved Talent Acquisition)
     kind: ats
     needs: careers_url
-    config: [applicantpro.domainId, applicantpro.fetchDetails]
+    config: [applicantpro.domainId, applicantpro.fetchDetails, applicantpro.detailLimit]
     detect: true
     regions: [us]
     families: [any]
@@ -253,7 +270,7 @@ sources:
     note: "US small and mid-size employers: local government, school districts, credit unions, clinics, manufacturers."
     coverage: "One tenant (<tenant>.applicantpro.com) per entry; whole inventory in one request; no tenant discovery."
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [us]: the code only formats location as city plus US-style state; tenant countries are vendor-market knowledge."
 
   - id: applitrack
     name: Frontline AppliTrack
@@ -278,13 +295,13 @@ sources:
     needs: none
     config: [max_pages]
     detect: false
-    regions: [de, dach, europe]
+    regions: [de, dach, europe, world]
     families: [any]
     workplace: [onsite, hybrid, remote]
     languages: [de, en]
     seniority: [any]
     runnable: true
-    coverage: "Whole board newest-first; default 3 pages x 100 = 300 newest postings."
+    coverage: Whole board newest-first; default 3 pages x 100 = 300 newest postings (cap 50 pages).
     confidence: medium
     unsure: "Field mix not measured; English-language and tech roles look over-represented."
 
@@ -303,12 +320,14 @@ sources:
     coverage: "Throws without arbeitsagentur.keywords; at most 100 results per keyword (size 1-100), nationwide unless wo: + umkreis are set."
     confidence: high
     unsure: ""
+    fill:
+      arbeitsagentur.keywords: {from: titles, max: 5, required: true}
 
   - id: ashby
     name: Ashby
     kind: ats
     needs: careers_url
-    config: [ashby.embed, ashby.board]
+    config: [ashby.embed, ashby.board, api]
     detect: true
     regions: [world]
     families: [any]
@@ -317,9 +336,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "Tech startups and scale-ups, mostly US and Europe."
-    coverage: "One board (jobs.ashbyhq.com/<slug>) per entry; whole board in one response."
+    coverage: "One board (jobs.ashbyhq.com/<slug>, or api: for a branded careers page) per entry; whole board in one response; a body over 64 MB falls back to the embed listing (no descriptions or dates)."
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [world] is vendor-market knowledge; the code has no country or locale."
 
   - id: atlassian
     name: Atlassian
@@ -335,7 +354,7 @@ sources:
     runnable: true
     coverage: "Whole board (~290 postings) in one request; no posting dates."
     confidence: medium
-    unsure: "Country list inferred from Atlassian's main offices."
+    unsure: "Countries au/in are inferred from Atlassian's offices; the code only shows a San Francisco, United States example. Family mix is employer knowledge."
 
   - id: avature
     name: Avature
@@ -350,9 +369,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large enterprises: banks, consultancies, retailers, universities."
-    coverage: "One tenant per entry; 6 results per page, default 50 pages = about 300 postings; branded domains need api: on the avature.net origin."
+    coverage: "One tenant per entry; 6 results per page, default 50 pages = about 300 postings (hard cap 200 pages = about 1,200); branded domains need api: on the avature.net origin; facet params in api: are kept on every page."
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [world] is vendor-market knowledge; the code has no country or locale."
 
   - id: bamboohr
     name: BambooHR
@@ -369,7 +388,7 @@ sources:
     note: "Small and mid-size companies of every kind, US-heavy."
     coverage: "One tenant (<tenant>.bamboohr.com) per entry; list has no dates or descriptions."
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [us, world] is vendor-market knowledge; the code has no country or locale."
 
   - id: beesite
     name: BeeSite (milch & zucker)
@@ -377,16 +396,16 @@ sources:
     needs: careers_url
     config: [beesite.languageCode, beesite.searchCriteria, max_pages]
     detect: true
-    regions: [de, dach]
+    regions: [de, dach, world]
     families: [any]
     workplace: [onsite, hybrid]
     languages: [de, en]
     seniority: [any]
     runnable: true
     note: "Large German employers behind branded portals (e.g. Mercedes-Benz)."
-    coverage: "One tenant (<tenant>.app.beesite.de) per entry; branded portals need careers_url/api on the beesite host."
+    coverage: One tenant (<tenant>.app.beesite.de) per entry; branded portals are not detected and need careers_url/api on the beesite host; newest-first, 100 per page, max 40 pages and 1,000 postings; LanguageCode defaults to EN.
     confidence: medium
-    unsure: "Tenant list beyond Mercedes-Benz not known."
+    unsure: "Tenant list beyond Mercedes-Benz not known; a tenant board spans countries, so the country spread depends on the tenant."
 
   - id: breezy
     name: Breezy HR
@@ -403,23 +422,25 @@ sources:
     note: "Small businesses and startups, US-heavy; includes restaurants, clinics and agencies."
     coverage: "One tenant (<tenant>.breezy.hr) per entry; whole board in one request."
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [us, world] is vendor-market knowledge; the code has no country or locale."
 
   - id: builtin
     name: Built In
     kind: board
     needs: config
     config: [builtin.queries, builtin.categories, builtin.host, builtin.scope, max_pages]
-    detect: true
+    detect: false
     regions: [us]
     families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, operations]
     workplace: [onsite, hybrid, remote]
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "US tech companies only (builtin.com plus 8 city hosts); with no queries: or categories: it scans nothing; default 3 pages per query."
-    confidence: high
-    unsure: "Manifest marks it a detector although the doc says it has no detect(); not checked further."
+    coverage: "US tech companies only (builtin.com plus 8 city hosts); with no queries: or categories: it scans nothing; default 3 pages per query or category (hard cap 25)."
+    confidence: medium
+    unsure: "Family mix beyond tech roles is board knowledge; the code calls it a US tech board."
+    fill:
+      builtin.queries: {from: titles, max: 5, required: true}
 
   - id: bulldogjob
     name: Bulldogjob
@@ -458,7 +479,7 @@ sources:
     kind: board
     needs: none
     config: [searchKeywords, searchLocation, max_pages]
-    detect: true
+    detect: false
     regions: [vn]
     families: [any]
     workplace: [onsite, hybrid]
@@ -482,9 +503,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "US mid-size employers (healthcare groups, schools, services)."
-    coverage: "One siteId per entry (careers-api.clearcompany.com/v1/<siteId> or the embed script URL); a branded careers page is not detected; email-to-apply postings skipped."
+    coverage: One siteId per entry (careers-api.clearcompany.com/v1/<siteId> or the embed script URL); a branded careers page is not detected; 100 per page, default 20 pages = 2,000 (cap 300); email-to-apply postings skipped.
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [us] is vendor-market knowledge; the code has no country or locale."
 
   - id: collage
     name: Collage HR
@@ -518,7 +539,7 @@ sources:
     note: "Tech companies, Israel-heavy."
     coverage: "Needs the full careers-api URL with company uid and token (not derivable from a branded page)."
     confidence: low
-    unsure: "Region and employer mix are from knowledge of the vendor, not the doc."
+    unsure: "Region, language (he) and employer mix are from knowledge of the vendor; the code has no country or locale."
 
   - id: computrabajo
     name: Computrabajo
@@ -534,23 +555,23 @@ sources:
     runnable: true
     coverage: "Hard cap 3 pages / 15 postings per entry (can only be lowered); careers_url is a <country>.computrabajo.com search URL; only the Colombian host was measured."
     confidence: medium
-    unsure: "Which country hosts exist beyond co/mx is from knowledge, not the doc; paid featured cards take part of the 15."
+    unsure: "The code names only the co and mx hosts and accepts any <cc>.computrabajo.com; ar/pe/cl/ec are from knowledge. Paid featured cards take part of the 15."
 
   - id: consider
     name: Consider (VC talent networks)
     kind: aggregator
     needs: careers_url
     config: [consider_size, consider_board, max_pages]
-    detect: true
+    detect: false
     regions: [europe, us]
     families: [engineering-it, data, product-project, design, marketing, sales, operations]
     workplace: [onsite, hybrid, remote]
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "One VC portfolio board per entry (e.g. Balderton, Creandum, Lightspeed); careers_url is the board's /jobs page."
+    coverage: One VC portfolio board per entry (e.g. Founderful, Creandum, Balderton, Lightspeed, Notion Capital); careers_url is the board's /jobs page; consider_size per request default 500 (max 1000), default 10 pages (hard cap 100).
     confidence: medium
-    unsure: "Field mix assumed startup-typical."
+    unsure: "Regions europe/us come from the named funds' home markets, not the code; field mix assumed startup-typical."
 
   - id: cryptocurrencyjobs
     name: CryptocurrencyJobs
@@ -566,13 +587,13 @@ sources:
     runnable: true
     coverage: "Web3/crypto employers only; one RSS feed (about 60 items when measured)."
     confidence: medium
-    unsure: "Feed size taken from a test note (62 titles), not a documented cap."
+    unsure: "Field mix of the board is not stated in the code. Feed size is whatever the RSS carries (54-62 items in code notes); there is no cap."
 
   - id: csod
     name: Cornerstone OnDemand
     kind: ats
     needs: careers_url
-    config: [max_pages]
+    config: [api, max_pages]
     detect: true
     regions: [world]
     families: [any]
@@ -581,9 +602,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large enterprises, hospitals and health systems, banks, public bodies."
-    coverage: "One career site per entry (<tenant>.csod.com/ux/ats/careersite/...)."
+    coverage: One career site per entry (<tenant>.csod.com/ux/ats/careersite/<id>/...; a branded page goes in careers_url with the csod URL in api:); 25 per page, at most 40 pages / 1,000 postings (max_pages can only lower it); searched as en-US.
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [world] is vendor-market knowledge; cultureName is fixed to en-US."
 
   - id: darwinbox
     name: Darwinbox
@@ -598,9 +619,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large Indian employers: conglomerates, banks, insurers, retail chains, manufacturers, pharma."
-    coverage: "One tenant per entry; URL must carry the company id (/ms/candidatev2/<id>/careers); default 20 pages x 50."
-    confidence: high
-    unsure: "Southeast Asia from knowledge of the vendor."
+    coverage: One tenant per entry; URL must carry the company id (<tenant>.darwinbox.in|.com/ms/candidatev2/<id>/careers); default 20 pages x 50 = 1,000 (cap 200 pages).
+    confidence: medium
+    unsure: "The code confirms only India (the .darwinbox.in host); the rest of the regions are from knowledge of the vendor."
 
   - id: dassault
     name: Dassault Systèmes
@@ -622,7 +643,7 @@ sources:
     name: Deel job board
     kind: ats
     needs: careers_url
-    config: []
+    config: [api]
     detect: true
     regions: [world]
     families: [any]
@@ -632,14 +653,13 @@ sources:
     runnable: true
     note: "Tech scale-ups with global hiring (e.g. Klarna)."
     coverage: "One tenant (jobs.deel.com/<slug>) per entry; whole inventory with descriptions in one page; no salary."
-    confidence: medium
-    unsure: "Tenant mix beyond the named examples unknown."
+    confidence: high
 
   - id: deutschebahn
     name: Deutsche Bahn (db.jobs)
     kind: employer
     needs: careers_url
-    config: [max_pages]
+    config: [api, max_pages]
     detect: true
     regions: [de]
     families: [logistics-transport, trades-construction, engineering-physical, engineering-it, customer-service, office-admin, operations, education]
@@ -647,9 +667,9 @@ sources:
     languages: [de]
     seniority: [any]
     runnable: true
-    coverage: "Needs a db.jobs URL (falls back to the default search id); newest first, cap 1,000 postings."
+    coverage: Needs any db.jobs URL (search id defaults to 5441588); newest first, 1,000 hits per page and a hard cap of 1,000 postings, so max_pages (cap 5) rarely matters.
     confidence: medium
-    unsure: "Family list inferred (train drivers, mechanics, apprenticeships, IT); apprenticeship share unknown."
+    unsure: "Families beyond 'mostly rail operations' (code header) are inferred; apprenticeship share unknown."
 
   - id: dover
     name: Dover
@@ -664,16 +684,16 @@ sources:
     seniority: [any]
     runnable: true
     note: "US tech startups."
-    coverage: "One board (app.dover.com/<Company>/careers/<uuid>) per entry; no dates or descriptions."
+    coverage: One board (app.dover.com/<Company>/careers/<uuid>) per entry; default 5 pages x 300 = 1,500 postings (cap 20 pages); no dates or descriptions.
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [us] is market knowledge; the code names no country."
 
   - id: echojobs
     name: EchoJobs
     kind: aggregator
     needs: none
     config: []
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it, data]
     workplace: [onsite, hybrid, remote]
@@ -689,7 +709,7 @@ sources:
     name: Eightfold AI
     kind: ats
     needs: careers_url
-    config: [domain, eightfold_host, max_pages]
+    config: [api, domain, eightfold_host, max_pages]
     detect: true
     regions: [world]
     families: [any]
@@ -698,16 +718,15 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large enterprises (Bayer, Vodafone, PepsiCo, Micron) and some US health systems."
-    coverage: "One tenant (<tenant>.eightfold.ai) per entry; 10 rows per page, default 200 pages; branded hosts need eightfold_host."
-    confidence: medium
-    unsure: "Health-system usage is from knowledge of the vendor, not the doc."
+    coverage: One tenant (<tenant>.eightfold.ai, or a branded host named in eightfold_host) per entry; 10 rows per page, default 200 pages = 2,000 postings (cap 1,000 pages); some tenants' WAF 403s datacenter IPs.
+    confidence: high
 
   - id: eploy
     name: Eploy
     kind: ats
     needs: careers_url
     config: [eploy.fetchDetails, eploy.detailLimit]
-    detect: true
+    detect: false
     regions: [gb]
     families: [any]
     workplace: [onsite, hybrid]
@@ -715,26 +734,26 @@ sources:
     seniority: [any]
     runnable: true
     note: "UK employers: councils, housing associations, charities, universities, retailers."
-    coverage: "One tenant per entry (branded domain, explicit provider: eploy); titles come from URL slugs, no location unless fetchDetails is set."
-    confidence: low
-    unsure: "UK focus and employer mix are from knowledge of the vendor; the doc names only Specsavers (as not supported)."
+    coverage: "One tenant per entry (any branded HTTPS domain, explicit provider: eploy); whole live-jobs.xml sitemap; titles come from URL slugs, no location, date or description unless eploy.fetchDetails (first detailLimit postings, default 25, max 100)."
+    confidence: medium
+    unsure: "UK focus and the employer mix are vendor knowledge; the code names no country."
 
   - id: factorial
     name: Factorial
     kind: ats
     needs: careers_url
-    config: []
+    config: [api]
     detect: true
-    regions: [es, pt, europe, latam]
+    regions: [es, pt, fr, it, de, gb, be, ch, pl, rs, mx, ar, cl, co, br, ae, ke, europe, latam]
     families: [any]
     workplace: [onsite, hybrid, remote]
-    languages: [es, pt, en]
+    languages: [es, en, pt, fr, it, de]
     seniority: [any]
     runnable: true
     note: "Small and mid-size companies in Spain, Portugal and Latin America."
     coverage: "One tenant (<tenant>.factorialhr.* / factorial.*) per entry; location is the office name, often a city without country; no dates."
-    confidence: medium
-    unsure: "Region inferred from the vendor's domains (.es, .pt) and market."
+    confidence: high
+    unsure: "Tenant share per country is not measured; the languages are inferred from the country domains."
 
   - id: feishu-jobs
     name: Feishu Jobs (ByteDance and tenants)
@@ -765,9 +784,9 @@ sources:
     languages: [de, en]
     seniority: [any]
     runnable: true
-    coverage: "Cross-tenant feed of every company on the Flowxtra ATS; default 3 pages (newest)."
+    coverage: Cross-tenant feed of every company on the Flowxtra ATS; default 3 pages x 100 = 300 postings (cap 50 pages).
     confidence: low
-    unsure: "Neither doc nor code says where Flowxtra's customers are; DACH is a guess from the vendor's origin."
+    unsure: "Neither the doc nor the code says where Flowxtra's customers are; DACH is a guess from the vendor's origin."
 
   - id: garena
     name: Garena
@@ -781,9 +800,9 @@ sources:
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "Whole board (~98 postings) in one request; office does not filter."
+    coverage: Whole board (~98 postings, with descriptions) in one request; garena.office (default 'global') does not filter, it only sets the posting-link path.
     confidence: medium
-    unsure: "Country list inferred from Garena's offices."
+    unsure: "The country list is inferred from Garena's offices; the code names none."
 
   - id: gem
     name: Gem
@@ -798,9 +817,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "US tech companies."
-    coverage: "One board (jobs.gem.com/<boardId>, or api: for the REST board API) per entry."
+    coverage: "One board (jobs.gem.com/<boardId>, or api: pointing at the api.gem.com REST board) per entry; whole board plus one batched detail request for dates and descriptions."
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [us] is market knowledge; the code names no country."
 
   - id: generalist-world
     name: Generalist World
@@ -823,7 +842,7 @@ sources:
     kind: field
     needs: none
     config: []
-    detect: true
+    detect: false
     regions: [de]
     families: [engineering-it, data]
     workplace: [onsite, hybrid, remote]
@@ -846,48 +865,51 @@ sources:
     languages: [es, en, pt]
     seniority: [any]
     runnable: true
-    coverage: "Category defaults to programming only; default 3 pages per category (up to 12 categories)."
+    coverage: Category defaults to programming only; default 3 pages x 100 = 300 postings per category (cap 50 pages, up to 12 categories).
     confidence: medium
-    unsure: "Non-tech category list and Chile-heaviness from knowledge, not the doc."
+    unsure: "The LatAm/Chile focus is from knowledge (the code shows only a Chile example), and so are posting languages and category slugs beyond programming, operations-management and machine-learning-ai."
 
   - id: getro
     name: Getro (VC talent networks)
     kind: aggregator
     needs: careers_url
     config: [getro_max_pages, getro_max_age_days, getro_collection]
-    detect: true
+    detect: false
     regions: [europe, us]
     families: [engineering-it, data, product-project, design, marketing, sales, operations]
     workplace: [onsite, hybrid, remote]
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "One VC portfolio board per entry (Atomico, Point Nine, HV Capital...); default 40 pages, postings up to 90 days old."
+    coverage: One VC portfolio board per entry (careers_url always required); newest first, default 40 pages x 20 = 800 postings (cap 1,500 pages), stops at postings older than getro_max_age_days (default 90).
     confidence: medium
-    unsure: "Field mix assumed startup-typical."
+    unsure: "Field mix assumed startup-typical. Regions are inferred from the funds the code names (mostly European, plus Insight and Accel)."
 
   - id: glints
     name: Glints
     kind: board
     needs: none
     config: [countryCode, searchKeywords, maxPages, pageSize]
-    detect: true
+    detect: false
     regions: [id, sg, my, vn]
     families: [any]
     workplace: [onsite, hybrid, remote]
     languages: [en, id, vi]
     seniority: [any]
     runnable: true
-    coverage: "countryCode defaults to ID (Indonesia); default 3 pages x 30 = 90 postings; reverse-engineered GraphQL that may change."
+    coverage: countryCode defaults to ID (Indonesia); default 3 pages x 30 = 90 postings (maxPages and pageSize have no cap); location is the city only; reverse-engineered GraphQL that may change.
     confidence: medium
-    unsure: "Manifest marks it a detector although the code says auto-detection is not supported."
+    unsure: "Field mix ([any]) and posting languages are not stated in the code."
+    fill:
+      countryCode: {from: country, required: true, map: {id: ID, sg: SG, my: MY, vn: VN}}
+      searchKeywords: {from: first_title}
 
   - id: google
     name: Google Careers
     kind: employer
     needs: config
     config: [google.queries, google.location, max_pages]
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it, data, product-project, design, marketing, sales, finance-accounting, legal, people-hr, operations]
     workplace: [onsite, hybrid, remote]
@@ -897,6 +919,9 @@ sources:
     coverage: "Without google.queries it runs 5 built-in business-strategy queries in the United States; default 10 pages x 20 per query; also lists YouTube/DeepMind."
     confidence: high
     unsure: ""
+    fill:
+      google.queries: {from: titles, max: 5}
+      google.location: {from: country_name}
 
   - id: greenhouse
     name: Greenhouse
@@ -911,9 +936,8 @@ sources:
     seniority: [any]
     runnable: true
     note: "Tech companies and scale-ups, plus some media, fintech and health-tech; US and Europe heavy."
-    coverage: "One board (boards.greenhouse.io/<slug>) per entry; full descriptions unless the board is too large."
-    confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    coverage: One board (job-boards[.eu].greenhouse.io/<slug>) per entry; full descriptions unless the board is too large, then the plain list plus bodies for title-matched postings via greenhouse.fetchDetails (detailLimit default 25, max 100).
+    confidence: high
 
   - id: gupy
     name: Gupy
@@ -952,7 +976,7 @@ sources:
     name: Heckler & Koch
     kind: employer
     needs: careers_url
-    config: []
+    config: [api]
     detect: true
     regions: [de]
     families: [engineering-physical, manufacturing-production, engineering-it, operations, office-admin]
@@ -960,15 +984,15 @@ sources:
     languages: [de]
     seniority: [any]
     runnable: true
-    coverage: "Tiny board (~32 roles in Oberndorf / Vohringen); needs the heckler-koch.com vacancy URL; no location."
+    coverage: Tiny board (~32 roles in Oberndorf / Voehringen); any heckler-koch.com URL works (defaults to the German vacancy list); no location or date; cap 500.
     confidence: medium
-    unsure: "Family list inferred from a defence manufacturer's typical roles."
+    unsure: "The family list is inferred from a defence manufacturer's typical roles."
 
   - id: hibob
     name: HiBob careers
     kind: ats
     needs: careers_url
-    config: []
+    config: [api]
     detect: true
     regions: [gb, il, europe, us]
     families: [any]
@@ -977,47 +1001,47 @@ sources:
     seniority: [any]
     runnable: true
     note: "Mid-size tech and services companies, UK/Israel/Europe-heavy."
-    coverage: "One tenant (<tenant>.careers.hibob.com) per entry; whole board in one request, with dates and pay when stated."
-    confidence: low
-    unsure: "Region and employer mix are from knowledge of the vendor."
+    coverage: One tenant (<tenant>.careers.hibob.com) per entry; whole board with descriptions in one request; pay mapped only when the period is Annual.
+    confidence: medium
+    unsure: "Regions and the employer mix are vendor knowledge; the code shows only an EUR pay example."
 
   - id: higheredjobs
     name: HigherEdJobs
     kind: field
     needs: none
     config: [cat_id]
-    detect: true
+    detect: false
     regions: [us]
     families: [education, science-research]
     workplace: [onsite, hybrid]
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "One RSS category per entry (cat_id, default 68 'Higher Education'); some networks get a bot-challenge page and the scan errors."
+    coverage: One RSS category per entry (numeric cat_id, default 68 'Higher Education'); the whole feed, no provider cap; some networks get an Incapsula challenge page and the scan errors.
     confidence: medium
-    unsure: "How much admin/staff (IT, HR, finance at colleges) the default category carries is not known; RSS item cap unknown."
+    unsure: "How much admin and staff work the default category carries is not known; feed size is set by the server."
 
   - id: himalayas
     name: Himalayas
     kind: board
     needs: none
     config: [max_pages]
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, operations]
     workplace: [remote]
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "Remote jobs only; default 10 pages x 20 = 200 newest postings (cap 50 pages), warns when cut."
+    coverage: Remote jobs only; default 10 pages x 20 = 200 postings (cap 50 pages), warns when cut.
     confidence: medium
-    unsure: "Field mix not measured; tech/marketing/support likely dominate."
+    unsure: "Field mix not measured; tech, marketing and support likely dominate."
 
   - id: hirehive
     name: HireHive
     kind: ats
     needs: careers_url
-    config: [max_pages]
+    config: [api, max_pages]
     detect: true
     regions: [ie, gb, europe]
     families: [any]
@@ -1026,9 +1050,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "Small and mid-size employers, Ireland and UK."
-    coverage: "One tenant (<tenant>.hirehive.com) per entry; descriptions, dates and salary included."
-    confidence: low
-    unsure: "Region is from knowledge of the vendor (Irish), not the doc."
+    coverage: One tenant (<tenant>.hirehive.com) per entry; default 20 pages x 100 = 2,000 postings (cap 100 pages); descriptions, dates and yearly salary included.
+    confidence: medium
+    unsure: "Region (Ireland/UK) is vendor knowledge; the code names no country."
 
   - id: hiringroom
     name: HiringRoom
@@ -1061,8 +1085,8 @@ sources:
     runnable: true
     note: "Small creative and tech companies, Netherlands-heavy."
     coverage: "One tenant (<slug>.homerun.co or its feed) per entry; branded domains need api: on feed.homerun.co."
-    confidence: low
-    unsure: "Region is from knowledge of the vendor (Dutch), not the doc."
+    confidence: medium
+    unsure: "Region (Netherlands/Europe) is vendor knowledge; the code shows only an Amsterdam and EUR example."
 
   - id: ibm
     name: IBM Careers
@@ -1076,17 +1100,17 @@ sources:
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "Global board; default 20 pages x 30 = 600 postings unless ibm.country/categories narrow it."
+    coverage: Global board, sorted by relevance and pageviews (not date); default 20 pages x 30 = 600 postings (cap 300 pages) unless ibm.country (a country name, e.g. Germany) or ibm.categories narrow it.
     confidence: medium
-    unsure: "India share inferred from IBM's workforce."
+    unsure: "The India and US share is inferred from IBM's workforce. The code queries all locales, so postings may be in languages other than en."
 
   - id: icims
     name: iCIMS
     kind: ats
     needs: careers_url
-    config: [fallback_urls]
+    config: [api, fallback_urls]
     detect: true
-    regions: [us, world]
+    regions: [us, ca, world]
     families: [any]
     workplace: [onsite, hybrid, remote]
     languages: [en]
@@ -1095,7 +1119,7 @@ sources:
     note: "Large US employers: hospitals and health systems, retailers, logistics firms, banks, universities."
     coverage: "One portal (*.icims.com) per entry; fixed 30-page cap (~600 postings); no dates on list pages."
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "The share of tenants outside North America is not in the code."
 
   - id: inrecruiting
     name: InRecruiting (Zucchetti)
@@ -1119,7 +1143,7 @@ sources:
     kind: field
     needs: none
     config: [searchKeywords, searchLocation, max_pages]
-    detect: true
+    detect: false
     regions: [vn]
     families: [engineering-it, data]
     workplace: [onsite, hybrid, remote]
@@ -1134,7 +1158,7 @@ sources:
     name: JazzHR (ApplyToJob)
     kind: ats
     needs: careers_url
-    config: [jazzhr.fetchDetails, jazzhr.detailLimit]
+    config: [api, jazzhr.fetchDetails, jazzhr.detailLimit]
     detect: true
     regions: [us]
     families: [any]
@@ -1143,9 +1167,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "US small businesses of every kind (clinics, agencies, trades, nonprofits)."
-    coverage: "One tenant (*.applytojob.com) per entry."
+    coverage: One tenant (*.applytojob.com) per entry; whole board in one page (cap 1,000); description and date only with jazzhr.fetchDetails (detailLimit default 25, max 100).
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [us] is vendor knowledge; the code names no country."
 
   - id: jibeapply
     name: JibeApply
@@ -1160,9 +1184,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large employers (iCIMS-owned): retailers, hospitals, banks."
-    coverage: "One tenant (<slug>.jibeapply.com/jobs or a branded /jobs with api:) per entry; default 50 pages (~500 postings)."
+    coverage: One tenant (<slug>.jibeapply.com, or a branded host via api:; careers_url is always required) per entry; default 50 pages x 10 = ~500 postings (page_size up to 100, max_pages cap 500).
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [us, world] is vendor knowledge; the code names no country."
 
   - id: jobbankca
     name: Job Bank Canada
@@ -1186,7 +1210,7 @@ sources:
     kind: board
     needs: none
     config: [geo, industry, tag, max_pages]
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, creative-media]
     workplace: [remote]
@@ -1219,32 +1243,36 @@ sources:
     kind: board
     needs: none
     config: [posts_per_page]
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it, design, marketing, customer-service, product-project, sales, creative-media]
     workplace: [remote]
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "Remote board; one request of up to 100 newest feed items."
+    coverage: Remote board; one request of up to 100 feed items (posts_per_page, default and max 100).
     confidence: medium
-    unsure: "Field mix from knowledge of the board."
+    unsure: "The code does not state that the board is remote-only or worldwide, nor its field mix; all are from knowledge of the board."
 
   - id: jobstreet
     name: Jobstreet / SEEK / JobsDB
     kind: board
     needs: none
     config: [api, siteKey, searchKeywords, searchLocation, pageSize, max_pages, appendWorkType]
-    detect: true
+    detect: false
     regions: [id, sg, my, hk, au, nz]
     families: [any]
     workplace: [onsite, hybrid, remote]
     languages: [en, id]
     seniority: [any]
     runnable: true
-    coverage: "Defaults to Indonesia (id.jobstreet.com, ID-Main); other markets need api: + siteKey; no Philippines or Thailand host is allowed."
+    coverage: Defaults to Indonesia (id.jobstreet.com, ID-Main); Crewdeck fills api and siteKey for Indonesia, Singapore, Malaysia, Australia, New Zealand or Hong Kong from your places; no Philippines or Thailand host is allowed; 30 per page, default 100 pages (cap 500).
     confidence: high
     unsure: ""
+    fill:
+      api: {from: country, required: true, map: {id: https://id.jobstreet.com/api/jobsearch/v5/search, sg: https://sg.jobstreet.com/api/jobsearch/v5/search, my: https://my.jobstreet.com/api/jobsearch/v5/search, au: https://au.seek.com/api/jobsearch/v5/search, nz: https://www.seek.co.nz/api/jobsearch/v5/search, hk: https://hk.jobsdb.com/api/jobsearch/v5/search}}
+      siteKey: {from: country, required: true, map: {id: ID-Main, sg: SG-Main, my: MY-Main, au: AU-Main, nz: NZ-Main, hk: HK-Main}}
+      searchKeywords: {from: first_title}
 
   - id: jobvite
     name: Jobvite
@@ -1261,7 +1289,7 @@ sources:
     note: "Mid-size and large employers, US-heavy (tech, healthcare, hospitality, retail)."
     coverage: "One tenant (jobs.jobvite.com/<slug>) per entry; whole feed with descriptions; host rate-limits (429, Retry-After 30)."
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions [us, world] is vendor knowledge; the code says only '~3,000 companies across a wide range of industries'."
 
   - id: join
     name: JOIN (join.com)
@@ -1276,9 +1304,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "German and European SMEs, including trades, care and hospitality businesses."
-    coverage: "One company (join.com/companies/<slug>) per entry; 100 per request, default 50 pages."
+    coverage: One company (https://join.com/companies/<slug>) per entry; 100 per request, default 50 pages, max_pages cap 200; company_id skips the careers-page id lookup.
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Regions (de, dach, europe) are vendor-market knowledge; the code names no country."
 
   - id: joinup
     name: joinup.ch
@@ -1292,9 +1320,9 @@ sources:
     languages: [de, en, fr]
     seniority: [any]
     runnable: true
-    coverage: "Swiss startup board (~1,000 jobs) but only the newest server-rendered page is read."
+    coverage: Swiss startup board (~1,000 jobs per the code) but only the newest server-rendered page of results is read; careers_url is not used by fetch.
     confidence: medium
-    unsure: "Page size of the newest page not stated; field mix assumed startup-typical."
+    unsure: "Field mix and posting languages are knowledge of the board; how many hits the newest page holds is not stated in the code."
 
   - id: justjoin
     name: Just Join IT
@@ -1317,7 +1345,7 @@ sources:
     kind: board
     needs: none
     config: [searchKeywords, max_pages, pageSize]
-    detect: true
+    detect: false
     regions: [id, ph, th]
     families: [any]
     workplace: [onsite, hybrid, remote]
@@ -1327,6 +1355,8 @@ sources:
     coverage: "Indonesia-heavy (99 of first 100 rows), then Philippines and Thailand; default 20 pages x 100; no salary."
     confidence: high
     unsure: ""
+    fill:
+      searchKeywords: {from: first_title}
 
   - id: kariyer
     name: Kariyer.net
@@ -1375,14 +1405,14 @@ sources:
     runnable: true
     coverage: "European tech roles, Portugal-heavy; whole active set in one call; company name guessed from the URL slug."
     confidence: medium
-    unsure: "Portugal focus is from knowledge of the board; the doc says only 'tech, Europe'."
+    unsure: "Portugal (pt) is knowledge of the board; the code says only 'tech, Europe-focused'."
 
   - id: larajobs
     name: LaraJobs
     kind: field
     needs: none
     config: []
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it]
     workplace: [remote, hybrid, onsite]
@@ -1406,9 +1436,8 @@ sources:
     seniority: [any]
     runnable: true
     note: "Tech companies and scale-ups, US and Europe heavy."
-    coverage: "One board (jobs.lever.co/<slug> or jobs.eu.lever.co) per entry; whole board with descriptions."
-    confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    coverage: One board (jobs.lever.co/<slug>, jobs.eu.lever.co/<slug>, or an api.lever.co / api.eu.lever.co api:) per entry; whole board with descriptions in one response; an oversized board is paged at up to 30 x 100 (3,000) / 64 MiB.
+    confidence: high
 
   - id: local-parser
     name: Local parser command
@@ -1448,16 +1477,16 @@ sources:
     kind: field
     needs: none
     config: [lang]
-    detect: true
+    detect: false
     regions: [es, europe]
     families: [engineering-it, data, product-project, design]
     workplace: [onsite, hybrid, remote]
     languages: [es, en]
     seniority: [experienced]
     runnable: true
-    coverage: "Spanish tech board; whole catalogue in one call but only ~24 ACTIVE offers when measured (1,600 closed ones are dropped)."
+    coverage: Spanish/EU tech board; whole catalogue in one call, only ACTIVE offers kept (24 of 1,628 when measured 2026-08-03); lang EN|ES picks the feed language (default EN); no posting dates.
     confidence: medium
-    unsure: "'experienced' is from knowledge of the board, not the doc."
+    unsure: "seniority 'experienced' is knowledge of the board; the code says nothing about seniority."
 
   - id: meituan
     name: Meituan Careers
@@ -1471,9 +1500,9 @@ sources:
     languages: [zh]
     seniority: [experienced]
     runnable: true
-    coverage: "Social-hiring (experienced) board in zh-CN; whole board when keywords is omitted; sporadic rate limits."
+    coverage: Social-hiring board in zh-CN; whole board (~2,500) when keywords is omitted, else one server query per keyword; 100 per page, default 100 pages per keyword (no upper cap); descriptions cut at 4,000 chars.
     confidence: medium
-    unsure: "Family list inferred; delivery-rider roles likely not on this site."
+    unsure: "Family list inferred; the code confirms only social hiring. cn comes from the zh-CN host; the code names no country."
 
   - id: mokahr
     name: MokaHR
@@ -1522,16 +1551,16 @@ sources:
     seniority: [any]
     runnable: true
     note: "US cities, counties, state agencies, school districts, community colleges; public health departments and some public hospitals."
-    coverage: "One agency per entry (www.governmentjobs.com or www.schooljobs.com /careers/<agency>); fetch throws without it; default 30 pages x 10."
-    confidence: high
-    unsure: "Hospitals rarely; the healthcare share is from knowledge of public-sector hiring."
+    coverage: "One agency per entry, or one agency's custom page: https://(www.)governmentjobs.com or (www.)schooljobs.com/careers/<agency>[/<folder>]; fetch throws without it; 10 per page, default 30 pages (300), max_pages cap 200."
+    confidence: medium
+    unsure: "us is vendor knowledge: the code names no country. healthcare in families is knowledge of public-sector hiring; the header names only community colleges, school districts, cities and counties."
 
   - id: nodesk
     name: NoDesk
     kind: board
     needs: none
     config: []
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it, data, product-project, design, marketing, customer-service, sales]
     workplace: [remote]
@@ -1540,23 +1569,23 @@ sources:
     runnable: true
     coverage: "Remote board; one RSS feed."
     confidence: medium
-    unsure: "Feed size and field mix not measured."
+    unsure: "Feed size, field mix and the worldwide scope are not stated in the code (only 'remote jobs' RSS)."
 
   - id: nofluffjobs
     name: No Fluff Jobs
     kind: board
     needs: careers_url
-    config: [region, language, search, currency, max_pages]
+    config: [api, region, language, search, raw_search, currency, salary_period, page_size, max_pages]
     detect: true
-    regions: [pl, cz, sk, hu]
+    regions: [pl]
     families: [engineering-it, data, product-project, design, marketing, sales, finance-accounting, people-hr, customer-service]
     workplace: [onsite, hybrid, remote]
     languages: [pl, en]
     seniority: [any]
     runnable: true
-    coverage: "Board-wide, but fetch throws without a nofluffjobs.com careers_url or api; region defaults to pl; default 5 pages."
+    coverage: "Board-wide; careers_url (or api) must be on https://nofluffjobs.com (www. is rejected) and only gates the entry: its path and query are ignored, so targeting comes from search/region/language. region defaults to pl, language pl-PL, currency PLN; default 5 pages x 20."
     confidence: medium
-    unsure: "Other region codes (cz, sk, hu) and non-IT categories are from knowledge of the board; only pl is in the code."
+    unsure: "region is sent verbatim with no allow-list (default pl); whether cz/sk/hu or other codes return postings is not in the code. Non-IT families are knowledge of the board."
 
   - id: notion
     name: Notion careers page
@@ -1580,7 +1609,7 @@ sources:
     kind: board
     needs: config
     config: [queries, states, max_pages]
-    detect: true
+    detect: false
     regions: [mx]
     families: [any]
     workplace: [onsite, hybrid, remote]
@@ -1590,12 +1619,14 @@ sources:
     coverage: "Throws without queries:; default 3 pages (cap 10) per query; Cloudflare blocks non-Mexican IPs, so it works only from Mexico."
     confidence: high
     unsure: ""
+    fill:
+      queries: {from: titles, max: 5, required: true}
 
   - id: oraclecloud
     name: Oracle Recruiting Cloud
     kind: ats
     needs: careers_url
-    config: [siteNumber, locationId, max_pages]
+    config: [api, siteNumber, locationId, max_pages]
     detect: true
     regions: [world, us]
     families: [any]
@@ -1604,15 +1635,14 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large enterprises: banks (JPMorgan Chase, BNY, American Express), industrials, hospitals and universities."
-    coverage: "One tenant (<tenant>.fa.*.oraclecloud.com) per entry; up to 100 pages / ~20,000 jobs."
-    confidence: medium
-    unsure: "Hospital/university usage is from knowledge of the vendor."
+    coverage: One tenant (<tenant>.fa[.<region>][.ocs].oraclecloud[1-99].com/hcmUI/CandidateExperience/<lang>/sites/<site>) per entry; 200 per page, default 25 pages auto-raised to the tenant's reported total, max 100 pages (~20,000); some tenants' WAF 403s datacenter IPs.
+    confidence: high
 
   - id: pageup
     name: PageUp
     kind: ats
     needs: careers_url
-    config: [max_pages]
+    config: [api, max_pages]
     detect: true
     regions: [au, us, hk, gb, nz]
     families: [education, science-research, public-sector, any]
@@ -1621,15 +1651,15 @@ sources:
     seniority: [any]
     runnable: true
     note: "Universities (US, Australia, Hong Kong), public bodies and banks."
-    coverage: "One tenant on careers.pageuppeople.com per entry (branded domains not detected); no location or posting date in the list."
+    coverage: One tenant on careers.pageuppeople.com/<tenant>/<site>/<lang>/ per entry (branded domains not claimed); 100 per page, default 20 pages, cap 200; no location or posting date in the list.
     confidence: medium
-    unsure: "UK and NZ tenants are from knowledge of the vendor; the doc names US/AU/HK."
+    unsure: "gb and nz are vendor knowledge; the code's live check names US, Australian and Hong Kong tenants."
 
   - id: paylocity
     name: Paylocity
     kind: ats
     needs: careers_url
-    config: []
+    config: [api]
     detect: true
     regions: [us]
     families: [any]
@@ -1638,15 +1668,14 @@ sources:
     seniority: [any]
     runnable: true
     note: "US small and mid-size employers: healthcare providers, nonprofits, manufacturers, restaurants."
-    coverage: "One board (recruiting.paylocity.com/Recruiting/Jobs/All/<guid>) per entry; whole list in one page."
-    confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    coverage: One board (recruiting.paylocity.com/Recruiting/Jobs/All/<guid>) per entry; whole list in one page (2,000+ seen); no descriptions; internal postings dropped.
+    confidence: high
 
   - id: peoplesoft
     name: PeopleSoft Fluid Candidate Gateway
     kind: ats
     needs: careers_url
-    config: [peoplesoft.fetchDetails, peoplesoft.detailLimit, max_pages]
+    config: [api, peoplesoft.fetchDetails, peoplesoft.detailLimit, max_pages]
     detect: true
     regions: [ca, us]
     families: [education, public-sector, any]
@@ -1655,9 +1684,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "Universities and public agencies (Western, TMU, McMaster, WSIB)."
-    coverage: "One institution per entry (the Fluid HRS_CG_SEARCH_FL path on its own domain); stateful scrape, may be marked incomplete."
-    confidence: high
-    unsure: "US use is from knowledge of PeopleSoft's market."
+    coverage: One institution per entry (path /psc/<site>/EMPLOYEE/HRMS/c/HRS_HRAM_FL.HRS_CG_SEARCH_FL.GBL on any https host); stateful scrape, default 20 load-more replays (cap 100) but the anonymous session may stop near 100 results; details opt-in (default 25, max 100).
+    confidence: medium
+    unsure: "us is knowledge of PeopleSoft's market; every tenant verified in the code is Canadian."
 
   - id: personio
     name: Personio
@@ -1680,18 +1709,17 @@ sources:
     name: Phenom People
     kind: ats
     needs: careers_url
-    config: [phenom.country, phenom.lang, max_pages]
+    config: [api, phenom.lang, phenom.country, phenom.urlPrefix, phenom.selectedFields, max_pages]
     detect: false
-    regions: [world, us]
+    regions: [world]
     families: [any]
     workplace: [onsite, hybrid, remote]
     languages: [en]
     seniority: [any]
     runnable: true
     note: "Large enterprises: insurers (e.g. Allianz), hospitals and health systems, retailers, manufacturers."
-    coverage: "One branded host per entry with explicit provider: phenom (not auto-detected); default 20 pages x 100."
-    confidence: medium
-    unsure: "Employer mix beyond Allianz is from knowledge of the vendor."
+    coverage: "One branded host per entry with explicit provider: phenom (not auto-detected); 100 per page, default 20 pages, cap 300; phenom.selectedFields can narrow by facet (e.g. country)."
+    confidence: high
 
   - id: pinpoint
     name: Pinpoint
@@ -1707,8 +1735,8 @@ sources:
     runnable: true
     note: "Mid-size employers, UK-heavy."
     coverage: "One tenant (<slug>.pinpointhq.com) per entry; whole board in one request."
-    confidence: low
-    unsure: "Region is from knowledge of the vendor (UK), not the doc."
+    confidence: medium
+    unsure: "Regions (gb, us, europe) are vendor knowledge (Pinpoint is UK-based); the code names no country."
 
   - id: platsbanken
     name: Platsbanken (Arbetsförmedlingen)
@@ -1731,7 +1759,7 @@ sources:
     name: Polymer
     kind: ats
     needs: careers_url
-    config: [max_pages]
+    config: [api, max_pages]
     detect: true
     regions: [us]
     families: [any]
@@ -1740,9 +1768,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "US startups and small businesses."
-    coverage: "One board (jobs.polymer.co/<slug>) per entry; no descriptions or salary."
-    confidence: low
-    unsure: "Region and employer mix are from knowledge of the vendor."
+    coverage: One board (jobs.polymer.co/<slug> or an api.polymer.co api:) per entry; default 20 pages, cap 100; no descriptions or salary.
+    confidence: medium
+    unsure: "Region us and the employer mix are vendor knowledge; the code names no country."
 
   - id: pracecz
     name: Prace.cz
@@ -1792,14 +1820,14 @@ sources:
     runnable: true
     coverage: "Python developer jobs only; one RSS feed, low volume."
     confidence: medium
-    unsure: "Volume is from knowledge of the board."
+    unsure: "Volume and regional mix are not stated in the code (official PSF RSS board)."
 
   - id: radancy
     name: Radancy (TalentBrew)
     kind: ats
     needs: careers_url
-    config: [max_pages, max_jobs]
-    detect: true
+    config: [api, max_pages, max_jobs]
+    detect: false
     regions: [world]
     families: [any]
     workplace: [onsite, hybrid, remote]
@@ -1807,9 +1835,8 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large employers' branded career sites (Munich Re/ERGO, retailers, hospitals, banks)."
-    coverage: "One branded career site per entry ({origin}/{lang}/search-jobs)."
-    confidence: medium
-    unsure: "Employer mix beyond Munich Re is from knowledge of the vendor."
+    coverage: "One branded career site per entry ({origin}/{lang}/search-jobs) with explicit provider: radancy (not auto-detected); default cap 2,000 postings (max_jobs up to 20,000), max_pages up to 200; no posting dates."
+    confidence: high
 
   - id: recruitee
     name: Recruitee
@@ -1826,7 +1853,7 @@ sources:
     note: "Small and mid-size European companies."
     coverage: "One tenant (<slug>.recruitee.com) per entry; descriptions, dates and salary in one request."
     confidence: medium
-    unsure: "Region is from knowledge of the vendor (Dutch)."
+    unsure: "Regions (europe, nl) are vendor knowledge; the code names no country. A careers_url ?lang=xx picks the posting language."
 
   - id: redrover
     name: Red Rover K12
@@ -1874,8 +1901,8 @@ sources:
     seniority: [any]
     runnable: true
     coverage: "Remote jobs; only the latest ~100 postings per run."
-    confidence: high
-    unsure: "Field mix not measured; tech-heavy."
+    confidence: medium
+    unsure: "Field mix not measured (tech-heavy by knowledge of the board); the code says only remote postings, latest ~100."
 
   - id: remotive
     name: Remotive
@@ -1891,7 +1918,7 @@ sources:
     runnable: true
     coverage: "Remote jobs; the whole public feed in one request."
     confidence: medium
-    unsure: "Feed size and any delay of the public API are not stated."
+    unsure: "Feed size, any publication delay of the public API, and field mix are not stated in the code."
 
   - id: remotli
     name: Remotli
@@ -1905,16 +1932,16 @@ sources:
     languages: [en, de]
     seniority: [any]
     runnable: true
-    coverage: "Remote roles at Swiss companies paid in CHF; default 20 pages x 50."
+    coverage: Remote and hybrid roles at Swiss companies paid in CHF (925 active when measured, 488 hybrid); 50 per page, default 20 pages (1,000), max_pages not capped; job URL is the employer's ATS apply link.
     confidence: medium
-    unsure: "Field mix and residency requirements not measured."
+    unsure: "Field mix and residency requirements are not stated in the code."
 
   - id: rexx
     name: rexx systems
     kind: ats
     needs: careers_url
-    config: [max_pages]
-    detect: true
+    config: [api, max_pages]
+    detect: false
     regions: [de, dach]
     families: [any]
     workplace: [onsite, hybrid]
@@ -1922,15 +1949,15 @@ sources:
     seniority: [any]
     runnable: true
     note: "German mid-size employers, including manufacturers, hospitals and municipal companies."
-    coverage: "One branded portal per entry with explicit provider: rexx; careers_url must be the job list page."
+    coverage: "One branded portal per entry with explicit provider: rexx (no detect()); careers_url must be the https job list page; default 30 pages, cap 200; dates only from the portal's Atom feed when linked."
     confidence: medium
-    unsure: "Employer mix is from knowledge of the vendor."
+    unsure: "dach beyond Germany and the employer mix are vendor knowledge; the code shows only German portals."
 
   - id: rheinmetall
     name: Rheinmetall
     kind: employer
     needs: careers_url
-    config: [max_pages]
+    config: [api, max_pages]
     detect: true
     regions: [de, world]
     families: [engineering-physical, manufacturing-production, engineering-it, trades-construction, operations, finance-accounting, office-admin]
@@ -1938,9 +1965,9 @@ sources:
     languages: [de, en]
     seniority: [any]
     runnable: true
-    coverage: "Needs the rheinmetall.com/<lang>/career/vacancies URL; ~1,350 postings, cap 1,500."
+    coverage: Needs any https rheinmetall.com URL (non-vacancies paths fall back to /en/career/vacancies); ~10 per page, 1,348 when measured; default and cap 150 pages, 1,500 postings; no posting dates.
     confidence: medium
-    unsure: "Family list inferred from a defence manufacturer's typical roles."
+    unsure: "Family list and regions (de, world) are knowledge of the company; the code names no country."
 
   - id: rippling
     name: Rippling ATS
@@ -1955,9 +1982,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "US startups and small businesses."
-    coverage: "One board (ats.rippling.com/<slug>/jobs) per entry; 1,000 per page."
+    coverage: One board (ats.rippling.com/<slug>/jobs) per entry; 1,000 per page, default 10 pages, cap 50.
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "Region us and the employer mix are vendor knowledge; the code names no country."
 
   - id: schoolspring
     name: SchoolSpring
@@ -1972,16 +1999,16 @@ sources:
     seniority: [any]
     runnable: true
     note: "US K-12 school districts."
-    coverage: "One district (<district>.schoolspring.com) per entry; default 20 pages x 100; no pay or description."
-    confidence: high
-    unsure: "Which states it is strongest in is not known."
+    coverage: One district (<district>.schoolspring.com) per entry; 100 per page, default 20 pages (max_pages up to 100), warns when capped; no pay or description.
+    confidence: medium
+    unsure: "Region [us] comes from 'K-12 districts'; the code and doc name no country. Which states it is strongest in is unknown."
 
   - id: senjob
     name: Senjob
     kind: board
     needs: none
     config: [max_pages]
-    detect: true
+    detect: false
     regions: [sn]
     families: [any]
     workplace: [onsite]
@@ -1996,8 +2023,8 @@ sources:
     name: Employer job sitemap
     kind: feed
     needs: config
-    config: [sitemap.url, sitemap.job_path, sitemap.index_filter, sitemap.fetchDetails, sitemap.max_sitemaps]
-    detect: true
+    config: [sitemap.url, sitemap.job_path, sitemap.index_filter, sitemap.max_sitemaps, sitemap.fetchDetails, sitemap.detailLimit]
+    detect: false
     regions: [world]
     families: [any]
     workplace: [onsite, hybrid, remote]
@@ -2005,15 +2032,15 @@ sources:
     seniority: [any]
     runnable: true
     note: "Any employer whose own site publishes a job sitemap (reference: ServiceNow)."
-    coverage: "One employer per entry; needs sitemap.url and a job_path regex with a (?<slug>) group; titles from slugs unless fetchDetails."
+    coverage: One employer per entry; throws without sitemap.url (https) and a job_path regex with a (?<slug>) group; titles come from slugs unless fetchDetails is set (detailLimit default 25, max 200); index followed one level (max_sitemaps default 50, max 1,000); robots.txt enforced.
     confidence: high
-    unsure: "Manifest marks it a detector although the doc says explicit-only."
+    unsure: "Languages and regions depend on the employer chosen; [en] and [world] are placeholders."
 
   - id: smartrecruiters
     name: SmartRecruiters
     kind: ats
     needs: careers_url
-    config: [smartrecruiters.fetchDetails, max_pages]
+    config: [api, smartrecruiters.fetchDetails, smartrecruiters.detailLimit, max_pages]
     detect: true
     regions: [world]
     families: [any]
@@ -2022,15 +2049,14 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large and mid-size employers, including retail, hospitality and restaurant chains, manufacturers and consultancies."
-    coverage: "One company (careers/jobs.smartrecruiters.com/<slug>) per entry; no description unless fetchDetails."
-    confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    coverage: "One company (careers/jobs.smartrecruiters.com/<slug>) per entry; 100 per page, default 50 pages (5,000), max_pages up to 100; no description unless fetchDetails (detailLimit default 25, max 100). For a branded careers_url, set api: https://careers.smartrecruiters.com/<slug>."
+    confidence: high
 
   - id: softgarden
     name: softgarden
     kind: ats
     needs: careers_url
-    config: []
+    config: [api]
     detect: true
     regions: [de, dach]
     families: [any]
@@ -2039,9 +2065,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "German mid-size employers (industry, healthcare, services)."
-    coverage: "One tenant (<tenant>.softgarden.io/<lang>/widgets/jobs) per entry; whole list in one page."
+    coverage: One tenant (<tenant>.softgarden.io/<lang>/widgets/jobs) per entry; the whole list in one page, at most 1,000 postings kept; a URL with no /<lang>/ path uses the German (de) widget; branded career sites need the softgarden.io widget URL.
     confidence: medium
-    unsure: "Employer mix is from knowledge of the vendor."
+    unsure: "Regions beyond Germany (AT/CH) come from knowledge of the vendor; the code only defaults to the de widget."
 
   - id: solidjobs
     name: SolidJobs
@@ -2064,7 +2090,7 @@ sources:
     kind: board
     needs: none
     config: [startup_jobs.role, startup_jobs.workplace]
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it, data, product-project, design, marketing, sales, customer-service, operations]
     workplace: [onsite, hybrid, remote]
@@ -2081,16 +2107,15 @@ sources:
     needs: careers_url
     config: [api, sfVariant, max_pages, max_jobs]
     detect: true
-    regions: [world, de]
+    regions: [world, dach, de]
     families: [any]
     workplace: [onsite, hybrid, remote]
     languages: [en, de]
     seniority: [any]
     runnable: true
     note: "Large enterprises: German industrials (SAP, ZF, Schaeffler), retailers, hospitals, utilities."
-    coverage: "One branded board per entry (provider: successfactors + api: origin); default 40 tile pages / 1,000 postings, warns when capped."
-    confidence: medium
-    unsure: "Non-German employer mix is from knowledge of the vendor."
+    coverage: "Detect claims only *.successfactors.eu/.com and jobs2web URLs; a branded board needs provider: successfactors with its careers_url (or api:). RMK default 40 tile pages / 1,000 postings (max_pages up to 400, max_jobs up to 10,000); the CSB variant reads 100 pages x 10 per locale (up to 500); RMK has no posting dates."
+    confidence: high
 
   - id: taleez
     name: Taleez
@@ -2113,24 +2138,24 @@ sources:
     name: TalentLink (Lumesse / Cornerstone)
     kind: ats
     needs: careers_url
-    config: [max_pages]
+    config: [api, max_pages]
     detect: true
     regions: [gb, europe, world]
     families: [any]
-    workplace: [onsite, hybrid]
-    languages: [en]
+    workplace: [onsite, hybrid, remote]
+    languages: [en, de, fr, es, it, pl]
     seniority: [any]
     runnable: true
     note: "Large employers in the UK and Europe, including public bodies and universities."
-    coverage: "One FO-widget career site per entry (<tenant>.recruitmentplatform.com); 100 per request, default 20 pages."
-    confidence: low
-    unsure: "Region and employer mix are from knowledge of the vendor."
+    coverage: "One FO-widget career site per entry (<tenant>.recruitmentplatform.com auto-detected; an employer domain needs provider: talentlink); 100 per request, default 20 pages (cap 200); the older syndicated list is not supported."
+    confidence: medium
+    unsure: "The UK weight (gb) comes from knowledge of the vendor. Europe is backed by the code (an emea FO host, location words in five European languages)."
 
   - id: taleo
     name: Taleo Enterprise Edition
     kind: ats
     needs: careers_url
-    config: [fetchDetails, detailLimit, max_pages]
+    config: [api, fetchDetails, detailLimit, max_pages]
     detect: true
     regions: [us, world]
     families: [any]
@@ -2139,15 +2164,15 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large employers: hospitals and health systems, universities, retailers, government contractors, banks."
-    coverage: "One public career section (*.taleo.net/careersection/<section>/jobsearch.ftl) per entry; Taleo Business Edition not supported."
+    coverage: One public career section (*.taleo.net/careersection/<section>/jobsearch.ftl) per entry; default 100 pages (cap 1,000); fetchDetails opt-in, detailLimit default 25 (max 100); language from the URL's lang= (default en); Taleo Business Edition (tre.taleo.net) is not supported.
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "The US weight comes from knowledge of the vendor; the code names no country (one example location is Canadian)."
 
   - id: teamtailor
     name: Teamtailor
     kind: ats
     needs: careers_url
-    config: []
+    config: [api]
     detect: true
     regions: [nordics, europe]
     families: [any]
@@ -2158,14 +2183,14 @@ sources:
     note: "Small and mid-size companies, Nordic and European, of every kind."
     coverage: "One tenant (<slug>.teamtailor.com, or a branded host with provider: teamtailor) per entry; one RSS feed."
     confidence: medium
-    unsure: "Region is from knowledge of the vendor (Swedish)."
+    unsure: "Region (Nordic/European) and languages come from knowledge of the vendor (Swedish); the code names no country."
 
   - id: techinasia
     name: Tech in Asia
     kind: board
     needs: none
     config: [techinasia.appId, techinasia.apiKey, max_pages]
-    detect: true
+    detect: false
     regions: [id, sg, my, vn, ph, jp, southeast-asia]
     families: [engineering-it, data, product-project, design, marketing, sales, operations]
     workplace: [onsite, hybrid, remote]
@@ -2188,9 +2213,9 @@ sources:
     languages: [ru, en]
     seniority: [any]
     runnable: true
-    coverage: "One public channel per entry (t.me/s/<channel>); keeps only posts naming an employer and a vacancy link; cap 10 pages / 30 days."
+    coverage: One public channel per entry (t.me/s/<channel>); 20 posts per page, max_pages default and cap 10; since_days default 30 (not capped); keeps only posts that name an employer and link to a vacancy.
     confidence: high
-    unsure: "The parser is tuned on RU/CIS and EN channels; other languages untested."
+    unsure: "The parser is tuned on RU/CIS and EN channels; other languages are untested."
 
   - id: tencent
     name: Tencent Careers
@@ -2204,16 +2229,16 @@ sources:
     languages: [zh]
     seniority: [any]
     runnable: true
-    coverage: "Whole board (~2,260 postings) in zh-CN when keywords is omitted."
+    coverage: Whole board (~2,260 postings) in zh-CN when keywords is omitted; 100 per page, default 100 pages per keyword; each keyword is a separate server-side query.
     confidence: medium
-    unsure: "Non-China share not measured."
+    unsure: "The non-China share and the field mix are not measured; the code only shows that location carries CountryName."
 
   - id: tes
     name: Tes
     kind: field
     needs: none
     config: [keywords, max_pages]
-    detect: true
+    detect: false
     regions: [gb, world]
     families: [education]
     workplace: [onsite]
@@ -2221,9 +2246,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "UK and international schools; also teaching assistants and some support staff."
-    coverage: "Whole board (~5,700 postings) at 50 per page, default 150 pages; keywords: searches server-side; no location filter server-side."
+    coverage: "Whole board (~5,700 postings) at 50 per page, default 150 pages (cap 400); keywords: a single string, searched server-side; location is ignored server-side."
     confidence: high
-    unsure: "Share of non-teaching school roles not measured."
+    unsure: "The share of non-teaching school roles is not measured."
 
   - id: thehub
     name: The Hub
@@ -2237,9 +2262,9 @@ sources:
     languages: [en, da, sv, no, fi]
     seniority: [any]
     runnable: true
-    coverage: "Nordic startups; countryCode defaults to EU; default 3 pages; no posting dates."
+    coverage: Nordic/EU startups; countryCode defaults to EU; 15 per page, default 3 pages (45 postings, cap 67) per pass; includeRemote adds a second pass; no posting dates.
     confidence: medium
-    unsure: "Page size not stated; field mix startup-typical."
+    unsure: "Field mix is startup-typical, from knowledge of the board."
 
   - id: themuse
     name: The Muse
@@ -2253,15 +2278,16 @@ sources:
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "Cloudflare challenged every request on 2026-11-15 (US and Canada egress), so it currently fails with an error; 20 cards per page."
+    coverage: "Cloudflare challenged every request on 2026-11-15 (US and Canada egress): a challenge on page 1 throws a named error (never an empty board); a failure on a later page keeps the earlier pages. 20 cards per page, default 100 pages (cap 1,500)."
     confidence: medium
-    unsure: "Whether residential egress outside North America still works is unknown; field mix from knowledge (corporate, many fields)."
+    unsure: "Whether a residential egress outside North America still works is unknown. Field and country mix come from knowledge of the board."
+    blocked: true
 
   - id: tkms
     name: TKMS (thyssenkrupp Marine Systems)
     kind: employer
     needs: careers_url
-    config: [tkms.subclient, tkms.locale, max_pages]
+    config: [api, tkms.subclient, tkms.locale, max_pages]
     detect: true
     regions: [de]
     families: [engineering-physical, manufacturing-production, trades-construction, engineering-it, operations]
@@ -2269,16 +2295,16 @@ sources:
     languages: [de, en]
     seniority: [any]
     runnable: true
-    coverage: "Needs the jobs.tkmsgroup.com URL; cap 1,000 postings."
+    coverage: Needs a jobs.tkmsgroup.com URL (fetch throws otherwise); 20 per page, at most 60 pages / 1,000 postings (max_pages can only lower it); locale defaults to en.
     confidence: medium
-    unsure: "Family list inferred from a shipbuilder's typical roles."
+    unsure: "Region [de] and the family list come from knowledge of the company; the code names no country."
 
   - id: torre
     name: Torre
     kind: board
     needs: none
     config: [search, experience, remote_only]
-    detect: true
+    detect: false
     regions: [latam, world]
     families: [engineering-it, data, product-project, design]
     workplace: [remote]
@@ -2294,7 +2320,7 @@ sources:
     name: Trakstar Hire (Recruiterbox)
     kind: ats
     needs: careers_url
-    config: [max_pages]
+    config: [api, max_pages]
     detect: true
     regions: [us]
     families: [any]
@@ -2303,15 +2329,15 @@ sources:
     seniority: [any]
     runnable: true
     note: "US small and mid-size employers."
-    coverage: "One client (<client>.hire.trakstar.com or .recruiterbox.com) per entry; no posting dates."
+    coverage: One client (<client>.hire.trakstar.com or .recruiterbox.com) per entry; 100 per page, default 20 pages (cap 50); no posting dates.
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "The US weight comes from knowledge of the vendor; the code names no country."
 
   - id: turbohire
     name: TurboHire
     kind: ats
     needs: careers_url
-    config: []
+    config: [api]
     detect: true
     regions: [in]
     families: [any]
@@ -2321,14 +2347,14 @@ sources:
     runnable: true
     note: "Indian employers, including banks, insurers and large groups with subsidiaries."
     coverage: "One tenant (<tenant>.turbohire.co) per entry; whole public page in one response; branded domains not detected."
-    confidence: low
-    unsure: "India focus is from knowledge of the vendor; the doc does not name a country."
+    confidence: medium
+    unsure: "The India focus comes from knowledge of the vendor; neither code nor doc names a country."
 
   - id: ultipro
     name: UKG Pro / UltiPro Recruiting
     kind: ats
     needs: careers_url
-    config: [ultipro.fetchDetails, ultipro.detailLimit, max_pages]
+    config: [api, ultipro.fetchDetails, ultipro.detailLimit, max_pages]
     detect: true
     regions: [us, ca]
     families: [any]
@@ -2337,9 +2363,8 @@ sources:
     seniority: [any]
     runnable: true
     note: "US and Canadian mid-size and large employers: healthcare, retail, hospitality, manufacturing, nonprofits."
-    coverage: "One board ({host}/{tenant}/JobBoard/{boardId}) per entry; default 100 pages x 50; brief description unless fetchDetails."
-    confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    coverage: One board ({host}/{tenant}/JobBoard/{boardId}, recruiting[N].ultipro.com/.ca) per entry; 50 per page, default 100 pages (cap 1,500); brief description unless fetchDetails (detailLimit default 25, max 100).
+    confidence: high
 
   - id: vdab
     name: VDAB
@@ -2363,16 +2388,16 @@ sources:
     kind: board
     needs: none
     config: []
-    detect: true
+    detect: false
     regions: [world]
     families: [engineering-it, design, product-project, marketing, sales, customer-service, finance-accounting]
     workplace: [remote]
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "Remote jobs; one RSS feed (all categories)."
+    coverage: Remote jobs; one RSS feed (all categories) in one request; the code sets no item cap, so the count is whatever the feed returns.
     confidence: medium
-    unsure: "Feed item cap not stated; field mix from knowledge of the board."
+    unsure: "Feed size (set by the site) and field mix are not measured."
 
   - id: workable
     name: Workable
@@ -2387,15 +2412,14 @@ sources:
     seniority: [any]
     runnable: true
     note: "Small and mid-size companies of every kind, worldwide (incl. hospitality, retail, healthcare)."
-    coverage: "One account (apply.workable.com/<slug>) per entry; full list with descriptions in one request."
-    confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    coverage: One account (apply.workable.com/<slug>) per entry; the full list with descriptions comes in one widget request; if that fails, it falls back to the markdown feed, capped at 30 rows. A branded careers domain is not supported.
+    confidence: high
 
   - id: workday
     name: Workday
     kind: ats
     needs: careers_url
-    config: [max_pages]
+    config: [api, max_pages]
     detect: true
     regions: [world, us]
     families: [any]
@@ -2404,9 +2428,9 @@ sources:
     seniority: [any]
     runnable: true
     note: "Large employers: hospitals and health systems, universities, retailers, banks, logistics firms, public bodies."
-    coverage: "One tenant (<tenant>.wdN.myworkdayjobs.com/<site>) per entry; default 100 pages, warns when capped; dates are relative labels."
+    coverage: One tenant (<tenant>.wdN.myworkdayjobs.com/<site>, or *.myworkdaysite.com/recruiting/<tenant>/<site>) per entry; 20 per page, default 100 pages (cap 1,500), warns when capped; tenants that clamp at offset 2,000 are recovered by facet splitting; dates are relative labels.
     confidence: medium
-    unsure: "Employer mix inferred from the vendor's market."
+    unsure: "The US weight comes from knowledge of the vendor (the code's examples mix US tenants with European ones)."
 
   - id: workingnomads
     name: Working Nomads
@@ -2420,16 +2444,16 @@ sources:
     languages: [en]
     seniority: [any]
     runnable: true
-    coverage: "Remote jobs; one JSON feed."
+    coverage: Remote jobs; one JSON feed in one request, no paging; descriptions included.
     confidence: medium
-    unsure: "Feed size and field mix not measured."
+    unsure: "Feed size and field mix are not measured."
 
   - id: wp-job-manager
     name: WP Job Manager (any WordPress board)
     kind: feed
     needs: careers_url
-    config: [max_pages]
-    detect: true
+    config: [api, max_pages]
+    detect: false
     regions: [world]
     families: [any]
     workplace: [onsite, hybrid, remote]
@@ -2437,7 +2461,7 @@ sources:
     seniority: [any]
     runnable: true
     note: "Any niche or local job board built on the WP Job Manager plugin."
-    coverage: "One WordPress board per entry (root install only); 100 per page, default 20 pages."
+    coverage: One WordPress board per entry (root install only; careers_url host, api as fallback); 100 per page, default 20 pages (cap 100); throws without an https careers_url.
     confidence: high
     unsure: "Region, field and language depend entirely on the board chosen."
 
@@ -2446,16 +2470,19 @@ sources:
     kind: board
     needs: config
     config: [wttj.filters, wttj.queries, wttj.max_hits]
-    detect: true
+    detect: false
     regions: [fr, europe, us]
     families: [engineering-it, data, product-project, design, marketing, sales, customer-service, finance-accounting, people-hr, legal, operations, creative-media]
     workplace: [onsite, hybrid, remote]
     languages: [fr, en, es, cs]
     seniority: [any]
     runnable: true
-    coverage: "Throws without a wttj: block (filters such as offices.country_code:FR, or queries); default 100 hits per query (1,000 with filters)."
+    coverage: "Throws without a wttj: block. filters is an Algolia filter string (max 1,000 chars, e.g. 'offices.country_code:FR'); queries is a list of strings, each one request with no paging; max_hits default 100 per query, cap 200 (1,000 with filters)."
     confidence: medium
-    unsure: "Country and language list beyond France are from knowledge of the board."
+    unsure: "Countries and languages beyond France come from knowledge of the board; the code passes filters unvalidated, so it cannot say which country codes have postings."
+    fill:
+      wttj.queries: {from: titles, max: 3, required: true}
+      wttj.filters: {from: country, format: "offices.country_code:{CC}"}
 
   - id: yourator
     name: Yourator
@@ -2477,15 +2504,15 @@ sources:
     name: Zoho Recruit
     kind: ats
     needs: careers_url
-    config: [zohoRecruit.fetchDetails, zohoRecruit.detailLimit]
+    config: [api, zohoRecruit.fetchDetails, zohoRecruit.detailLimit]
     detect: true
-    regions: [in, world]
+    regions: [world, in, ca, european-union, au, jp, sa, cn]
     families: [any]
     workplace: [onsite, hybrid, remote]
     languages: [en]
     seniority: [any]
     runnable: true
     note: "Small and mid-size companies and staffing agencies; India, US, Middle East."
-    coverage: "One tenant (<tenant>.zohorecruit.<tld>) per entry; whole board in one request; legacy Portal.na sites not supported."
-    confidence: medium
-    unsure: "Employer mix inferred from the vendor's market and regional domains."
+    coverage: One tenant (<tenant>.zohorecruit.com/.ca/.eu/.in/.com.au/.jp/.sa/.com.cn) per entry; the whole board in one request, filled postings skipped; detailLimit default 25 (max 100); legacy Portal.na sites are not supported.
+    confidence: high
+    unsure: "Regional domains are Zoho data centres; employer mix by region is from knowledge of the vendor."

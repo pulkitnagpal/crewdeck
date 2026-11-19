@@ -1,8 +1,8 @@
 ---
 tags: jobs
-# Where to look for jobs. boards: job boards by provider id; watchlist: companies by their careers page.
-# e.g. - { name: Example Co, careers_url: "https://jobs.example.com/careers" }
-boards: []
-watchlist: []
+# Where to look, in priority order: the first is fetched first and ranks first. Change it on Jobs → Sources, or ask Claude.
+sources: []
 ---
 # Job sources
+
+## Changes

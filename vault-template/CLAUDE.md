@@ -13,10 +13,10 @@ It opens in SilverBullet (Crewdeck → Notes) and in Obsidian.
   (resume sections and the fact bank), `preferences.md` (everything else). Only the human's own words or things they
   approved; never guesses.
 - `jobs/` — the job search: `search.md` (what they want, with a dated **Changes** log), `memory.md` (answers, facts,
-  style rules and "not interested" reasons Claude learned, with their quotes), `sources.md` (boards and companies).
+  style rules and "not interested" reasons Claude learned, with their quotes), `sources.md` (where to look, in priority order).
   The resume and search notes start from `crewdeck jobs init` (optionally a preset) and the `jobs-setup` interview.
-  Their frontmatter is written only through `crewdeck jobs …` commands, which validate it (`jobs/sources.md` by hand,
-  then `crewdeck jobs check`).
+  Their frontmatter is written only through `crewdeck jobs …` commands, which validate it (`jobs/sources.md` through
+  `crewdeck jobs sources …`).
 - `journal/YYYY-MM-DD.md` — what happened that day: sessions, decisions, tickets moved, notes. Claude appends; the human may write too.
 - `projects/<name>/` — notes per project; tickets live in the project's repo (Backlog.md), link them as `TASK-12`.
 

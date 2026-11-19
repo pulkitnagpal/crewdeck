@@ -14,6 +14,8 @@ export type Db = DatabaseSync;
 export type RoleInput = {
   url: string; title: string; company: string; location?: string; description?: string; source: string;
   pay_text?: string | null; posted_at?: string | null; apply_url?: string | null; apply_kind?: string | null;
+  /** v2: the source's key in jobs/sources.md, and what its provider said about the posting. */
+  source_key?: string | null; language?: string | null; visa_text?: string | null; employment_type?: string | null;
 };
 
 export const STATUSES = ['new', 'bench', 'picked', 'prepared', 'applied', 'skipped', 'expired', 'judged_out', 'prefiltered_out'] as const;
@@ -90,13 +92,16 @@ export function upsertRole(db: Db, r: RoleInput): { id: string; isNew: boolean }
     const exists = !!db.prepare('select 1 from roles where url = ?').get(r.url);
     const cid = companyId(db, r.company);
     const t = now();
-    db.prepare(`insert into roles(id, company_id, title, url, apply_url, apply_kind, location, description, source, pay_text, posted_at, first_seen, updated_at)
-        values (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    db.prepare(`insert into roles(id, company_id, title, url, apply_url, apply_kind, location, description, source, pay_text, posted_at, first_seen, updated_at, source_key, language, visa_text, employment_type)
+        values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         on conflict(url) do update set title=excluded.title, location=coalesce(nullif(excluded.location,''), roles.location),
           description=coalesce(nullif(excluded.description,''), roles.description), pay_text=coalesce(excluded.pay_text, roles.pay_text),
           posted_at=coalesce(excluded.posted_at, roles.posted_at), apply_url=coalesce(roles.apply_url, excluded.apply_url),
-          apply_kind=coalesce(excluded.apply_kind, roles.apply_kind), updated_at=excluded.updated_at`)
-      .run(id, cid, r.title, r.url, r.apply_url ?? null, r.apply_kind ?? null, r.location ?? '', r.description ?? '', r.source, r.pay_text ?? null, r.posted_at ?? null, t, t);
+          apply_kind=coalesce(excluded.apply_kind, roles.apply_kind), updated_at=excluded.updated_at,
+          source_key=coalesce(roles.source_key, excluded.source_key), language=coalesce(excluded.language, roles.language),
+          visa_text=coalesce(excluded.visa_text, roles.visa_text), employment_type=coalesce(excluded.employment_type, roles.employment_type)`)
+      .run(id, cid, r.title, r.url, r.apply_url ?? null, r.apply_kind ?? null, r.location ?? '', r.description ?? '', r.source, r.pay_text ?? null, r.posted_at ?? null, t, t,
+        r.source_key ?? null, r.language ?? null, r.visa_text ?? null, r.employment_type ?? null);
     return { id, isNew: !exists };
   });
 }

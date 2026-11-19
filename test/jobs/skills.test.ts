@@ -10,7 +10,8 @@ import { REPO } from './helpers.ts';
 import { splitNote } from '../../src/jobs/notes.ts';
 import { validate } from '../../src/jobs/schema.ts';
 import { JOBS_COMMANDS } from '../../src/jobs/cli.ts';
-import { PRESETS, workspaceClaudeMd } from '../../src/jobs/setup.ts';
+import { PRESETS, presetSources, workspaceClaudeMd } from '../../src/jobs/setup.ts';
+import { PRESET_QUERIES } from '../../src/jobs/suggest.ts';
 import { defaults } from '../../src/config.ts';
 
 const SKILLS = join(REPO, 'plugin', 'skills');
@@ -18,30 +19,19 @@ const read = (...p: string[]) => readFileSync(join(REPO, ...p), 'utf8');
 
 // ---- presets ----
 
-test('presets: each one is a valid search.md + sources.md with known providers and nothing personal', () => {
+test('presets (deprecated alias, D39): each one is a valid search.md; sources come from the catalog query, not a file', () => {
   assert.deepEqual(readdirSync(join(REPO, 'presets', 'jobs')).sort(), [...PRESETS].sort());
-  const ids = new Set(JSON.parse(read('src', 'jobs', 'data', 'providers.manifest.json')).providers as string[]);
   for (const p of PRESETS) {
-    for (const n of ['search', 'sources'] as const) {
-      const text = read('presets', 'jobs', p, `${n}.md`);
-      const { front } = splitNote(text);
-      assert.ok(front, `${p}/${n}.md has frontmatter`);
-      const data = parse(front!);
-      const errors = validate(n, data).filter((i) => i.level === 'error');
-      assert.deepEqual(errors, [], `${p}/${n}.md`);
-      assert.doesNotMatch(text, /@(?!example\.)[a-z0-9-]+\.[a-z]/i, `${p}/${n}.md has no real email`);
-      if (n === 'search') assert.match(text, /\n## Changes\n/, 'a Changes heading for the seeding line');
-      if (n === 'sources') {
-        const entries = [...(data.boards ?? []), ...(data.watchlist ?? [])];
-        assert.ok(entries.length > 0, `${p} lists sources`);
-        for (const e of entries) {
-          if (e.provider) assert.ok(ids.has(e.provider), `${p}: ${e.provider} is a career-ops provider`);
-          if (e.careers_url) assert.match(e.careers_url, /^https:\/\/[a-z.]*example\.(com|org)\//);
-        }
-      }
-    }
+    assert.deepEqual(readdirSync(join(REPO, 'presets', 'jobs', p)), ['search.md'], `${p} has no sources.md any more`);
+    const text = read('presets', 'jobs', p, 'search.md');
+    const { front } = splitNote(text);
+    assert.ok(front, `${p}/search.md has frontmatter`);
+    assert.deepEqual(validate('search', parse(front!)).filter((i) => i.level === 'error'), [], `${p}/search.md`);
+    assert.doesNotMatch(text, /@(?!example\.)[a-z0-9-]+\.[a-z]/i, `${p}/search.md has no real email`);
+    assert.match(text, /\n## Changes\n/, 'a Changes heading for the seeding line');
+    assert.ok(Object.hasOwn(PRESET_QUERIES, p), `${p} is a catalog query`);
   }
-  // What each preset is for (design §7.7).
+  // What each preset is for (design §7.7, §24.11).
   const search = (p: string) => parse(splitNote(read('presets', 'jobs', p, 'search.md')).front!);
   assert.deepEqual(search('remote-any-country').workplace, ['remote']);
   assert.ok(search('onsite-city').workplace.includes('onsite'));
@@ -50,7 +40,14 @@ test('presets: each one is a valid search.md + sources.md with known providers a
   assert.equal(hc.pay.currency, 'USD');
   assert.ok(hc.employment_types.includes('per-diem'));
   assert.ok(hc.roles.titles.length > 0);
-  assert.ok(parse(splitNote(read('presets', 'jobs', 'onsite-city', 'sources.md')).front!).boards.every((b: any) => b.enabled === false), 'regional boards start off');
+  assert.deepEqual(PRESET_QUERIES['healthcare-us'], { families: ['healthcare'], countries: ['us'] });
+  assert.deepEqual(PRESET_QUERIES['remote-any-country'], { workplace: ['remote'] });
+  // The proposals: real catalog ids, never one of the entries that can't fetch as written (audit 1.4).
+  const ids = new Set(JSON.parse(read('src', 'jobs', 'data', 'providers.manifest.json')).providers as string[]);
+  for (const p of PRESETS) for (const id of presetSources(p, join(REPO, 'no-such-vault'), '2026-11-20').ids) {
+    assert.ok(ids.has(id), `${p}: ${id} is a pinned provider`);
+    assert.ok(!['neogov', 'themuse', 'remote-com', 'occ', 'builtin', 'wttj', 'arbeitsagentur', 'jobstreet', 'nofluffjobs', 'justjoin'].includes(id), `${p}: ${id} can't fetch from a preset alone`);
+  }
 });
 
 // ---- skills ----
@@ -87,10 +84,10 @@ test('skills: the four playbooks, each with a name that matches its folder and a
 // ---- the command lint ----
 
 const SRC_TOP = read('src', 'cli.ts');
-const SRC_JOBS = read('src', 'jobs', 'cli.ts') + read('src', 'jobs', 'commands.ts');
+const SRC_JOBS = read('src', 'jobs', 'cli.ts') + read('src', 'jobs', 'commands.ts') + read('src', 'jobs', 'sources-cmd.ts');
 const TOP = ['init', 'up', 'add-project', 'doctor', 'requests', 'request', 'progress', 'jobs'];
 /** Commands whose next word is a verb. */
-const VERBS = new Set(['me', 'pref', 'request', 'event', 'question', 'linkedin', 'contact', 'message', 'followup', 'view']);
+const VERBS = new Set(['me', 'pref', 'request', 'event', 'question', 'linkedin', 'contact', 'message', 'followup', 'view', 'sources']);
 const literal = (src: string, w: string) => src.includes(`'${w}'`) || src.includes(`"${w}"`);
 
 /** Every `crewdeck …` command line in a Markdown text: inline code spans and fenced code lines. */

@@ -1,6 +1,6 @@
 // Rank (design §2.4 step 2): a cheap score from the notes decides what Claude reads first, so Find spends tokens only on
 // what can still pass. No Claude here: title match, seniority, skills overlap with career.md, freshness, source quality
-// (pasted > LinkedIn > a company's own board > aggregators), pay. Companies with a remembered company-wide rule are dropped
+// (pasted links first, then the user's sources by their position in jobs/sources.md), pay. Companies with a remembered company-wide rule are dropped
 // before ranking. The best roles that arrived without a description get their posting page read (netguard) by the
 // scheduled run, and a Find works the ranked pool in batches within a budget, stopping once the day's picks are covered.
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -21,11 +21,24 @@ export type Candidate = { id: string; company: string; title: string; url: strin
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const has = (text: string, word: string) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(fold(word))}`, 'u').test(text);
-export const SOURCE_RANK: Record<string, number> = { pasted: 15, manual: 12, alert: 12, linkedin: 10, ats: 8, board: 5 };
+/** Roles the user brought themselves keep a fixed bonus; everything fetched gets one by its source's position (D21). */
+export const SOURCE_RANK: Record<string, number> = { pasted: 15, manual: 12, alert: 12 };
+export const PRIORITY_TOP = 12, UNKNOWN_SOURCE = 3;
+
+/**
+ * The bonus each source key earns by its position in jobs/sources.md: the first +12, falling linearly to 0 at the last.
+ * LinkedIn's roles carry the key `linkedin`; with no LinkedIn row it counts as last (it runs last then too).
+ */
+export function priorityBonus(notes: Pick<JobNotes, 'sources'>): Map<string, number> {
+  const keys = notes.sources.data.items.map((it) => (it.linkedin ? 'linkedin' : it.key));
+  if (!keys.includes('linkedin')) keys.push('linkedin');
+  const n = keys.length;
+  return new Map(keys.map((k, i) => [k, n <= 1 ? PRIORITY_TOP : Math.round((PRIORITY_TOP * (n - 1 - i)) / (n - 1))]));
+}
 const PAY_RANK: Record<string, number> = { ok: 8, unclear: 3, no_rate: 3, unlisted: 2, below_floor: 0 };
 
 /** A cheap score from the notes (no Claude). */
-export function rankScore(row: { title: string; description?: string; source?: string; posted_at?: string | null; first_seen?: string; pay_status?: string | null }, notes: Pick<JobNotes, 'search' | 'career'>, at: Date): number {
+export function rankScore(row: { title: string; description?: string; source?: string; source_key?: string | null; posted_at?: string | null; first_seen?: string; pay_status?: string | null }, notes: Pick<JobNotes, 'search' | 'career'> & Partial<Pick<JobNotes, 'sources'>>, at: Date, priority: Map<string, number> = notes.sources ? priorityBonus(notes as Pick<JobNotes, 'sources'>) : new Map()): number {
   const s = notes.search.data, title = fold(row.title ?? ''), desc = plainText(row.description ?? ''), body = `${title}\n${fold(desc)}`;
   let score = 0;
   const ti = s.roles.titles.findIndex((t) => has(title, t));
@@ -36,7 +49,8 @@ export function rankScore(row: { title: string; description?: string; source?: s
   const seen = Date.parse(row.posted_at ?? row.first_seen ?? '') || at.getTime();
   const days = (at.getTime() - seen) / 86_400_000;
   score += days <= 3 ? 15 : days <= 7 ? 10 : days <= 14 ? 6 : days <= 30 ? 3 : 0;
-  score += SOURCE_RANK[row.source ?? ''] ?? 3;
+  // Never a filter: priority only orders what the rules already let through (D21).
+  score += SOURCE_RANK[row.source ?? ''] ?? (row.source_key ? priority.get(row.source_key) : undefined) ?? (row.source === 'linkedin' ? priority.get('linkedin') : undefined) ?? UNKNOWN_SOURCE;
   score += PAY_RANK[row.pay_status ?? ''] ?? 2;
   if (desc.length >= 200) score += 5; // a posting Claude can actually judge
   return score;
@@ -48,7 +62,7 @@ export function rankRoles(ctx: Ctx): Ranked[] {
   const compiled = compileRules(notes);
   const at = ctx.clock(), now = nowIso(ctx);
   const rows = ctx.db.prepare(`select r.id, r.company_id, c.name company, r.title, r.url, r.location, coalesce(r.pay_text, r.pay_status, '') pay, r.pay_status,
-      r.source, r.description, r.posted_at, r.first_seen from roles r join companies c on c.id=r.company_id
+      r.source, r.source_key, r.description, r.posted_at, r.first_seen from roles r join companies c on c.id=r.company_id
       where r.status='new' and r.eligibility is null`).all() as any[];
   const keep: any[] = [];
   const dropped: { id: string; reason: string }[] = [];
@@ -58,7 +72,8 @@ export function rankRoles(ctx: Ctx): Ranked[] {
     else keep.push(r);
   }
   if (dropped.length) tx(ctx.db, () => { for (const d of dropped) setStatus(ctx.db, d.id, 'prefiltered_out', d.reason, now); });
-  return keep.map((r) => ({ ...r, rank: rankScore(r, notes, at) }))
+  const priority = priorityBonus(notes);
+  return keep.map((r) => ({ ...r, rank: rankScore(r, notes, at, priority) }))
     .sort((a, b) => b.rank - a.rank || String(b.posted_at ?? b.first_seen).localeCompare(String(a.posted_at ?? a.first_seen)) || a.id.localeCompare(b.id));
 }
 

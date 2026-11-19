@@ -127,7 +127,8 @@ const WT: Record<string, string> = { onsite: '1', remote: '2', hybrid: '3' };
 /** What to search for, from the notes: titles × places, workplace and age filters. */
 export function searchPlan(notes: Pick<JobNotes, 'search'>, days = 7) {
   const s = notes.search.data;
-  const terms = [...new Set(s.roles.titles.map((t) => t.trim()).filter(Boolean))];
+  // Each target's first three titles (not every variant, design D22), then roles.titles.
+  const terms = [...new Set([...(s.roles.targets ?? []).flatMap((t) => t.titles.slice(0, 3)), ...s.roles.titles].map((t) => t.trim()).filter(Boolean))];
   const raw = [...s.places.onsite, ...s.places.remote_from].map((p) => p.trim()).filter(Boolean);
   const places = [...new Set(raw.map((p) => (/^(worldwide|anywhere|global)$/i.test(p) ? 'Worldwide' : p)))];
   const wt = [...new Set(s.workplace.map((w) => WT[w]).filter(Boolean))].sort().join(',');
@@ -140,7 +141,7 @@ export type SearchResult = { cards: number; stored: number; skipped: number; kno
 /** Store one posting read from LinkedIn (a search hit or a pasted link) with its apply kind. */
 export function storeLinkedinRole(ctx: Ctx, d: Detail, source: 'linkedin' | 'pasted') {
   const at = nowIso(ctx);
-  const res = upsertRole(ctx.db, { url: canonicalJobUrl(d.id), title: d.title.slice(0, 300), company: d.company.slice(0, 200) || 'Unknown', location: d.location.slice(0, 300), description: d.description.slice(0, 200_000), source, posted_at: d.posted_at ?? null, apply_kind: d.apply_kind });
+  const res = upsertRole(ctx.db, { url: canonicalJobUrl(d.id), title: d.title.slice(0, 300), company: d.company.slice(0, 200) || 'Unknown', location: d.location.slice(0, 300), description: d.description.slice(0, 200_000), source, posted_at: d.posted_at ?? null, apply_kind: d.apply_kind, source_key: source === 'linkedin' ? 'linkedin' : null });
   if (res.isNew) addEvent(ctx.db, res.id, 'added', `from ${source} (${d.apply_kind === 'easy' ? 'Easy Apply' : d.apply_kind === 'external' ? 'applies on the company site' : 'apply type unknown'})`, at);
   return res;
 }
@@ -153,7 +154,7 @@ export async function searchLinkedin(ctx: Ctx, o: ClientOptions & { days?: numbe
   if (!ctx.features.linkedin_search) throw new Error('LinkedIn search is off: only the user can switch it on (Jobs → Settings, or crewdeck jobs features linkedin_search on in their own terminal)');
   const notes = notesOf(ctx);
   const plan = searchPlan(notes, o.days ?? 7);
-  if (!plan.terms.length) throw new Error('jobs/search.md has no roles.titles to search for');
+  if (!plan.terms.length) throw new Error('jobs/search.md has no job titles to search for (roles.titles or roles.targets)');
   const client = new LinkedinClient(o);
   const compiled = compileRules(notes);
   const res: SearchResult = { cards: 0, stored: 0, skipped: 0, known: 0, requests: 0, errors: [], roles: [] };

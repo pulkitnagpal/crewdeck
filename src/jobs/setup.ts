@@ -8,7 +8,11 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rename
 import { createHash, randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { type Config, CLI_WRAPPER, CONFIG_PATH, HOME, REPO, TOKEN_PATH, ensureHome, expand, loadConfig, setJobsSettings, writeCliWrapper } from '../config.ts';
-import { NOTES, NOTE_NAMES, type NoteName } from './notes.ts';
+import { parse as parseYaml, parseDocument } from 'yaml';
+import { NOTES, NOTE_NAMES, type NoteName, renderNote, splitNote } from './notes.ts';
+import { normalise } from './schema.ts';
+import { PRESET_QUERIES, suggestSources } from './suggest.ts';
+import { SOURCES_COMMENT, newKey } from './sources-note.ts';
 import { findBrowser, installHint } from './browser.ts';
 import { type InstallOptions, installProviders } from './providers.ts';
 
@@ -60,7 +64,8 @@ export function seedNotes(vault: string, preset?: string, today = localDay()): {
       if (preset && PRESET_NOTES.includes(n)) out.presetSkipped.push(rel);
       continue;
     }
-    let text = readFileSync(fromPreset ? join(presetDir(preset!), basename(rel)) : join(TEMPLATE, rel), 'utf8');
+    // Presets are catalog queries now (D39): the sources note is the catalog's proposal for the preset's query.
+    let text = fromPreset && n === 'sources' ? presetSources(preset!, vault, today).text : readFileSync(fromPreset ? join(presetDir(preset!), basename(rel)) : join(TEMPLATE, rel), 'utf8');
     if (fromPreset && n === 'search') text = text.replace(/^## Changes[ \t]*\r?\n/m, (m) => `${m}- ${today}: created from the ${preset} preset.\n`);
     mkdirSync(dirname(dest), { recursive: true });
     if (existsSync(dest)) {
@@ -82,6 +87,29 @@ export function seedNotes(vault: string, preset?: string, today = localDay()): {
     }
   }
   return out;
+}
+
+/**
+ * The deprecated `--preset` alias (D39): the catalog's proposal for the preset's query (crewdeck jobs sources suggest),
+ * over the preset's search.md and the user's profile, as a v2 sources note. It may be empty: the coverage line says why.
+ */
+export function presetSources(preset: string, vault: string, today = localDay()): { text: string; coverage: string; ids: string[] } {
+  const search = parseYaml(splitNote(readFileSync(join(presetDir(preset), 'search.md'), 'utf8')).front ?? '') ?? {};
+  let profile: unknown = {};
+  try { profile = parseYaml(splitNote(readFileSync(join(vault, NOTES.profile), 'utf8')).front ?? '') ?? {}; } catch {}
+  const r = suggestSources({ search: { data: normalise.search(search), raw: search } as any, profile: { data: normalise.profile(profile) } as any }, PRESET_QUERIES[preset] ?? {});
+  const used = new Set<string>();
+  const list = r.sources.filter((x) => !x.reasons.some((w) => /^needs /.test(w))).map((x) => {
+    const key = newKey(x.id, used);
+    used.add(key);
+    return { key, name: x.name, provider: x.id, added: today };
+  });
+  const doc = parseDocument(`tags: jobs\n#${SOURCES_COMMENT}\nsources: []\n`);
+  const seq = doc.createNode(list) as any;
+  for (const it of seq.items) it.flow = true;
+  doc.set('sources', seq);
+  const body = `# Job sources\n\n## Changes\n- ${today}: proposed by the catalog for the ${preset} preset (presets are being replaced: setup with Claude proposes sources from your profile). ${r.coverage.line}\n`;
+  return { text: renderNote(doc, body), coverage: r.coverage.line, ids: list.map((x) => x.provider) };
 }
 
 // ---- the workspace's managed files ----
@@ -199,13 +227,13 @@ In the skills, \`crewdeck\` means: \`${cli}\`
 ## Where everything lives
 - Who the user is: ${note('profile')}. Their career (resume sections, the fact bank): ${note('career')}.
 - What they want: ${note('search')} (with a dated Changes log). What you learned from them: ${note('memory')}.
-  Where to look: ${note('sources')}.
+  Where to look, in priority order: ${note('sources')}.
 - The tracker (roles, answers, form questions): \`${join(c.jobs.home, 'jobs.db')}\`, only through \`crewdeck jobs …\`.
 - Per-role files (resume PDF, scratch files for commands): \`${join(c.jobs.home, 'out')}/<role id>/\`.
 - The vault's own rules: \`${join(c.vault, 'CLAUDE.md')}\`.
 
-The notes' frontmatter is written only through \`crewdeck jobs me|pref|remember …\`, which validate it (sources.md, which
-has no command, is edited directly). After any change, \`crewdeck jobs check\`.
+The notes' frontmatter is written only through \`crewdeck jobs me|pref|remember|sources …\`, which validate it. After any
+change, \`crewdeck jobs check\`.
 
 ## Hard rules
 1. **Never submit.** Never click the button that sends an application (Submit, Send, Submit application, a final Apply
@@ -322,8 +350,10 @@ export async function jobsInit(o: { preset?: string; home?: string; workspace?: 
   db.close();
   lines.push(`✓ ${c.jobs.home} (private), tracker jobs.db (schema v${version})`);
 
+  if (o.preset) lines.push(`· --preset is deprecated and goes in the next release: it seeds jobs/search.md and proposes sources from the catalog for "${o.preset}". Setup with Claude proposes sources from your own profile (crewdeck jobs sources suggest).`);
   const notes = seedNotes(c.vault, o.preset);
-  for (const n of notes.created) lines.push(`✓ created ${n}${o.preset && (n === NOTES.search || n === NOTES.sources) ? ` from the ${o.preset} preset` : ''}${notes.replaced.includes(n) ? ' (it was still the empty template)' : ''}`);
+  for (const n of notes.created) lines.push(`✓ created ${n}${o.preset && n === NOTES.search ? ` from the ${o.preset} preset` : o.preset && n === NOTES.sources ? ` from the catalog for the ${o.preset} preset` : ''}${notes.replaced.includes(n) ? ' (it was still the empty template)' : ''}`);
+  if (o.preset && notes.created.includes(NOTES.sources)) lines.push(`  ${presetSources(o.preset, c.vault).coverage}`);
   if (notes.kept.length) lines.push(`✓ kept your ${notes.kept.join(', ')}`);
   if (notes.presetSkipped.length) lines.push(`  the ${o.preset} preset was not applied to ${notes.presetSkipped.join(' and ')}: ${notes.presetSkipped.length > 1 ? 'they exist' : 'it exists'} (move it away and run this again to start from the preset)`);
 

@@ -1321,6 +1321,12 @@ placeable first, the preview shows the near misses, and Find returns N or explai
   career-ops; any provider is added only through the reviewed re-pin (§15), after checking the site's terms.
 
 ## Changelog
+- **P9a built (2026-11-20):** the source catalog settled against the pinned providers' code (65 high / 77 medium / 3 low;
+  `detect` follows the code; `fill` rules; `blocked`), `jobs/sources.md` v2 (ordered `sources:` with keys, LinkedIn
+  mirror, v1 read and merged on first write), `crewdeck jobs sources list|suggest|add|remove|move|enable|disable`, DB v2
+  (`source_key`, `language`, `visa_text`, `employment_type`), fetch in priority order with LinkedIn at its position,
+  per-source state, `--only-new-sources`, the position bonus in rank, presets as catalog queries. Details:
+  [impl/09a-catalog-and-sources.md](impl/09a-catalog-and-sources.md).
 - **v0.4 (2026-11-19), designed:** Jobs for anyone, from the owner's first run as a new user (1 role from 1,480 postings:
   the title phrase gate dropped 1,375) and an audit of every step as nine fictional people
   ([impl/09-generic-audit.md](impl/09-generic-audit.md)). Added:

@@ -27,8 +27,9 @@ crewdeck jobs me set identity.first_name --value-file <T>/value.txt
   `[data analyst, analytics engineer]`, `[{ name: German, level: conversational }]`,
   `[{ id: example-gmbh.dashboards, text: "Built **40** dashboards used by …" }, …]`. Quote text with `:`, `#` or commas.
 - A refused value prints the field and the fix: correct it with the user and write again.
-- `jobs/sources.md` has no command: edit its frontmatter (`boards`, `watchlist`) with the Edit tool, keeping its shape,
-  then run `crewdeck jobs check`.
+- `jobs/sources.md` (one ordered `sources:` list: the first is fetched first and ranks first) changes only through
+  `crewdeck jobs sources add|remove|move|enable|disable`; names and web addresses go in files (`--name-file`,
+  `--careers-url-file`, `--url-file`), provider ids and keys are plain words.
 
 ## 1. The resume (read as data)
 1. Ask for the resume: a file path, or "drop it into your vault's `raw/` folder". PDF, Word export, Markdown or text.
@@ -77,9 +78,16 @@ Interview, one topic at a time, and write each answer with `pref set` and the us
 If `jobs/search.md` came from a preset, go through what it seeded and keep only what the user confirms.
 
 ## 5. Where to look (`jobs/sources.md`)
-Show the boards it lists. Switch on (`enabled: true`) the ones for the user's region and field, switch off the rest, and
-add the companies they name to the `watchlist` (`{ name, careers_url }`, the company's own careers page). Board provider
-ids must be ones `crewdeck jobs check` accepts.
+1. `crewdeck jobs sources suggest --json` scores Crewdeck's source catalog from the notes (countries, the targets' fields,
+   workplace, languages) and returns `sources` (each with its reasons) and `coverage.line`. Tell the user the coverage
+   line in their own words: it says what is covered, what isn't and what still works. Never propose a source that isn't
+   in the list, and never invent a board.
+2. With the user, pick the ones they want and their order (the first is fetched first and ranks first), then for each:
+   `crewdeck jobs sources add --provider <id>`. LinkedIn goes in the list with `crewdeck jobs sources add --linkedin`
+   at the position the user wants; switching it on stays theirs alone (Jobs → Settings).
+3. Employers they'd like to work for: write the name to `<T>/name.txt` and the careers page to `<T>/url.txt` with the
+   Write tool, then `crewdeck jobs sources add --careers-url-file <T>/url.txt --name-file <T>/name.txt --employer`.
+4. Reorder with `crewdeck jobs sources move <key> up|down|first|last`; `crewdeck jobs sources list` shows the list.
 
 ## 6. Check and finish
 1. `crewdeck jobs check`. Fix every error with the user; warnings that just mean "not set" are fine if the user chose that.

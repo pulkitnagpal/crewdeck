@@ -20,7 +20,11 @@ test('rankScore: title, seniority, skills, freshness, source and pay each move a
   assert.ok(s({ title: 'Senior Data Analyst' }) > s({}), 'seniority');
   assert.ok(s({ description: 'SQL, dbt and Looker every day' }) > s({}), 'skills overlap');
   assert.ok(s({}) > s({ posted_at: '2026-09-01T00:00:00Z' }), 'freshness');
-  assert.ok(s({ source: 'pasted' }) > s({ source: 'linkedin' }) && s({ source: 'linkedin' }) > s({ source: 'ats' }) && s({ source: 'ats' }) > s({ source: 'board' }), 'pasted > LinkedIn > ATS > aggregator');
+  // Pasted links first, then the user's sources by position (Arbeitnow is first in berlin-analyst's list), unknown last.
+  assert.ok(s({ source: 'pasted' }) > s({ source: 'board', source_key: 'arbeitnow' } as any), 'pasted first');
+  assert.ok(s({ source: 'board', source_key: 'arbeitnow' } as any) > s({ source: 'ats', source_key: 'example-gmbh' } as any), 'the first source before the last');
+  assert.ok(s({ source: 'ats', source_key: 'example-gmbh' } as any) > s({ source: 'linkedin', source_key: 'linkedin' } as any), 'no LinkedIn row: LinkedIn counts as last');
+  assert.ok(s({ source: 'board', source_key: 'gone' } as any) > s({ source: 'linkedin', source_key: 'linkedin' } as any) && s({ source: 'board', source_key: 'gone' } as any) < s({ source: 'board', source_key: 'arbeitnow' } as any), 'an unknown key gets a small bonus');
   assert.ok(s({ pay_status: 'ok' }) > s({ pay_status: 'unlisted' }) && s({ pay_status: 'unlisted' }) > s({ pay_status: 'below_floor' }), 'pay');
   assert.ok(s({ description: 'x'.repeat(250) }) > s({}), 'a posting with a description can be judged');
 });

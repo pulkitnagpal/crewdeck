@@ -9,7 +9,7 @@ senior product designer in Lisbon who works remotely from the EU or the UK, or h
 | [me/career.md](me/career.md) | Resume sections in page order and the fact bank Claude cites, word for word |
 | [jobs/search.md](jobs/search.md) | Titles, workplace, places, languages, pay (EUR a month, with exchange rates), exclusions, daily picks, judge notes, and the **Changes** log |
 | [jobs/memory.md](jobs/memory.md) | What Claude learned: answers, a preference, a style rule, an "avoid" reason and a company rule, each with Sam's words |
-| [jobs/sources.md](jobs/sources.md) | Two remote boards and one company on the watchlist |
+| [jobs/sources.md](jobs/sources.md) | One company's careers page first, then two remote boards, in priority order |
 
 Your own notes start from the commented templates in [vault-template/](../../vault-template/) (`crewdeck init` copies
 them into your vault) and are filled in with Claude by the setup interview: see

@@ -56,7 +56,7 @@ test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the 
   assert.equal(parse(cfg).jobs.enabled, true);
   assert.equal(mode(s.jobsHome), 0o700);
   assert.equal(mode(join(s.jobsHome, 'jobs.db')), 0o600);
-  assert.match(r.out, /jobs\.db \(schema v1\)/);
+  assert.match(r.out, /jobs\.db \(schema v2\)/);
   for (const n of NOTE_FILES) assert.ok(existsSync(join(s.vault, n)), n);
   for (const n of ['jobs/search.md', 'jobs/memory.md', 'jobs/sources.md', 'me/career.md']) {
     assert.equal(mode(join(s.vault, n)), 0o600, `${n} is created private`);
@@ -161,7 +161,12 @@ test('jobs init --preset seeds search and sources (with a Changes line), --home 
   const preset = readFileSync(join(REPO, 'presets', 'jobs', 'healthcare-us', 'search.md'), 'utf8');
   assert.ok(search.startsWith(preset.slice(0, preset.indexOf('## Changes'))));
   assert.match(search, /## Changes\n- \d{4}-\d{2}-\d{2}: created from the healthcare-us preset\.\n/);
-  assert.equal(readFileSync(join(s.vault, 'jobs', 'sources.md'), 'utf8'), readFileSync(join(REPO, 'presets', 'jobs', 'healthcare-us', 'sources.md'), 'utf8'));
+  // D39: the sources note is the catalog's proposal for the preset's query; none fits nursing in the US, and it says so.
+  const sources = readFileSync(join(s.vault, 'jobs', 'sources.md'), 'utf8');
+  assert.match(sources, /^sources: \[\]$/m);
+  assert.match(sources, /proposed by the catalog for the healthcare-us preset .*Crewdeck has no job board that fits United States for healthcare\. Employers' careers pages work when they use GovernmentJobs/);
+  assert.match(r.out, /--preset is deprecated/);
+  assert.match(r.out, /✓ created jobs\/sources\.md from the catalog for the healthcare-us preset/);
   const cfg = parse(readFileSync(join(s.home, 'config.yaml'), 'utf8')).jobs;
   assert.equal(cfg.home, home2);
   assert.equal(cfg.workspace, s.ws, 'the workspace stays the visible folder');
@@ -177,18 +182,18 @@ test('jobs init --preset right after crewdeck init: the untouched template notes
   const r = jobs(s.home, ['init', '--preset', 'onsite-city', '--no-providers']);
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(r.out, /✓ created jobs\/search\.md from the onsite-city preset \(it was still the empty template\)/);
-  assert.match(r.out, /✓ created jobs\/sources\.md from the onsite-city preset/);
+  assert.match(r.out, /✓ created jobs\/sources\.md from the catalog for the onsite-city preset/);
   assert.doesNotMatch(r.out, /preset was not applied/);
-  const preset = (n: string) => readFileSync(join(REPO, 'presets', 'jobs', 'onsite-city', n), 'utf8');
   assert.match(readFileSync(join(s.vault, 'jobs', 'search.md'), 'utf8'), /- \d{4}-\d{2}-\d{2}: created from the onsite-city preset\./);
-  assert.equal(readFileSync(join(s.vault, 'jobs', 'sources.md'), 'utf8'), preset('sources.md'));
+  // No places yet, so no board can be proposed: the note says what to tell Claude.
+  assert.match(readFileSync(join(s.vault, 'jobs', 'sources.md'), 'utf8'), /sources: \[\][\s\S]*Tell me where you can work/);
   assert.equal(mode(join(s.vault, 'jobs', 'search.md')), 0o600);
   assert.equal(readFileSync(join(s.vault, 'me', 'career.md'), 'utf8'), readFileSync(join(REPO, 'vault-template', 'me', 'career.md'), 'utf8'), 'other notes untouched');
 
   // One note with the user's own words: the preset is not applied to either (it is one set of settings).
   const t = await fresh();
   const sources = join(t.vault, 'jobs', 'sources.md');
-  writeFileSync(sources, readFileSync(sources, 'utf8').replace('watchlist: []', 'watchlist: [{ name: Example Co, careers_url: "https://jobs.example.com/careers" }]'));
+  writeFileSync(sources, readFileSync(sources, 'utf8').replace('sources: []', 'sources: [{ key: example-co, name: Example Co, careers_url: "https://jobs.example.com/careers" }]'));
   const mine = { search: readFileSync(join(t.vault, 'jobs', 'search.md'), 'utf8'), sources: readFileSync(sources, 'utf8') };
   const k = jobs(t.home, ['init', '--preset', 'onsite-city', '--no-providers']);
   assert.equal(k.code, 0, k.out + k.err);
@@ -223,7 +228,7 @@ test('doctor: a Jobs section (off, then on with every check), never reaching a r
   const on = crewdeck(s.home, ['doctor']);
   assert.equal(on.code, 0, on.err);
   assert.match(on.out, /✓ jobs home .* \(0700\)/);
-  assert.match(on.out, /✓ tracker jobs\.db \(schema v1, 0600\)/);
+  assert.match(on.out, /✓ tracker jobs\.db \(schema v2, 0600\)/);
   assert.match(on.out, /✓ me\/profile\.md/);
   assert.match(on.out, /✓ jobs\/search\.md \(\d warnings?\)/);
   assert.match(on.out, /(✓ browser for Jobs|✗ no Chromium-based browser)/);

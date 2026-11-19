@@ -4,6 +4,7 @@
 import { lookupPlace } from './places.ts';
 import { CURRENCIES } from './pay.ts';
 import { readFileSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
 import { join as pathJoin } from 'node:path';
 
 export type Issue = { level: 'error' | 'warning'; note: string; path: string; message: string; fix?: string };
@@ -42,6 +43,9 @@ export const PLACE_RULES = new Set(['place_excluded', 'other_only']);
 const SILVERBULLET_KEYS = new Set(['tags', 'aliases', 'displayName', 'pageDecoration', 'description']);
 
 const SNAKE = /^[a-z][a-z0-9_]*$/;
+export const SOURCE_KEY = /^[a-z0-9][a-z0-9-]{0,59}$/;
+/** A key from a name: lowercase ASCII letters and digits joined by -. */
+export const slugOf = (s: string) => s.normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'source';
 const SECTION_ID = /^[a-z0-9][a-z0-9_-]*$/;
 const FACT_ID = /^[a-z0-9][a-z0-9_-]*\.[a-z0-9][a-z0-9_.-]*$/;
 const emailCheck = (v: string) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'is not an email address');
@@ -81,7 +85,11 @@ export const SCHEMAS: Record<string, Schema> = {
     terms: obj({ extra: list(str({ required: true })) }),
   }),
   search: obj({
-    roles: obj({ titles: list(str({ required: true })), seniority_prefer: list(str()), exclude_title_words: list(str({ required: true })) }),
+    roles: obj({
+      titles: list(str({ required: true })), seniority_prefer: list(str()), exclude_title_words: list(str({ required: true })),
+      // v0.4 (§24.5): one target per kind of job. P9a reads titles and families (sources); P9c adds the matching.
+      targets: list(obj({ name: str(), titles: list(str({ required: true })), families: list(str({ check: familyCheck })) }, { open: true })),
+    }),
     workplace: list(oneOf(WORKPLACES)),
     places: obj({ onsite: list(str({ required: true })), remote_from: list(str({ required: true })), commute_km: num({ min: 0, max: 500 }) }),
     languages: list(obj({ name: str({ required: true }), level: oneOf(LEVELS) }, { required: ['name'] })),
@@ -106,6 +114,13 @@ export const SCHEMAS: Record<string, Schema> = {
     }, { required: ['id', 'kind', 'text', 'quote', 'scope', 'created'] })),
   }),
   sources: obj({
+    // v2 (design D20): one ordered list, the first is fetched first and ranks first.
+    sources: list(obj({
+      key: str({ pattern: SOURCE_KEY, hint: 'lowercase letters, digits and - (e.g. example-health)' }), name: str({ required: true }),
+      provider: str(), careers_url: str({ check: urlCheck }), url: str({ check: urlCheck }), fetch: oneOf(['auto', 'none']), why: str(),
+      employer: bool(), added: { t: 'date' }, enabled: bool(), linkedin: oneOf(['search']),
+    }, { required: ['name'], open: true })),
+    // v1: still read when sources: is absent; the first save moves them into sources:.
     boards: list(obj({ name: str({ required: true }), provider: str(), careers_url: str({ check: urlCheck }), enabled: bool() }, { required: ['name'], open: true })),
     watchlist: list(obj({ name: str({ required: true }), provider: str(), careers_url: str({ check: urlCheck }), enabled: bool() }, { required: ['name'], open: true })),
   }),
@@ -248,7 +263,7 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
   search(d, add) {
     const roles = o(d.roles), places = o(d.places), pay = o(d.pay);
     const workplace = arr(d.workplace);
-    if (!arr(roles.titles).length) add('warning', 'roles.titles', 'no target titles: every title passes the title check', 'add the job titles you want, e.g. [data analyst]');
+    if (!arr(roles.titles).length && !arr(roles.targets).some((t) => isObj(t) && arr(t.titles).length)) add('warning', 'roles.titles', 'no target titles: every title passes the title check', 'add the job titles you want, e.g. [data analyst]');
     if (!workplace.length) add('warning', 'workplace', 'no workplace kinds: remote, hybrid and on-site all pass', 'add e.g. [remote] or [onsite, hybrid]');
     if ((workplace.includes('onsite') || workplace.includes('hybrid')) && !arr(places.onsite).length) add('warning', 'places.onsite', 'on-site/hybrid wanted but no cities: location rules are off for those', 'add the cities you can work in');
     if (workplace.includes('remote') && !arr(places.remote_from).length) add('warning', 'places.remote_from', 'remote wanted but no places to work from: location rules are off for remote', 'add countries/regions/states, or worldwide');
@@ -281,16 +296,38 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
     });
   },
   sources(d, add) {
-    for (const k of ['boards', 'watchlist']) arr(d[k]).forEach((e, i) => {
+    const v2 = Array.isArray(d.sources);
+    if (v2 && (arr(d.boards).length || arr(d.watchlist).length)) add('warning', 'boards', 'boards: and watchlist: are ignored while sources: is there', 'move their entries into sources: (Crewdeck does this on its next change)');
+    const lists = v2 ? [['sources', arr(d.sources)] as const] : (['boards', 'watchlist'] as const).map((k) => [k, arr(d[k])] as const);
+    const keys = new Map<string, number>();
+    let mirrors = 0;
+    for (const [k, list] of lists) list.forEach((e, i) => {
       if (!isObj(e)) return;
       const p = `${k}[${i}]`;
       if ('parser' in e) add('error', `${p}.parser`, 'parser entries run local commands and are not allowed', 'remove the entry or use a provider / careers_url');
-      if (!e.provider && !e.careers_url) add('error', p, 'needs a provider or a careers_url', 'add provider: <id> or careers_url: https://…');
-      if (typeof e.provider === 'string' && e.provider && EXCLUDED_PROVIDERS.has(e.provider)) {
-        add('error', `${p}.provider`, `"${e.provider}" can't run in Crewdeck: ${EXCLUDED_PROVIDERS.get(e.provider)}`, 'remove the entry (or switch it off with enabled: false)');
-      } else if (typeof e.provider === 'string' && e.provider && !PROVIDERS.has(e.provider)) {
-        const near = didYouMean(e.provider, [...PROVIDERS]);
-        add('error', `${p}.provider`, `"${e.provider}" is not a known provider`, near ? `did you mean "${near}"?` : 'use a provider id from the career-ops list');
+      if (typeof e.key === 'string' && e.key) {
+        if (keys.has(e.key)) add('error', `${p}.key`, `"${e.key}" is used twice`, 'give each source its own key (never reuse one)');
+        keys.set(e.key, i);
+      } else if (v2) add('warning', `${p}.key`, 'has no key: counts and priority use one made from the name', `add key: ${slugOf(String(e.name ?? e.provider ?? 'source'))}`);
+      if (e.linkedin !== undefined) {
+        if (++mirrors > 1) add('error', `${p}.linkedin`, 'LinkedIn is listed twice', 'keep one LinkedIn row');
+        if ('enabled' in e) add('warning', `${p}.enabled`, 'LinkedIn is switched in Jobs → Settings; this note only orders it', 'remove enabled: from the LinkedIn row');
+        if (e.provider || e.careers_url || e.url) add('error', p, 'the LinkedIn row takes no provider, careers_url or url', 'remove them');
+        return;
+      }
+      const targets = ['provider', 'careers_url', 'url'].filter((t) => typeof e[t] === 'string' && e[t]);
+      if (!targets.length) add('error', p, 'needs a provider, a careers_url or a url', 'add provider: <id>, careers_url: https://… or url: https://… with fetch: none');
+      if (e.url && (e.provider || e.careers_url)) add('error', `${p}.url`, 'url is for a page no provider reads: it goes without provider and careers_url', 'use careers_url: for a careers page');
+      if (e.url && e.fetch !== 'none') add('error', `${p}.fetch`, 'a url entry is not fetched', 'add fetch: none (and why:), or use careers_url: for a careers page');
+      if (e.fetch === 'none' && !e.why) add('warning', `${p}.why`, 'says why it is not fetched', 'add why: e.g. "no provider reads this site: paste its postings"');
+      if (typeof e.provider === 'string' && e.provider) {
+        const cat = CATALOG.get(e.provider);
+        if (EXCLUDED_PROVIDERS.has(e.provider)) add('error', `${p}.provider`, `"${e.provider}" can't run in Crewdeck: ${cat?.why ?? EXCLUDED_PROVIDERS.get(e.provider)}`, 'remove the entry (or switch it off with enabled: false)');
+        else if (!PROVIDERS.has(e.provider)) {
+          const near = didYouMean(e.provider, [...PROVIDERS]);
+          add('error', `${p}.provider`, `"${e.provider}" is not a known provider`, near ? `did you mean "${near}"?` : 'pick one with crewdeck jobs sources suggest, or from the catalog');
+        } else if (cat?.retired) add('warning', `${p}.provider`, `"${e.provider}" no longer works upstream: ${cat.coverage}`, 'remove it');
+        else if (cat?.blocked) add('warning', `${p}.provider`, `"${e.provider}" currently refuses automated reads: ${cat.coverage}`, 'switch it off or remove it');
       }
     });
   },
@@ -298,6 +335,9 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
 // The career-ops providers Crewdeck runs: the pinned manifest's allow-list (design §15). Excluded ones keep their reason.
 const MANIFEST = JSON.parse(readFileSync(pathJoin(import.meta.dirname, 'data', 'providers.manifest.json'), 'utf8')) as { providers: string[]; excluded: Record<string, string> };
 const PROVIDERS = new Set<string>(MANIFEST.providers);
+const CATALOG = new Map((parseYaml(readFileSync(pathJoin(import.meta.dirname, 'data', 'sources-catalog.yaml'), 'utf8')).sources as any[]).map((c) => [c.id as string, c]));
+const FAMILY_IDS = Object.keys(parseYaml(readFileSync(pathJoin(import.meta.dirname, 'data', 'sources-catalog.yaml'), 'utf8')).families ?? {});
+function familyCheck(v: string) { return FAMILY_IDS.includes(v) ? null : `is not a field Crewdeck knows (${FAMILY_IDS.slice(0, 6).join(', ')}, …)`; }
 const EXCLUDED_PROVIDERS = new Map(Object.entries(MANIFEST.excluded).filter(([p]) => /^providers\/[^_/][^/]*\.mjs$/.test(p)).map(([p, why]) => [p.slice(10, -4), why.replace(/^imports .*\((.*)\)$/, '$1')]));
 
 // ---- typed, defaulted values ----
@@ -311,7 +351,7 @@ export type Profile = {
 export type Section = { id: string; kind: (typeof SECTION_KINDS)[number]; title?: string; org?: string; where?: string; dates?: string; max_bullets?: number; required?: boolean };
 export type Career = { resume: { file_name: string; paper: 'A4' | 'Letter'; max_pages: number }; sections: Section[]; facts: { id: string; text: string; tags: string[] }[]; skills: string[]; terms: { extra: string[] } };
 export type Search = {
-  roles: { titles: string[]; seniority_prefer: string[]; exclude_title_words: string[] };
+  roles: { titles: string[]; seniority_prefer: string[]; exclude_title_words: string[]; targets: { name: string; titles: string[]; families: string[] }[] };
   workplace: Workplace[];
   places: { onsite: string[]; remote_from: string[]; commute_km: number };
   languages: { name: string; level?: (typeof LEVELS)[number] }[];
@@ -328,7 +368,13 @@ export type MemoryItem = {
 };
 export type Memory = { items: MemoryItem[] };
 export type SourceEntry = { name: string; provider?: string; careers_url?: string; enabled?: boolean; [k: string]: unknown };
-export type Sources = { boards: SourceEntry[]; watchlist: SourceEntry[] };
+/** One row of the user's list, in priority order (v1 boards then watchlist when sources: is absent). */
+export type SourceItem = {
+  key: string; name: string; provider?: string; careers_url?: string; url?: string; fetch: 'auto' | 'none'; why?: string;
+  employer: boolean; enabled: boolean; linkedin: boolean; added?: string;
+  /** The entry as written (provider option blocks included). */ entry: SourceEntry;
+};
+export type Sources = { items: SourceItem[]; version: 1 | 2 };
 
 const strs = (v: unknown) => arr(v).filter((x) => typeof x === 'string' && x.trim()).map((x: string) => x.trim());
 const s_ = (v: unknown, d = '') => (typeof v === 'string' ? v : d);
@@ -361,7 +407,10 @@ export const normalise = {
       locale: s_(pay.locale), fx: Object.fromEntries(Object.entries(o(pay.fx)).filter(([, v]) => typeof v === 'number' && v > 0)) as Record<string, number>, fx_updated: s_(pay.fx_updated),
     } : null;
     return {
-      roles: { titles: strs(roles.titles), seniority_prefer: strs(roles.seniority_prefer), exclude_title_words: strs(roles.exclude_title_words) },
+      roles: {
+        titles: strs(roles.titles), seniority_prefer: strs(roles.seniority_prefer), exclude_title_words: strs(roles.exclude_title_words),
+        targets: arr(roles.targets).filter(isObj).map((t) => ({ name: s_(t.name), titles: strs(t.titles), families: strs(t.families) })),
+      },
       workplace: strs(x.workplace).filter((w): w is Workplace => (WORKPLACES as readonly string[]).includes(w)),
       places: { onsite: strs(places.onsite), remote_from: strs(places.remote_from), commute_km: typeof places.commute_km === 'number' ? places.commute_km : 50 },
       languages: arr(x.languages).filter((l) => isObj(l) && typeof l.name === 'string' && l.name) as Search['languages'],
@@ -378,8 +427,7 @@ export const normalise = {
     return { items: arr(o(d).items).filter((m) => isObj(m) && typeof m.id === 'string') as MemoryItem[] };
   },
   sources(d: unknown): Sources {
-    const x = o(d);
-    return { boards: arr(x.boards).filter(isObj) as SourceEntry[], watchlist: arr(x.watchlist).filter(isObj) as SourceEntry[] };
+    return sourceItems(d);
   },
 };
 
@@ -401,3 +449,33 @@ export function keysAt(name: string, path: (string | number)[]): string[] {
   const s = schemaAt(name, path);
   return s?.t === 'obj' ? Object.keys(s.keys) : [];
 }
+
+/**
+ * The user's sources in priority order: v2's `sources:`, else v1's boards then watchlist (watchlist entries are
+ * employers). Entries without a key get one from their name, stable for the same note, deduplicated in order.
+ */
+export function sourceItems(d: unknown): Sources {
+  const x = o(d);
+  const v2 = Array.isArray(x.sources);
+  const raw: [Record<string, any>, boolean][] = v2 ? arr(x.sources).filter(isObj).map((e) => [e, false]) : [...arr(x.boards).filter(isObj).map((e): [Record<string, any>, boolean] => [e, false]), ...arr(x.watchlist).filter(isObj).map((e): [Record<string, any>, boolean] => [e, true])];
+  const taken = new Set(raw.map(([e]) => e.key).filter((k) => typeof k === 'string' && SOURCE_KEY.test(k)));
+  const items: SourceItem[] = [];
+  for (const [e, watch] of raw) {
+    const linkedin = e.linkedin !== undefined;
+    let key = typeof e.key === 'string' && SOURCE_KEY.test(e.key) ? e.key : '';
+    if (!key) {
+      const base = linkedin ? 'linkedin' : slugOf(String(e.name || e.provider || hostOf(e.careers_url ?? e.url) || 'source'));
+      key = base;
+      for (let n = 2; taken.has(key); n++) key = `${base}-${n}`;
+      taken.add(key);
+    }
+    const t = (k: string) => (typeof e[k] === 'string' && e[k] ? e[k] as string : undefined);
+    items.push({
+      key, name: String(e.name ?? (linkedin ? 'LinkedIn' : key)), provider: linkedin ? undefined : t('provider'), careers_url: linkedin ? undefined : t('careers_url'),
+      url: linkedin ? undefined : t('url'), fetch: e.fetch === 'none' || (!!t('url') && !t('careers_url') && !t('provider')) ? 'none' : 'auto', why: t('why'),
+      employer: e.employer === true || (watch && e.employer !== false), enabled: linkedin ? true : e.enabled !== false, linkedin, added: t('added'), entry: e as SourceEntry,
+    });
+  }
+  return { items, version: v2 ? 2 : 1 };
+}
+function hostOf(u: unknown): string { try { return new URL(String(u)).hostname.replace(/^www\./, ''); } catch { return ''; } }

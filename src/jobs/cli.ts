@@ -199,7 +199,7 @@ const USAGE = `usage: crewdeck jobs <command>
 /** P2a's commands, loaded only when one of them runs (they open the tracker). */
 const P2 = ['prefilter', 'refilter', 'candidates', 'judge', 'pick', 'status', 'event', 'question', 'applied', 'not-interested', 'add-role', 'role',
   'form', 'draft', 'answer', 'learn', 'undo', 'knowledge', 'fill-plan', 'contact', 'message', 'followups', 'followup', 'view',
-  'link', 'linkedin', 'resume', 'request', 'source', 'providers'];
+  'link', 'linkedin', 'resume', 'request', 'source', 'providers', 'sources'];
 
 /** Every `crewdeck jobs` command (the skills lint checks commands against this). */
 export const JOBS_COMMANDS = ['init', 'check', 'rules', 'judge-brief', 'me', 'pref', 'remember', 'features', ...P2];
@@ -207,7 +207,10 @@ export const JOBS_COMMANDS = ['init', 'check', 'rules', 'judge-brief', 'me', 'pr
 export async function main(args: string[]) {
   const [cmd, ...rest] = args;
   // --help never runs a command (init would otherwise set Jobs up).
-  if (rest.includes('--help') || rest.includes('-h')) { say(USAGE); say((await import('./commands.ts')).USAGE); return; }
+  if (rest.includes('--help') || rest.includes('-h')) {
+    if (cmd === 'sources') return say((await import('./sources-cmd.ts')).SOURCES_USAGE);
+    say(USAGE); say((await import('./commands.ts')).USAGE); return;
+  }
   const run: Record<string, (a: string[]) => unknown> = { init, check, rules: rulesCmd, 'judge-brief': briefCmd, me, pref, remember: rememberCmd, features };
   if (cmd && P2.includes(cmd)) {
     const m = await import('./commands.ts');

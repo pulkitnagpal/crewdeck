@@ -65,8 +65,19 @@ create table undo_log (
 PRAGMA user_version = 1;
 `;
 
+// v2 (design D20, P9a): which of the user's sources a role came from (its key in jobs/sources.md), and what a provider
+// says about it beyond the text: the posting's language, its visa or eligibility line and a structured employment type.
+const V2 = `
+alter table roles add column source_key text;
+alter table roles add column language text;
+alter table roles add column visa_text text;
+alter table roles add column employment_type text;
+create index roles_source_key on roles(source_key);
+PRAGMA user_version = 2;
+`;
+
 /** Every schema step, in order; step N leaves user_version = N. */
-export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }];
+export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }, { version: 2, sql: V2 }];
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
 const version = (db: DatabaseSync) => Number((db.prepare('PRAGMA user_version').get() as any).user_version);
