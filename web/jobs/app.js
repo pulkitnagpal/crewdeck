@@ -3,7 +3,7 @@
 import { render } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { html, notesUrl } from './lib.js';
-import { act, get, live } from './api.js';
+import { act, get, live, preview } from './api.js';
 import { TopBar, SCREENS } from './screens/topbar.js';
 import { Banners } from './screens/banners.js';
 import { Today } from './screens/today.js';
@@ -22,6 +22,10 @@ function App() {
   const [selected, setSelected] = useState(null);
   const [toast, setToast] = useState(null);
   const [error, setError] = useState('');
+  // A change opened from Find's card (or "See the preview"): Preferences starts with it filled in, unsaved.
+  const [pending, setPending] = useState(null);
+  // The preview behind Today's "Why so few?" fixes, fetched once per stored funnel.
+  const [todayPv, setTodayPv] = useState(null);
   const sentLinks = useRef(new Map());
   const toastTimer = useRef(null);
 
@@ -72,7 +76,16 @@ function App() {
     window.open(notesUrl(state?.notesPort ?? 4849, page), '_blank', 'noopener');
   }, [state]);
 
-  const nav = (k) => { location.hash = k; setScreen(k); };
+  const nav = (k) => {
+    if (k !== 'preferences') setPending(null);
+    if (k !== 'today') setTodayPv(null); // back on Today, the fixes are counted on the notes as they are then
+    location.hash = k; setScreen(k);
+  };
+  const funnelAt = data?.screen === 'today' ? data.d?.find?.funnel?.at : null;
+  useEffect(() => {
+    if (!funnelAt || todayPv?.at === funnelAt) return;
+    preview({}).then((r) => setTodayPv({ at: funnelAt, r })).catch(() => setTodayPv({ at: funnelAt, r: { ok: false, suggestions: [] } }));
+  }, [funnelAt]);
   const actions = {
     onSelect: (id) => { setSelected(id); act('select', { role: id }).catch(() => {}); },
     onAnswer: (role, v) => run('answer', { role, ...v }, (r) => (r.reapplied ? 'Remembered. Claude continues the application.' : 'Remembered for every later form')),
@@ -86,6 +99,8 @@ function App() {
     onSetup: () => run('setup', {}, 'Claude will start the setup in the chat'),
     onNotes: openNotes,
     onToast: say,
+    onFix: (s) => { setPending({ changes: s.change, from: 'find' }); nav('preferences'); },
+    onPreview: () => { setPending({ changes: {}, from: 'find' }); nav('preferences'); },
   };
   const onLink = async (url) => {
     const r = await run('addLink', { url }, 'Link sent to Claude');
@@ -97,10 +112,13 @@ function App() {
   const ready = d && data.screen === screen;
   let body;
   if (!state || !ready) body = html`<p class="loading">${error || 'Loading…'}</p>`;
-  else if (screen === 'today') body = html`<${Today} data=${d} state=${state} actions=${actions} />`;
+  else if (screen === 'today') body = html`<${Today} data=${d} state=${state} preview=${todayPv?.at === d.find?.funnel?.at ? todayPv?.r : null} actions=${actions} />`;
   else if (screen === 'applications') body = html`<${Applications} data=${d} />`;
   else if (screen === 'knowledge') body = html`<${Knowledge} data=${d} onTab=${setTab} onNotes=${openNotes} />`;
-  else if (screen === 'preferences') body = html`<${Preferences} key=${JSON.stringify(d.values)} data=${d} onNotes=${openNotes} onSave=${(changes) => run('prefs', { changes }, (r) => (r.ok ? 'Saved to jobs/search.md' : null))} />`;
+  else if (screen === 'preferences') {
+    body = html`<${Preferences} key=${JSON.stringify([d.values, pending])} data=${d} pending=${pending} onNotes=${openNotes} onPreview=${(changes) => preview({ search: changes })}
+      onSave=${async (changes, from) => { const r = await run('prefs', { changes, ...(from ? { from } : {}) }, (x) => (x.ok ? 'Saved to jobs/search.md' : null)); if (r?.ok) setPending(null); return r; }} />`;
+  }
   else body = html`<${Settings} data=${d} onSet=${(name, value) => run('feature', { name, value }, (r) => (r.ok ? `${name.replace(/_/g, ' ')}: ${value === true ? 'on' : value === false ? 'off' : value}` : null))} />`;
 
   // A link Claude couldn't pick (cooldown, already applied): offer the user's override, set by this click only.

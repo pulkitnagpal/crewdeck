@@ -14,6 +14,8 @@ async function call(url, init, retried = false) {
 }
 
 export const get = (path) => call(`${base}/${path}`, { headers: { accept: 'application/json' } });
+/** A dry run of the rules (read-only): { search?: unsaved Preferences changes, days? }. */
+export const preview = (body = {}) => call(`${base}/preview`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 export const act = (name, body = {}) => call(`${base}/action/${name}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 /** Calls back on every change (database, notes, queue, presence); reconnects when the server restarts. */

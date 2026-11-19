@@ -64,3 +64,13 @@ For a `find` request, close it `done` with one line that says what was read and 
 Analyst, Sample Ltd — Data Lead, … (judged 20 of 40; 112 left in the pool; 1 has questions for you)" (from the last
 `candidates` answer: `run.judged`, `run.budget`, `pool.unjudged`). Otherwise give the same summary in chat: one line per pick (company — title — score) and any
 first-time questions waiting for the user.
+
+**Fewer than N picked:** say why with the server's funnel, never your own count. `crewdeck jobs pick` prints it, and
+every `candidates --budget` answer carries it as `run.funnel`: add its `line` and `rules_line` to the close line, e.g.
+"1 picked: Example Co — Backend Engineer. 1,480 fetched → 13 passed your rules → 13 judged → 1 fits. Most went at your
+rules: title 1,375 · only for other places 92." The Jobs page shows the same numbers in a **Why so few?** card with
+fixes the user can preview. When the judge said no to most of what passed, name its top reasons
+(`run.funnel.judge_reasons`); when `run.funnel.coverage` is set, say that line (it never names a source that doesn't
+exist). To show the user what a change would catch before they save it, run `crewdeck jobs preview` (read-only; add
+`--search-file <T>/change.yaml` with the change as YAML, e.g. `roles: { titles: [...] }`). Never change their notes to
+fill the count: the fixes are theirs to accept.

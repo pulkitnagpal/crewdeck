@@ -146,7 +146,33 @@ function first(rs: RegExp[] | undefined, text: string): RegExpExecArray | null {
   return null;
 }
 function* all(rs: RegExp[] | undefined, text: string) {
-  for (const r of rs ?? []) { r.lastIndex = 0; for (const m of text.matchAll(r)) yield m; }
+  for (const r of rs ?? []) {
+    const kw = KEYWORD_AT_END.get(r.source);
+    if (kw) { yield* nearKeyword(r, kw, text); continue; }
+    r.lastIndex = 0;
+    for (const m of text.matchAll(r)) yield m;
+  }
+}
+
+// "<places> only" and "<places> are not eligible" end in a keyword and try 80 lengths of places at every position of a
+// long description, which made them most of the prefilter's time. They are run only in the window before each keyword
+// (the places, at most 80 characters, plus the filler words), leftmost first and never overlapping, which gives the
+// same matches as a scan of the whole text unless the filler holds more than 300 characters of spaces.
+const KEYWORD_AT_END = new Map<string, RegExp>([
+  [re(BUILT_IN.other_only![0]).source, /(?<![\p{L}\p{N}])only(?![\p{L}\p{N}])/giu],
+  [re(BUILT_IN.place_excluded![2]).source, /(?:excluded|not eligible|ineligible|not supported|not accepted|not considered)(?![\p{L}\p{N}])/giu],
+]);
+const WINDOW = 380;
+function* nearKeyword(r: RegExp, kw: RegExp, text: string) {
+  let from = 0;
+  kw.lastIndex = 0;
+  for (const k of text.matchAll(kw)) {
+    const start = Math.max(from, k.index! - WINDOW);
+    const sub = text.slice(start, k.index! + k[0].length + 1);
+    r.lastIndex = 0;
+    const m = r.exec(sub);
+    if (m) { from = start + m.index + m[0].length; yield m; }
+  }
 }
 
 // Words that may sit between and around place names in a restriction ("US or Canada", "candidates in the EU").
@@ -191,28 +217,52 @@ const anyCompatible = (sets: PlaceSet[], named: string[][], km: number) =>
 
 /** Apply the hard drops to one posting. */
 export function prefilter(post: Posting, c: Compiled): Verdict {
+  const d = checks(post, c).next();
+  return d.done ? { keep: true } : { keep: false, rule: d.value.rule, reason: d.value.reason };
+}
+
+/** Which group of rules a drop belongs to: what one change to the notes would bring back (the preview's single blockers). */
+export const RULE_GROUP: Record<string, string> = {
+  title_gate: 'title', title_exclude: 'title', level: 'title', company_excluded: 'company', company_rule: 'company',
+  workplace_excluded: 'workplace', location_elsewhere: 'place', place_excluded: 'place', other_only: 'place',
+  industry: 'industry', travel: 'travel', pay: 'pay', cooldown: 'tracker', active_pick: 'tracker',
+};
+export type Drop = { rule: string; reason: string; group: string };
+
+/** Every group of rules that drops a posting (the first of each group, in prefilter's order): the preview reads these. */
+export function allDrops(post: Posting, c: Compiled): Drop[] {
+  return [...checks(post, c, true)];
+}
+
+/**
+ * The hard drops in order, lazily: prefilter takes the first, the preview takes one per group. `every` goes on past a
+ * group's drop to the next group (within a group, the first drop is the one reported).
+ */
+function* checks(post: Posting, c: Compiled, every = false): Generator<Drop> {
   const title = plain(post.title ?? ''), location = plain(post.location ?? ''), company = plain(post.company ?? '');
   const description = plain(post.description ?? '');
   const all_ = `${title}\n${location}\n${description}`;
-  const no = (rule: string, reason: string): Verdict => ({ keep: false, rule, reason });
+  const no = (rule: string, reason: string): Drop => ({ rule, reason, group: RULE_GROUP[rule] ?? rule });
 
-  if (c.regex.title_gate && !first(c.regex.title_gate, title)) return no('title_gate', 'title is not one of your target titles');
-  const read = readTitle(post.title ?? '', c.titles.tw);
-  if (c.titleGate && !matchTitle(c.titles, post.title ?? '', post.language, read)) return no('title_gate', titleMiss(c.titles, post, read));
-  const ex = first(c.regex.title_exclude, title);
-  if (ex) {
-    const hit = fold(ex[0]);
-    const avoid = c.avoidWords.find((a) => hit.startsWith(fold(a.word)));
-    return avoid ? no('title_exclude', `not interested ("${avoid.word}" in title): ${avoid.text} (${avoid.id})`) : no('title_exclude', `title has "${ex[0]}" (roles.exclude_title_words)`);
-  }
-  const lvl = levelBlock(c.titles, read);
-  if (lvl) return no('level', `"${lvl}" in the title (roles.level: ${c.titles.level})`);
+  yield* (function* titleRules(): Generator<Drop> {
+    if (c.regex.title_gate && !first(c.regex.title_gate, title)) return yield no('title_gate', 'title is not one of your target titles');
+    const read = readTitle(post.title ?? '', c.titles.tw);
+    if (c.titleGate && !matchTitle(c.titles, post.title ?? '', post.language, read)) return yield no('title_gate', titleMiss(c.titles, post, read));
+    const ex = first(c.regex.title_exclude, title);
+    if (ex) {
+      const hit = fold(ex[0]);
+      const avoid = c.avoidWords.find((a) => hit.startsWith(fold(a.word)));
+      return yield avoid ? no('title_exclude', `not interested ("${avoid.word}" in title): ${avoid.text} (${avoid.id})`) : no('title_exclude', `title has "${ex[0]}" (roles.exclude_title_words)`);
+    }
+    const lvl = levelBlock(c.titles, read);
+    if (lvl) yield no('level', `"${lvl}" in the title (roles.level: ${c.titles.level})`);
+  })();
   const key = companyKey(company);
   if (key) {
     const bad = c.companies.find((x) => x.key === key);
-    if (bad) return no('company_excluded', `company excluded: ${bad.name}`);
-    const rule = c.companyRules.find((x) => x.key === key);
-    if (rule) return no('company_rule', `company rule (${rule.id}): ${rule.text}`);
+    const rule = bad ? null : c.companyRules.find((x) => x.key === key);
+    if (bad) yield no('company_excluded', `company excluded: ${bad.name}`);
+    else if (rule) yield no('company_rule', `company rule (${rule.id}): ${rule.text}`);
   }
 
   const where = `${title}\n${location}`;
@@ -220,39 +270,42 @@ export function prefilter(post: Posting, c: Compiled): Verdict {
   if (first(c.regex.remote_words, where)) kinds.add('remote');
   if (first(c.regex.hybrid_words, where)) kinds.add('hybrid');
   if (first(c.regex.onsite_words, where)) kinds.add('onsite');
-  if (kinds.size && [...kinds].every((k) => c.excludedKinds.includes(k))) return no('workplace_excluded', `${[...kinds].join('/')} (you want ${c.accepted.join(', ')})`);
+  if (kinds.size && [...kinds].every((k) => c.excludedKinds.includes(k))) {
+    yield no('workplace_excluded', `${[...kinds].join('/')} (you want ${c.accepted.join(', ')})`);
+    if (!every) return;
+  }
 
-  const sets = relevantPlaces(c, kinds);
-  if (sets && !sets.some((p) => p.world)) {
+  yield* (function* placeRules(): Generator<Drop> {
+    const sets = relevantPlaces(c, kinds);
+    if (!sets || sets.some((p) => p.world)) return;
     const named = reducePlaces(findPlaces(location));
-    if (named.length && !anyCompatible(sets, named, c.commuteKm)) return no('location_elsewhere', `location "${post.location}" is outside ${sets.flatMap((p) => p.labels).join(', ')}`);
+    if (named.length && !anyCompatible(sets, named, c.commuteKm)) return yield no('location_elsewhere', `location "${post.location}" is outside ${sets.flatMap((p) => p.labels).join(', ')}`);
     for (const m of all(c.regex.place_excluded, all_)) {
       const excluded = restrictionPlaces(m);
       if (!excluded.length) continue;
       const covered = sets.every((p) => p.ids.every((u) => u.every((uid) => excluded.some((cands) => cands.some((e) => within(uid, e))))));
-      if (covered) return no('place_excluded', `excludes ${excluded.map((x) => placeName(x[0])).join(', ')}: "${m[0].trim().slice(0, 80)}"`);
+      if (covered) return yield no('place_excluded', `excludes ${excluded.map((x) => placeName(x[0])).join(', ')}: "${m[0].trim().slice(0, 80)}"`);
     }
     for (const m of all(c.regex.other_only, all_)) {
       const only = restrictionPlaces(m);
-      if (only.length && !anyCompatible(sets, only, c.commuteKm)) return no('other_only', `only for ${only.map((x) => placeName(x[0])).join(', ')}: "${m[0].trim().slice(0, 80)}"`);
+      if (only.length && !anyCompatible(sets, only, c.commuteKm)) return yield no('other_only', `only for ${only.map((x) => placeName(x[0])).join(', ')}: "${m[0].trim().slice(0, 80)}"`);
     }
-  }
+  })();
 
   // The company's name or the title only: a description names industries in boilerplate, negations ("we don't work
   // with gambling") and client lists, so those hits are the judge's (its brief lists the excluded industries).
   const ind = first(c.regex.industry, `${company}\n${title}`);
-  if (ind) return no('industry', `industry you excluded: "${ind[0]}"`);
+  if (ind) yield no('industry', `industry you excluded: "${ind[0]}"`);
 
   if (c.travelDrop) {
     const level = travelLevel(description, c);
-    if (level === 'frequent' || (level === 'occasional' && c.travelDrop === 'occasional')) return no('travel', `${level} travel (you exclude ${c.travelDrop}${c.travelDrop === 'occasional' ? ' or more' : ''})`);
+    if (level === 'frequent' || (level === 'occasional' && c.travelDrop === 'occasional')) yield no('travel', `${level} travel (you exclude ${c.travelDrop}${c.travelDrop === 'occasional' ? ' or more' : ''})`);
   }
 
   if (c.pay) {
     const p = payCheck(post.pay_text, post.description, c.pay);
-    if (payDrops(p, c.pay)) return no('pay', p.status === 'unlisted' ? 'no pay listed (pay.unlisted: drop)' : p.reason);
+    if (payDrops(p, c.pay)) yield no('pay', p.status === 'unlisted' ? 'no pay listed (pay.unlisted: drop)' : p.reason);
   }
-  return { keep: true };
 }
 
 /** A title drop that says what was close: "Full Stack Engineer" is not one of your titles (close to engineer: Backend engineer). */

@@ -21,7 +21,10 @@ import { type Db, ROLE_ID, getRole, openJobsDb } from './db.ts';
 import { NOTES, NOTE_NAMES, type JobNotes } from './notes.ts';
 import { EMPLOYMENT, LEVELS, TRAVEL, WORKPLACES } from './schema.ts';
 import { setFields } from './edit.ts';
-import { targetsOf } from './titles.ts';
+import { LEVELS_WANTED, MATCH_MODES, targetsOf } from './titles.ts';
+import { runPreview } from './preview.ts';
+import { funnelSummary } from './funnel.ts';
+import { readFindRun } from './pipeline/rank.ts';
 import { checkRoleUrl, isLinkedinHost, isXHost } from './fields.ts';
 import { canonicalJobUrl, linkedinJobId } from './linkedin.ts';
 import { answerFirstTime, currentAnswers, editAnswer } from './kb/ops.ts';
@@ -67,8 +70,8 @@ const MAX_CLIENTS = 20;
 const SET_ON_PAGE = '(set on the Jobs page)';
 
 /** jobs/search.md fields the Preferences form edits, and the shape of each value. */
-export const PREF_FIELDS: Record<string, 'list' | 'num' | 'str' | 'bool' | 'langs'> = {
-  'roles.titles': 'list', 'roles.seniority_prefer': 'list', 'roles.exclude_title_words': 'list',
+export const PREF_FIELDS: Record<string, 'list' | 'num' | 'str' | 'bool' | 'langs' | 'targets'> = {
+  'roles.targets': 'targets', 'roles.match': 'str', 'roles.level': 'str', 'roles.titles': 'list', 'roles.seniority_prefer': 'list', 'roles.exclude_title_words': 'list',
   workplace: 'list', 'places.onsite': 'list', 'places.remote_from': 'list', 'places.commute_km': 'num',
   languages: 'langs', employment_types: 'list', licenses: 'list', needs_sponsorship: 'bool',
   'exclude.companies': 'list', 'exclude.industries': 'list', 'exclude.travel': 'str',
@@ -128,10 +131,29 @@ function prefRaw(path: string, v: unknown): string {
       : v.map((x: any) => ({ name: str(x?.name, 80, `${path} name`), ...(x?.level ? { level: str(x.level, 20, `${path} level`) } : {}) })).filter((x) => x.name);
     return JSON.stringify(items);
   }
+  if (kind === 'targets') {
+    // Whole targets (D26): the form sends every target with its titles, families and skills.
+    if (!Array.isArray(v)) throw new HttpError(400, `${path}: give a list`);
+    if (v.length > 20) throw new HttpError(400, `${path}: at most 20 targets`);
+    const words = (x: unknown, what: string) => { if (x === undefined) return []; if (!Array.isArray(x) || x.length > 100) throw new HttpError(400, `${what}: give a list of at most 100`); return x.map((y) => str(y, 200, what)).filter(Boolean); };
+    return JSON.stringify(v.map((t: any, i: number) => {
+      if (!t || typeof t !== 'object' || Array.isArray(t)) throw new HttpError(400, `${path}[${i}]: give a target`);
+      const name = t.name === undefined ? '' : str(t.name, 120, `${path}[${i}].name`);
+      return { ...(name ? { name } : {}), titles: words(t.titles, `${path}[${i}].titles`), families: words(t.families, `${path}[${i}].families`), skills: words(t.skills, `${path}[${i}].skills`) };
+    }));
+  }
   if (kind === 'num') { if (typeof v !== 'number' || !Number.isFinite(v)) throw new HttpError(400, `${path}: give a number`); return String(v); }
   if (kind === 'bool') { if (typeof v !== 'boolean') throw new HttpError(400, `${path}: use yes or no`); return String(v); }
   return str(v, kind === 'str' && path === 'judge_notes' ? 2000 : 200, path);
 }
+
+/** The Preferences form's changes as `setFields` changes (every field checked as Save checks it). */
+function prefChanges(changes: unknown) {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw new HttpError(400, 'changes must be a map of field → value');
+  return Object.entries(changes).map(([path, v]) => ({ segs: path.split('.'), raw: prefRaw(path, v) }));
+}
+/** A validation error from the notes, as one issue per field (the form shows each next to its field). */
+const fieldIssues = (e: any) => String(e.message).split('\n').map((l) => { const m = /^([\w.\[\]]+): (.*)$/.exec(l); return m ? { path: m[1].replace(/\[(\d+)\]/g, '.$1'), message: m[2] } : { path: '', message: l }; });
 
 const getIn = (o: any, path: string) => path.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
 
@@ -318,6 +340,23 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     };
   }
 
+  /** The preview of the saved notes or of the Preferences form's unsaved changes (≤ 5,000 roles, ≤ 1 s of suggestions). */
+  function previewOf(b: any) {
+    const changes = b.search === undefined ? [] : prefChanges(b.search);
+    const days = b.days === undefined ? 14 : intIn(b.days, 1, 90, 'days');
+    try { return { ok: true, ...runPreview(ctx, { days, changes }) }; }
+    catch (e: any) { if (e instanceof HttpError) throw e; return { ok: false, issues: fieldIssues(e) }; }
+  }
+
+  /** Find's "Why so few?" (D28): the last Find's stored funnel when it picked fewer than asked, once it is over. */
+  function findCard() {
+    const run = readFindRun(c.jobs.home);
+    const last = requests.ofLane(LANE, 'find')[0];
+    if (!run?.funnel || (last && isOpen(last)) || ctx.clock().getTime() - Date.parse(run.started) > 24 * 3_600_000) return null;
+    if (run.funnel.picked >= run.funnel.need) return null;
+    return { funnel: run.funnel, summary: funnelSummary(run.funnel), request: last ? { id: last.id, status: last.status, count: Number(last.payload?.count ?? run.funnel.need) } : null };
+  }
+
   /** Today, with the apply panel of the selected role and what Claude is doing for it. */
   function today(sel?: string) {
     const v = todayView(ctx, sel ?? selected ?? undefined);
@@ -331,7 +370,8 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
         your_turn: { kind: 'ready', text: 'Your turn: submit' }, confirmation: { kind: 'ready', text: 'Mark applied?' }, stopped: { kind: 'warn', text: 'Apply stopped' } }[p.state as string];
       return chip ? { ...q, chip } : q;
     });
-    if (!v.detail) return { ...v, queue, panel: null, asking: [] };
+    const find = findCard();
+    if (!v.detail) return { ...v, queue, panel: null, asking: [], find };
     const d = v.detail;
     const notes = notesOf(ctx);
     const pdf = d.resume ? resumePath(ctx, d.id, notes) : null;
@@ -340,7 +380,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       ...v, queue,
       detail: { ...d, resume: pdf ? { file: basename(pdf), url: `/api/jobs/resume/${d.id}`, note: d.resume!.note } : null, copy: d.apply.mode === 'copy' ? copyModel(db, d.id).answers : null },
-      panel, asking,
+      panel, asking, find,
     };
   }
 
@@ -351,7 +391,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       exists: s.exists, source: s.source, file: NOTES.search, page: notesPage(NOTES.search), values,
       issues: s.issues.map((i) => ({ level: i.level, path: i.path, message: i.message, fix: i.fix ?? null })),
-      options: { workplace: WORKPLACES, employment_types: EMPLOYMENT, levels: LEVELS, travel: TRAVEL, period: ['year', 'month', 'hour'], rule: ['top_of_range', 'bottom_of_range'], unlisted: ['keep', 'drop'] },
+      options: { workplace: WORKPLACES, employment_types: EMPLOYMENT, levels: LEVELS, travel: TRAVEL, period: ['year', 'month', 'hour'], rule: ['top_of_range', 'bottom_of_range'], unlisted: ['keep', 'drop'], match: MATCH_MODES, level: LEVELS_WANTED },
     };
   }
 
@@ -457,16 +497,13 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     },
     select: (b) => { selected = roleArg(b.role).id; return { ok: true }; },
     prefs: (b) => {
-      const changes = b.changes;
-      if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw new HttpError(400, 'changes must be a map of field → value');
-      const list = Object.entries(changes).map(([path, v]) => ({ segs: path.split('.'), raw: prefRaw(path, v) }));
+      const list = prefChanges(b.changes);
       if (!list.length) return { ok: true, changed: [] };
+      // A fix offered by Find's "Why so few?" card says so in the note's Changes line.
+      const because = b.from === 'find' ? 'added from Find\'s suggestions (set on the Jobs page)' : SET_ON_PAGE;
       let out;
-      try { out = setFields(join(c.vault, NOTES.search), 'search', list, { because: SET_ON_PAGE, today: todayOf(ctx) }); }
-      catch (e: any) {
-        const issues = String(e.message).split('\n').map((l) => { const m = /^([\w.\[\]]+): (.*)$/.exec(l); return m ? { path: m[1].replace(/\[(\d+)\]/g, '.$1'), message: m[2] } : { path: '', message: l }; });
-        return { ok: false, issues };
-      }
+      try { out = setFields(join(c.vault, NOTES.search), 'search', list, { because, today: todayOf(ctx) }); }
+      catch (e: any) { return { ok: false, issues: fieldIssues(e) }; }
       return { ok: true, changed: out.filter((r) => r.changed).map((r) => r.path) };
     },
     feature: async (b) => {
@@ -569,6 +606,13 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const path = url.pathname;
     try {
       refreshFeatures();
+      if (req.method === 'POST' && path === '/api/jobs/preview') {
+        // A dry run (D27): the page's own, like an action, but read-only (no refresh event, nothing written).
+        if (!fromOwnPage(req)) throw new HttpError(403, 'forbidden');
+        const body = await readJson(req);
+        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'a JSON object is expected');
+        return json(res, 200, previewOf(body));
+      }
       if (req.method === 'POST') {
         const m = /^\/api\/jobs\/action\/([A-Za-z]+)$/.exec(path);
         if (!m || !Object.hasOwn(actions, m[1])) throw new HttpError(404, 'not found');

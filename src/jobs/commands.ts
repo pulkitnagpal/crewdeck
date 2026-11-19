@@ -3,8 +3,8 @@
 // Handlers parse files into plain objects and call the library, so P3 can hand them a request payload instead.
 import { writeFileSync } from 'node:fs';
 import { loadConfig } from '../config.ts';
-import { type Ctx, notesOf, openCtx, todayOf } from './ctx.ts';
-import { ROLE_ID, getRole } from './db.ts';
+import { type Ctx, makeCtx, notesOf, openCtx, todayOf } from './ctx.ts';
+import { ROLE_ID, getRole, openJobsDb, openJobsDbReadOnly } from './db.ts';
 import { checkRoleUrl } from './fields.ts';
 import { isDay } from './time.ts';
 import { flag, jobsFileRoots, positional, textFrom } from './cli.ts';
@@ -155,6 +155,24 @@ const cmds: Record<string, (args: string[]) => unknown> = {
 
   sources: async (args) => (await import('./sources-cmd.ts')).sourcesCmd(args),
 
+  // A dry run of the rules over the postings already fetched (design §24.6): read-only.
+  preview: async (args) => {
+    const { parse } = await import('yaml');
+    const { previewLines, runPreview, searchFileChanges } = await import('./preview.ts');
+    const file = flag(args, 'search-file'), source = flag(args, 'source');
+    if (source !== undefined && !/^[a-z0-9][a-z0-9-]{0,59}$/.test(source)) throw new Error('--source is a source key (crewdeck jobs sources list)');
+    let data: unknown;
+    if (file) { try { data = parse(text(file, '--search-file')); } catch (e: any) { throw new Error(`--search-file: not valid YAML (${String(e.message).split('\n')[0]})`); } }
+    // The tracker is opened read-only (no migration, and closing it never checkpoints the WAL into the file).
+    const c = loadConfig();
+    const db = openJobsDbReadOnly(c.jobs.home) ?? openJobsDb(c.jobs.home);
+    try {
+      const p = runPreview(makeCtx({ db, vault: c.vault, home: c.jobs.home, features: c.jobs.features }), { days: intArg(flag(args, 'days'), 'days', 14), source, changes: file ? searchFileChanges(data) : [] });
+      if (args.includes('--json')) return json(p);
+      for (const l of previewLines(p)) say(l);
+    } finally { db.close(); }
+  },
+
   providers: async (args) => {
     const [verb] = positional(args);
     const usage = 'usage: crewdeck jobs providers install | status | verify';
@@ -212,6 +230,10 @@ const cmds: Record<string, (args: string[]) => unknown> = {
       say(`${id}  ${r.company} — ${r.title}`);
     }
     if (!ids.length) say('nothing to pick: no eligible roles (judge candidates first)');
+    // A Find's funnel is stored with its run; picking changes its last number.
+    const { refreshFunnel } = await import('./pipeline/rank.ts');
+    const f = refreshFunnel(ctx);
+    if (f && f.picked < f.need) say(`funnel: ${f.line}${f.rules_line ? `. ${f.rules_line}` : ''}`);
   }),
 
   status: (args) => withCtx((ctx) => {
@@ -410,6 +432,7 @@ tracker and pipeline (text from postings and the user's words only through files
   prefilter | refilter --days N           drop roles your notes rule out / bring back ones they now allow
   source [--since N] [--only-new-sources]  fetch new roles from your sources in priority order (sandboxed), then your rules
   sources list|suggest|add|remove|move|enable|disable   your ordered list of sources (crewdeck jobs sources --help)
+  preview [--search-file f] [--days N] [--source key] [--json]   what your rules (or a change to them) catch, read-only
   providers install | status | verify     the pinned job-board providers (download, check, re-hash)
   candidates [--limit N]                  unjudged roles, best first (JSON)
   candidates --budget N [--batch 10] [--need N] [--start]   the next batch for a Find within a budget (≤ 40)

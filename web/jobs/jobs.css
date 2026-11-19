@@ -246,3 +246,17 @@ fieldset.f legend { padding: 0; margin-bottom: 5px; font-size: 12.5px; font-weig
 .row-flex .field[type="number"] { width: 90px; }
 .q { font-weight: 600; }
 .ans { white-space: pre-line; overflow-wrap: anywhere; }
+
+/* ---- Find's "Why so few?" (design §24.7) and the search preview (§24.6) ---- */
+.todaycol { display: flex; flex-direction: column; height: 100%; }
+.todaycol > .today { flex: 1; min-height: 0; height: auto; }
+.why { flex: none; padding: 14px 16px; }
+.todaycol > .why { margin: 12px 16px; }
+.why h2 .soft { font-weight: 500; margin-left: 6px; }
+.why .funnel, .pv .count { font-variant-numeric: tabular-nums; }
+.why .reasons, .pv ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+.pv { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.pv .count { font-size: 15px; font-weight: 650; }
+.pv .fixes { display: flex; flex-wrap: wrap; gap: 8px; }
+.target { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.target .row-flex .field { flex: 1; min-width: 0; }

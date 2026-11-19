@@ -15,6 +15,7 @@ import { fold } from '../places.ts';
 import { clip, plainText } from '../text.ts';
 import { hostOf, isLinkedinHost, isXHost } from '../fields.ts';
 import type { NetOptions } from '../net/netguard.ts';
+import { type Funnel, findFunnel } from '../funnel.ts';
 
 export type Ranked = { id: string; company: string; company_id: number; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string; posted_at: string | null; first_seen: string };
 export type Candidate = { id: string; company: string; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string };
@@ -130,7 +131,7 @@ export async function fetchDescriptions(ctx: Ctx, o: { top?: number; net?: NetOp
 
 // ---- Find within a budget ----
 
-export type FindRun = { started: string; budget: number; judged: string[] };
+export type FindRun = { started: string; budget: number; judged: string[]; need?: number; funnel?: Funnel };
 const RUN_TTL_MS = 6 * 3_600_000;
 const runFile = (home: string) => join(home, 'state', 'find.json');
 
@@ -153,6 +154,15 @@ export function recordJudged(ctx: Ctx, ids: string[]) {
   writeFindRun(ctx.home, { ...r, judged: [...set] });
 }
 
+/** After `pick`: the open Find run's funnel again (picked changed). */
+export function refreshFunnel(ctx: Ctx): Funnel | null {
+  const r = readFindRun(ctx.home);
+  if (!r || ctx.clock().getTime() - Date.parse(r.started) > RUN_TTL_MS) return null;
+  const funnel = findFunnel(ctx, r.need ?? r.funnel?.need ?? 5);
+  writeFindRun(ctx.home, { ...r, funnel });
+  return funnel;
+}
+
 /** Companies with an eligible role `pick` could take now (the same filter as pick's pool). */
 export function pickableCompanies(ctx: Ctx): number {
   const row = ctx.db.prepare(`select count(distinct r.company_id) n from roles r join companies c on c.id=r.company_id
@@ -164,7 +174,7 @@ export function pickableCompanies(ctx: Ctx): number {
 
 export type Budgeted = {
   batch: Candidate[];
-  run: { started: string; budget: number; judged: number; remaining: number; need: number; passed: number; done: boolean; why: 'enough' | 'budget' | 'pool' | null };
+  run: { started: string; budget: number; judged: number; remaining: number; need: number; passed: number; done: boolean; why: 'enough' | 'budget' | 'pool' | null; funnel: Funnel };
   pool: { unjudged: number };
 };
 
@@ -180,15 +190,18 @@ export function budgetedCandidates(ctx: Ctx, o: { budget: number; batch: number;
   let run = readFindRun(ctx.home);
   if (o.start || !run || now.getTime() - Date.parse(run.started) > RUN_TTL_MS || !existsSync(runFile(ctx.home))) run = { started: now.toISOString(), budget: o.budget, judged: [] };
   run.budget = o.budget;
-  writeFindRun(ctx.home, run);
+  run.need = o.need;
   const ranked = rankRoles(ctx);
+  // The funnel is stored with the run (design §24.7): the page's card and Claude's close line read the same numbers.
+  run.funnel = findFunnel(ctx, o.need);
+  writeFindRun(ctx.home, run);
   const passed = pickableCompanies(ctx);
   const remaining = Math.max(0, run.budget - run.judged.length);
   const why = passed >= o.need ? 'enough' : remaining === 0 ? 'budget' : ranked.length === 0 ? 'pool' : null;
   const batch = why ? [] : ranked.slice(0, Math.min(o.batch, remaining)).map(toCandidate);
   return {
     batch,
-    run: { started: run.started, budget: run.budget, judged: run.judged.length, remaining, need: o.need, passed, done: !!why, why },
+    run: { started: run.started, budget: run.budget, judged: run.judged.length, remaining, need: o.need, passed, done: !!why, why, funnel: run.funnel },
     pool: { unjudged: ranked.length },
   };
 }

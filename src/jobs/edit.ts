@@ -93,7 +93,23 @@ const labelOf = (segs: (string | number)[]) => segs.map((s) => (typeof s === 'nu
  */
 export function setFields(file: string, note: 'profile' | 'career' | 'search', changes: Change[], opts: { because?: string; today?: string } = {}): SetResult[] {
   if (!changes.length) return [];
-  const typed = changes.map(({ segs, raw }) => {
+  const { n, results } = applyFields(file, note, typeChanges(note, changes));
+  let body = n.body;
+  if (opts.because !== undefined) {
+    const words = opts.because.replace(/\s+/g, ' ').trim();
+    if (!words) throw new Error('--because-file is empty: it holds the user\'s own words for the change');
+    if (words.length > 1000) throw new Error('--because-file is longer than 1000 characters');
+    for (const r of results) if (r.changed) body = addChangeLine(body, `${opts.today}: ${r.path}: ${showValue(r.before)} → ${showValue(r.after)}. "${words}"`);
+  }
+  if (results.some((r) => r.changed)) writeAtomic(file, renderNote(n.doc, body));
+  return results;
+}
+
+type Typed = { segs: (string | number)[]; label: string; value: unknown };
+
+/** Each change typed by the schema (a value from the command line or a form is text until then). */
+function typeChanges(note: 'profile' | 'career' | 'search', changes: Change[]): Typed[] {
+  return changes.map(({ segs, raw }) => {
     const label = labelOf(segs);
     const schema = schemaAt(note, segs);
     if (!schema) {
@@ -103,6 +119,10 @@ export function setFields(file: string, note: 'profile' | 'career' | 'search', c
     }
     return { segs, label, value: coerce(schema, raw, label) };
   });
+}
+
+/** Apply typed values to the note in memory and validate; nothing is written. Throws with every new error. */
+function applyFields(file: string, note: 'profile' | 'career' | 'search', typed: Typed[]) {
   const n = readNote(file);
   if (!n.exists) throw new Error(`${noteFile(note)} is missing: copy it from vault-template in the Crewdeck repo first`);
   if (n.errors.length) throw new Error(`${noteFile(note)} can't be read (${n.errors[0]}): fix it in Notes first`);
@@ -116,15 +136,31 @@ export function setFields(file: string, note: 'profile' | 'career' | 'search', c
   });
   const fresh = validate(note, n.doc.toJS()).filter((i) => i.level === 'error' && !known.has(`${i.path}|${i.message}`));
   if (fresh.length) throw new Error(fresh.map((i) => `${i.path}: ${i.message}${i.fix ? `. Fix: ${i.fix}` : ''}`).join('\n'));
-  let body = n.body;
-  if (opts.because !== undefined) {
-    const words = opts.because.replace(/\s+/g, ' ').trim();
-    if (!words) throw new Error('--because-file is empty: it holds the user\'s own words for the change');
-    if (words.length > 1000) throw new Error('--because-file is longer than 1000 characters');
-    for (const r of results) if (r.changed) body = addChangeLine(body, `${opts.today}: ${r.path}: ${showValue(r.before)} → ${showValue(r.after)}. "${words}"`);
+  return { n, results };
+}
+
+/**
+ * The note's data with changes applied, validated the same way as `pref set`, never written (the preview, D27).
+ * `changes` are form or command-line values (`raw`, typed by the schema) or an overlay of typed YAML values.
+ */
+export function overlayFields(file: string, note: 'search', changes: (Change | { segs: (string | number)[]; value: unknown })[]): unknown {
+  const typed: Typed[] = changes.map((c) => ('raw' in c ? typeChanges(note, [c])[0] : (() => {
+    const label = labelOf(c.segs);
+    if (!schemaAt(note, c.segs)) throw new Error(`${label} is not a field Crewdeck knows in ${noteFile(note)}`);
+    return { segs: c.segs, label, value: c.value };
+  })()));
+  return applyFields(file, note, typed).n.doc.toJS();
+}
+
+/** A partial note as YAML (`--search-file`) → one change per leaf: maps merge into the note, lists and values replace. */
+export function overlayChanges(note: 'search', data: unknown, at: (string | number)[] = []): { segs: (string | number)[]; value: unknown }[] {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    if (!at.length) throw new Error('the search file holds a YAML map of jobs/search.md fields, e.g. roles: { titles: [...] }');
+    return [{ segs: at, value: data }];
   }
-  if (results.some((r) => r.changed)) writeAtomic(file, renderNote(n.doc, body));
-  return results;
+  const s = at.length ? schemaAt(note, at) : { t: 'obj' };
+  if (at.length && s?.t !== 'obj') return [{ segs: at, value: data }];
+  return Object.entries(data as Record<string, unknown>).flatMap(([k, v]) => overlayChanges(note, v, [...at, k]));
 }
 
 const noteFile = (note: string) => ({ profile: 'me/profile.md', career: 'me/career.md', search: 'jobs/search.md' })[note] ?? note;

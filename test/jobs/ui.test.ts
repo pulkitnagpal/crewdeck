@@ -126,6 +126,22 @@ test('applications, what Claude knows, preferences, settings', async () => {
   assert.match(text(pref), /Remote.*Hybrid.*On-site/);
   assert.match(pref, /<label for="p-pay\.floor">Floor<\/label>/);
   assert.match(text(render(html`<${Preferences} data=${{ ...p, exists: false }} />`)), /jobs\/search\.md is missing/);
+  // P9d: kinds of job (targets), matching and level, and the preview beside Save with a fix opened from Find's card.
+  const target = { name: 'Product design', titles: ['product designer', 'UX designer'], skills: ['Figma'], families: ['design-creative'] };
+  const pv = { ok: true, days: 14, pool: 120, pass: 9, was: 3, drops: [{ rule: 'title_gate', label: 'title', n: 100 }], single: [{ group: 'title', label: 'title', n: 40 }],
+    near: [{ head: 'designer', target: 'Product design', n: 12, items: [{ label: 'Visual Designer', n: 7, single: 5 }] }], passing: [{ title: 'UX Designer', company: 'Example Studio', location: 'Remote' }],
+    dropped: [], by_source: [], broad: 4, suggestions: [{ kind: 'broad', label: 'Match titles broadly: 4 more pass', text: 'x', more: 4, change: { 'roles.match': 'broad' }, pref: [] }], ms: 3, partial: false };
+  const withFix = text(render(html`<${Preferences} data=${p} pending=${{ changes: { 'roles.targets': [target] }, from: 'find' }} preview=${pv} />`));
+  assert.match(withFix, /Kinds of job/);
+  assert.match(withFix, /Titles and variants/);
+  assert.match(withFix, /Title matching.*Level/);
+  assert.match(withFix, /Preview 120 postings from the last 14 days 9 pass your rules \(now 3\)/);
+  assert.match(withFix, /Near misses on title: designer → Visual Designer \(7\)/);
+  assert.match(withFix, /Match titles broadly: 4 more pass/);
+  assert.match(withFix, /1 change not saved yet · 9 pass \(now 3\)/);
+  const wt = render(html`<${Preferences} data=${p} pending=${{ changes: { 'roles.targets': [target] } }} />`);
+  assert.match(wt, /aria-label="Name of kind of job 1"[^>]*value="Product design"/);
+  assert.match(wt, /<textarea class="field" rows="4">product designer\nUX designer<\/textarea>/);
   const st = (await s.get('settings')).json;
   const set = render(html`<${Settings} data=${st} />`);
   assert.equal((set.match(/role="switch"/g) ?? []).length, 5);

@@ -1,12 +1,13 @@
 // Preferences: a form over jobs/search.md. It saves through the same validated path as `crewdeck jobs pref set`: all
 // changed fields at once, or none with the reason next to each field; every change gets a line under ## Changes.
-import { useState } from 'preact/hooks';
+// A Preview beside Save (design §24.6) runs the unsaved form over the postings already fetched, read-only.
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { html, noop, cls, plural } from '../lib.js';
 
 const LIST = new Set(['roles.titles', 'roles.seniority_prefer', 'roles.exclude_title_words', 'places.onsite', 'places.remote_from', 'licenses', 'exclude.companies', 'exclude.industries']);
 const CHECKS = new Set(['workplace', 'employment_types']);
 const NUM = new Set(['places.commute_km', 'pay.floor', 'schedule.daily_picks', 'schedule.cooldown_days']);
-const WORDS = { remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site', top_of_range: 'the top of the range reaches it', bottom_of_range: 'the bottom of the range reaches it', keep: 'keep them', drop: 'drop them', none: 'nothing', occasional: 'occasional or more', frequent: 'frequent travel', year: 'a year', month: 'a month', hour: 'an hour' };
+const WORDS = { words: 'every word of a title, any order', broad: 'also a shared head word (more to judge)', off: 'off: every title goes to the judge', entry: 'entry level', experienced: 'experienced', senior: 'senior', any: 'any level', remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site', top_of_range: 'the top of the range reaches it', bottom_of_range: 'the bottom of the range reaches it', keep: 'keep them', drop: 'drop them', none: 'nothing', occasional: 'occasional or more', frequent: 'frequent travel', year: 'a year', month: 'a month', hour: 'an hour' };
 const word = (v) => WORDS[v] ?? v;
 const norm = (p) => String(p ?? '').replace(/\[(\d+)\]/g, '.$1');
 
@@ -18,6 +19,7 @@ function toForm(values) {
     else if (NUM.has(k)) out[k] = v === null || v === undefined ? '' : String(v);
     else if (k === 'languages') out[k] = (v ?? []).map((l) => ({ name: l.name ?? '', level: l.level ?? '' }));
     else if (k === 'needs_sponsorship') out[k] = v === true ? 'yes' : v === false ? 'no' : '';
+    else if (k === 'roles.targets') out[k] = (v ?? []).map((t) => ({ name: t.name ?? '', titles: (t.titles ?? []).join('\n'), skills: (t.skills ?? []).join('\n'), families: t.families ?? [] }));
     else out[k] = v ?? (CHECKS.has(k) ? [] : '');
   }
   return out;
@@ -29,18 +31,59 @@ function fromForm(k, v) {
   if (NUM.has(k)) return v.trim() === '' ? NaN : Number(v);
   if (k === 'languages') return v.filter((l) => l.name.trim()).map((l) => ({ name: l.name.trim(), ...(l.level ? { level: l.level } : {}) }));
   if (k === 'needs_sponsorship') return v === 'yes';
+  if (k === 'roles.targets') {
+    const lines = (x) => x.split('\n').map((y) => y.trim()).filter(Boolean);
+    return v.map((t) => ({ name: t.name.trim(), titles: lines(t.titles), skills: lines(t.skills), families: t.families })).filter((t) => t.titles.length || t.name);
+  }
   return v;
 }
 
-export function Preferences({ data, onSave = noop, onNotes = noop }) {
+const plural_ = (n, w) => `${Number(n).toLocaleString('en-US')} ${w}${n === 1 ? '' : 's'}`;
+
+/** What the unsaved form catches on the postings already fetched (the same preview as `crewdeck jobs preview`). */
+export function PreviewPanel({ pv, busy, dirty, onApply = noop }) {
+  if (!pv) return html`<section class="card pv" aria-label="Preview"><h2>Preview</h2><p class="soft small" role="status">${busy ? 'Checking your postings…' : 'Change a field to see what it catches on the postings already fetched.'}</p></section>`;
+  if (pv.ok === false) return html`<section class="card pv" aria-label="Preview"><h2>Preview</h2><p class="err" role="status">Can't preview: ${pv.issues.map((i) => `${i.path ? `${i.path}: ` : ''}${i.message}`).join('; ')}</p></section>`;
+  if (!pv.pool) return html`<section class="card pv" aria-label="Preview"><h2>Preview</h2><p class="soft">No postings fetched in the last ${pv.days} days yet: use Refresh sources at the top, then preview.</p></section>`;
+  const fixes = pv.suggestions.filter((x) => x.more > 0 && Object.keys(x.change).length);
+  return html`<section class="card pv" aria-label="Preview" aria-busy=${busy ? 'true' : 'false'}>
+    <h2>Preview <span class="small soft">${plural_(pv.pool, 'posting')} from the last ${pv.days} days</span></h2>
+    <p class="count" role="status">${pv.pass.toLocaleString('en-US')} ${pv.pass === 1 ? 'passes' : 'pass'} your rules${pv.was !== null && pv.was !== undefined && dirty ? ` (now ${pv.was.toLocaleString('en-US')})` : ''}</p>
+    ${pv.drops.length ? html`<p class="small">Dropped, by first reason: ${pv.drops.slice(0, 5).map((d) => `${d.label} ${d.n.toLocaleString('en-US')}`).join(' · ')}</p>` : null}
+    ${pv.single.length ? html`<p class="small soft">Only one thing stops them: ${pv.single.map((d) => `${d.label} ${d.n.toLocaleString('en-US')}`).join(' · ')}</p>` : null}
+    ${pv.near.length ? html`<div class="small"><span>Near misses on title:</span><ul>${pv.near.slice(0, 3).map((g) => html`<li key=${g.head}>${g.head} → ${g.items.slice(0, 5).map((x) => `${x.label} (${x.n})`).join(', ')}</li>`)}</ul></div>` : null}
+    ${pv.passing.length ? html`<p class="small soft">Passing, e.g.: ${pv.passing.slice(0, 3).map((x) => `${x.title} — ${x.company}`).join(' · ')}</p>` : null}
+    ${fixes.length ? html`<div class="fixes">${fixes.map((x, i) => html`<button type="button" key=${i} class="btn small" title=${x.text} onClick=${() => onApply(x.change)}>${x.label}</button>`)}</div>` : null}
+    ${fixes.length ? html`<span class="hint">A fix fills the form; nothing is saved until you click Save.</span>` : null}
+  </section>`;
+}
+
+export function Preferences({ data, onSave = noop, onNotes = noop, onPreview = null, pending = null, preview = null }) {
   const [init] = useState(() => toForm(data.values));
-  const [vals, setVals] = useState(init);
+  // A fix from Find's card (or the preview) arrives as unsaved changes: the form starts with them filled in.
+  const [vals, setVals] = useState(() => (pending?.changes ? { ...init, ...toForm(pending.changes) } : init));
   const [errors, setErrors] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [pv, setPv] = useState(preview);
+  const [pvBusy, setPvBusy] = useState(false);
+  const seq = useRef(0);
+  const changed = Object.keys(vals).filter((k) => JSON.stringify(vals[k]) !== JSON.stringify(init[k]));
+  const changesNow = () => Object.fromEntries(changed.filter((k) => !(NUM.has(k) && !Number.isFinite(fromForm(k, vals[k])))).map((k) => [k, fromForm(k, vals[k])]));
+  const key = JSON.stringify(changesNow());
+  // Debounced: the preview follows the form as the user types; only the latest answer is shown.
+  useEffect(() => {
+    if (!onPreview || !data.exists) return undefined;
+    const my = ++seq.current;
+    setPvBusy(true);
+    const t = setTimeout(async () => {
+      const r = await onPreview(JSON.parse(key)).catch((e) => ({ ok: false, issues: [{ path: '', message: e.message }] }));
+      if (my === seq.current) { setPv(r); setPvBusy(false); }
+    }, pv ? 500 : 0);
+    return () => clearTimeout(t);
+  }, [key]);
   if (!data.exists) {
     return html`<div class="page narrow"><div class="card section"><h1>Preferences</h1><p class="soft">jobs/search.md is missing. Set up Jobs first (Today → Set up with Claude), or copy it from vault-template.</p></div></div>`;
   }
-  const changed = Object.keys(vals).filter((k) => JSON.stringify(vals[k]) !== JSON.stringify(init[k]));
   const noteIssues = data.issues.filter((i) => i.level === 'error');
   const errFor = (k) => [...errors, ...noteIssues].filter((e) => norm(e.path) === k || norm(e.path).startsWith(`${k}.`)).map((e) => e.message);
   const set = (k, v) => setVals({ ...vals, [k]: v });
@@ -70,7 +113,7 @@ export function Preferences({ data, onSave = noop, onNotes = noop }) {
     const bad = Object.entries(changes).filter(([k, v]) => NUM.has(k) && !Number.isFinite(v)).map(([k]) => ({ path: k, message: 'give a number' }));
     if (bad.length) { setErrors(bad); return; }
     setBusy(true);
-    const r = await onSave(changes);
+    const r = await onSave(changes, pending?.from);
     setBusy(false);
     if (r?.ok === false) setErrors(r.issues ?? []);
     else setErrors([]);
@@ -83,8 +126,22 @@ export function Preferences({ data, onSave = noop, onNotes = noop }) {
     </div>
     ${data.source === 'last-valid' ? html`<div class="banner bad"><div class="body"><b>jobs/search.md has errors</b><span class="fix">Jobs uses its last valid version until they are fixed; the fields below show that version.</span></div></div>` : null}
     <div class="form">
-      <section class="card section"><header><h2>Roles</h2><span class="hint">A posting's title must contain one of your titles.</span></header>
-        <div class="grid2">${lines('roles.titles', 'Job titles', 'One per line, e.g. data analyst', 4)}${lines('roles.exclude_title_words', 'Never titles with', 'Whole words, one per line, e.g. intern', 4)}</div>
+      <section class="card section"><header><h2>Roles</h2><span class="hint">A posting passes when its title has every word of one of your titles, in any order; plurals and gendered forms count, seniority words don't block.</span></header>
+        <fieldset class="f"><legend class="lab">Kinds of job</legend>
+          ${vals['roles.targets'].map((t, i) => html`<div class="target" key=${i}>
+            <div class="row-flex"><input class="field" aria-label=${`Name of kind of job ${i + 1}`} placeholder="e.g. Backend engineer" value=${t.name}
+              onInput=${(e) => set('roles.targets', vals['roles.targets'].map((x, j) => (j === i ? { ...x, name: e.currentTarget.value } : x)))} />
+              <button type="button" class="btn quiet small" aria-label=${`Remove kind of job ${i + 1}`} onClick=${() => set('roles.targets', vals['roles.targets'].filter((_, j) => j !== i))}>Remove</button></div>
+            <div class="grid2">
+              <label class="f"><span class="lab">Titles and variants</span><textarea class="field" rows="4" value=${t.titles} onInput=${(e) => set('roles.targets', vals['roles.targets'].map((x, j) => (j === i ? { ...x, titles: e.currentTarget.value } : x)))}></textarea><span class="help">One per line; the first three are searched on LinkedIn</span></label>
+              <label class="f"><span class="lab">Skills for this kind</span><textarea class="field" rows="4" value=${t.skills} onInput=${(e) => set('roles.targets', vals['roles.targets'].map((x, j) => (j === i ? { ...x, skills: e.currentTarget.value } : x)))}></textarea><span class="help">Optional: they rank its roles</span></label>
+            </div>
+            ${errFor(`roles.targets.${i}`).map((m, k) => html`<span class="err" key=${k}>${m}</span>`)}
+          </div>`)}
+          <div><button type="button" class="btn small" onClick=${() => set('roles.targets', [...vals['roles.targets'], { name: '', titles: '', skills: '', families: [] }])}>Add a kind of job</button></div>
+        </fieldset>
+        <div class="grid2">${lines('roles.titles', 'More job titles', 'One per line, e.g. data analyst (read as one more kind of job)', 3)}${lines('roles.exclude_title_words', 'Never titles with', 'Whole words, one per line, e.g. intern', 3)}</div>
+        <div class="grid2">${pick('roles.match', 'Title matching', data.options.match ?? ['words', 'broad', 'off'])}${pick('roles.level', 'Level', data.options.level ?? ['any', 'entry', 'experienced', 'senior'], 'Drops titles with a seniority word outside it')}</div>
         ${lines('roles.seniority_prefer', 'Seniority you prefer', 'Ordering only, not a filter (one per line)', 2)}
         ${checks('employment_types', 'Employment types', data.options.employment_types)}
       </section>
@@ -117,8 +174,9 @@ export function Preferences({ data, onSave = noop, onNotes = noop }) {
         <div class="grid3">${num('schedule.daily_picks', 'Picks a day')}${num('schedule.cooldown_days', 'Cooldown after applying (days)')}${text('schedule.timezone', 'Time zone', 'e.g. Europe/Berlin; empty = this computer\'s')}</div>
         ${lines('judge_notes', 'Anything else, for the judging step', 'In your words, e.g. "prefer product companies over agencies"', 3)}
       </section>
+      ${onPreview || pv ? html`<${PreviewPanel} pv=${pv} busy=${pvBusy} dirty=${changed.length > 0} onApply=${(change) => setVals({ ...vals, ...toForm(change) })} />` : null}
       <div class="savebar" role="region" aria-label="Save preferences">
-        <span class="grow small soft">${errors.length ? html`<span class="err">Nothing saved: fix ${plural(errors.length, 'field')} above.</span>` : changed.length ? `${plural(changed.length, 'change')} not saved yet` : 'Everything saved'}</span>
+        <span class="grow small soft">${errors.length ? html`<span class="err">Nothing saved: fix ${plural(errors.length, 'field')} above.</span>` : changed.length ? `${plural(changed.length, 'change')} not saved yet${pv?.ok !== false && pv?.pool ? ` · ${pv.pass.toLocaleString('en-US')} pass${pv.was !== null && pv.was !== undefined ? ` (now ${pv.was.toLocaleString('en-US')})` : ''}` : ''}` : 'Everything saved'}</span>
         <button type="button" class="btn quiet" disabled=${!changed.length || busy} onClick=${() => { setVals(init); setErrors([]); }}>Undo</button>
         <button type="button" class="btn primary" disabled=${!changed.length || busy} onClick=${save}>Save</button>
       </div>

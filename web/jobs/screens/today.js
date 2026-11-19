@@ -100,18 +100,49 @@ function Detail({ d, asking, actions }) {
   </section>`;
 }
 
-export function Today({ data, state, actions = {} }) {
-  const a = { onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onToast: noop, onSetup: noop, onNotes: noop, ...actions };
+const n = (x) => Number(x ?? 0).toLocaleString('en-US');
+
+/**
+ * Find explains a small result (design §24.7, D28): the funnel stored with the run, what the rules dropped, what the
+ * judge said, sources that returned nothing, and fixes from the preview. Each fix opens Preferences with the change in
+ * the form and its preview showing; nothing is saved until the user clicks Save.
+ */
+export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onNotes = noop }) {
+  const f = find.funnel;
+  // The rules took most of the pool, or the judge said no to most of what they let through (or both).
+  const rulesCause = f.rules.reduce((x, r) => x + r.n, 0) > f.passed_rules;
+  const judgeCause = f.passed_rules >= f.need && f.fits < f.need && f.no > 0;
+  const fixes = (preview?.suggestions ?? []).filter((s) => s.more > 0).slice(0, 2);
+  return html`<section class="card why" aria-labelledby="why-title">
+    <div class="stack">
+      <h2 id="why-title">Why so few? <span class="soft">Find ${f.need} jobs: ${f.picked} picked</span></h2>
+      <p class="funnel">${f.line}</p>
+      ${rulesCause && f.rules_line ? html`<p class="soft">${f.rules_line}</p>` : null}
+      ${judgeCause && f.judge_reasons.length ? html`<div class="soft"><span>The judge's most common reasons:</span><ul class="reasons">${f.judge_reasons.map((r, i) => html`<li key=${i}>${r.text}${r.n > 1 ? ` (${n(r.n)})` : ''}</li>`)}</ul></div>` : null}
+      ${f.sources?.empty ? html`<p class="soft">Sources: ${f.sources.empty} of your ${f.sources.total} returned nothing${f.sources.why.length ? ` (${f.sources.why.join('; ')})` : ''}. <button type="button" class="linkbtn" onClick=${() => onNotes('jobs/sources')}>Open your sources</button></p>` : null}
+      ${f.coverage ? html`<p class="soft">${f.coverage}</p>` : null}
+      <div class="row-flex">
+        ${fixes.map((s, i) => html`<button type="button" key=${i} class=${`btn small${i === 0 ? ' primary' : ''}`} title=${s.text} onClick=${() => onFix(s)}>${s.label}</button>`)}
+        ${preview ? null : html`<span class="small soft" role="status">Checking what one change would bring back…</span>`}
+        <button type="button" class="btn small quiet" onClick=${onPreview}>See the preview</button>
+      </div>
+    </div>
+  </section>`;
+}
+
+export function Today({ data, state, preview = null, actions = {} }) {
+  const a = { onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, ...actions };
   const setup = state?.setup?.needed;
   if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} /></div>`;
+  const why = data.find ? html`<${WhySoFew} find=${data.find} preview=${preview} onFix=${a.onFix} onPreview=${a.onPreview} onNotes=${a.onNotes} />` : null;
   if (!data.queue.length) {
-    return html`<div class="empty">
+    return html`<div class="page">${why}<div class="empty">
       <span class="ico"><${Icon} name="briefcase" size=${22} /></span>
       <h2>Nothing to review</h2>
       <p class="soft">Paste a job link above, or click <b>Find ${state?.quota ?? 5} jobs</b>: Claude judges the best candidates and prepares each pick. Roles you applied to are in Applications.</p>
-    </div>`;
+    </div></div>`;
   }
-  return html`<div class="today">
+  return html`<div class="todaycol">${why}<div class="today">
     <nav class="queue" aria-label="Today's roles">
       <span class="label">Today · ${data.queue.length}</span>
       ${data.queue.map((q) => html`<${QueueItem} key=${q.id} item=${q} active=${q.id === data.selected} onSelect=${a.onSelect} />`)}
@@ -121,5 +152,5 @@ export function Today({ data, state, actions = {} }) {
       <${ApplyPanel} d=${data.detail} panel=${data.panel} reveal=${!!state?.reveal} workspace=${state?.agent?.workspace ?? ''}
         onApply=${a.onApply} onCancel=${a.onCancel} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />
     </div>` : null}
-  </div>`;
+  </div></div>`;
 }

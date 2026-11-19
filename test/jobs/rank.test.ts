@@ -75,7 +75,8 @@ test('budgeted candidates: batches in rank order, never re-judged, stop once N c
   const ids = Array.from({ length: 12 }, (_, i) => role(w.ctx, { company: `Example ${String.fromCharCode(65 + i)}`, title: i < 6 ? 'Senior Data Analyst' : 'Data Analyst' }));
   const first = budgetedCandidates(w.ctx, { budget: 8, batch: 5, need: 2, start: true });
   assert.equal(first.batch.length, 5);
-  assert.deepEqual(first.run, { started: first.run.started, budget: 8, judged: 0, remaining: 8, need: 2, passed: 0, done: false, why: null });
+  assert.deepEqual(first.run, { started: first.run.started, budget: 8, judged: 0, remaining: 8, need: 2, passed: 0, done: false, why: null, funnel: first.run.funnel });
+  assert.equal(first.run.funnel.need, 2, 'the funnel is stored with the run');
   assert.equal(first.pool.unjudged, 12);
   assert.ok(first.batch.every((c) => ids.slice(0, 6).includes(c.id)), 'the senior roles rank first');
   // Judge the batch: one passes.

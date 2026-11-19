@@ -49,6 +49,18 @@ export function openDb(path: string, opts: { server?: boolean } = {}): Db {
   return db;
 }
 
+/**
+ * The tracker opened read-only (the preview, D27): no migration, no write, and closing it never checkpoints the WAL, so
+ * the database's bytes stay as they were. Null when there is no tracker yet.
+ */
+export function openJobsDbReadOnly(home: string): Db | null {
+  const path = dbFile(home);
+  if (!existsSync(path)) return null;
+  const db = new (load().DatabaseSync)(path, { readOnly: true } as any);
+  db.exec('PRAGMA busy_timeout = 8000');
+  return db;
+}
+
 /** The user's tracker in jobs.home (0700; the database files 0600). */
 export function openJobsDb(home: string, opts: { server?: boolean } = {}): Db {
   ensureHome(home);
