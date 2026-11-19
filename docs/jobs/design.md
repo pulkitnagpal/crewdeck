@@ -792,19 +792,22 @@ front of the user. A phase may start once the one before it is committed.
 
 1. ~~Rename the plugin `crewdeck-bridge` → `crewdeck` now that it carries skills?~~ Done in P4 (0.3.0).
 2. Keep Node ≥ 22.18 (D15)?
-3. **v0.4: sources.md shape (D20).** One ordered `sources:` list replacing `boards:`/`watchlist:`, merged on the first
-   save from the Sources screen; or keep two lists plus `priority:` numbers?
-4. **v0.4: presets (D39).** Remove the four preset `sources.md` files and keep `--preset` as a deprecated alias for one
-   release, or delete `--preset` now?
-5. **v0.4: translated facts (D33).** Facts are "word for word from your resume". May a fact carry a translation the user
-   approved word for word (`facts[].tr.de`), so a German CV can come from an English resume? Without it, people
-   applying in two languages need two fact banks.
-6. **v0.4: cooldown defaults by field (D36).** Keep 60 days per company as the default for everyone, or propose 14 days
-   with `scope: role` for healthcare, education, retail, hospitality and logistics?
-7. **v0.4: reach (D40).** Is "Claude installs it" (a prompt the user pastes into Claude Code) enough for non-developers
-   in this release, with a packaged installer and UI translations deferred?
-8. **v0.4: title matching default (D26).** `match: words` (precise, relies on variants from setup) or `broad` (any title
-   sharing a target's head word, such as "engineer" or "nurse", more judging tokens) for new users?
+Questions 3–8 were answered with reversible defaults on 2026-11-19 while the owner was away, so the build could go on;
+each can be changed later without a migration the user notices.
+
+3. **v0.4: sources.md shape (D20).** Decided (default): one ordered `sources:` list replacing `boards:`/`watchlist:`.
+   Old notes keep working: the two lists are read as an ordered list (boards first, then watchlist) and merged into
+   `sources:` on the first save.
+4. **v0.4: presets (D39).** Decided (default): the four preset `sources.md` files go; `--preset` stays one release as a
+   deprecated alias that runs the matching catalog query and says so.
+5. **v0.4: translated facts (D33).** Decided (default): yes, a fact may carry translations the user approved word for
+   word (`facts[].tr.<lang>`), proposed by Claude and confirmed like any fact; never written without the user's yes.
+6. **v0.4: cooldown defaults by field (D36).** Decided (default): 60 days per company stays the default; setup proposes
+   14 days with `scope: role` for healthcare, education, retail, hospitality and logistics, and the user confirms.
+7. **v0.4: reach (D40).** Decided (default): "Claude installs it" for this release; a packaged installer and UI
+   translations are deferred (roadmap).
+8. **v0.4: title matching default (D26).** Decided (default): `words` (with the variants setup proposes from real
+   postings); the preview shows how many more `broad` would catch, and the user can switch.
 
 ## 24. Jobs for anyone (v0.4)
 
