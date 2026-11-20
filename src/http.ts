@@ -2,13 +2,33 @@
 import type { IncomingMessage, IncomingMessage as Req, ServerResponse } from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
-const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+/** The names every Crewdeck port answers to. `crewdeck.localhost` is the one people type (docs/everywhere.md E2): `*.localhost`
+ * resolves to this machine in macOS and every Chromium with no hosts file, and a name can't be rebound to another IP. */
+export const ADDRESS_NAME = 'crewdeck.localhost';
+const BASE_NAMES = ['localhost', '127.0.0.1', '[::1]', ADDRESS_NAME];
+const NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+/** The address options in force (config `address`, set once at start): extra names from the hosts file, and the short form. */
+let address: { short: boolean; names: string[] } = { short: false, names: [] };
+export function useAddress(a: { short?: boolean; names?: string[] }) {
+  const names = (a.names ?? []).map((n) => n.toLowerCase());
+  for (const n of names) if (!NAME.test(n) || BASE_NAMES.includes(n)) throw new Error(`address.names: ${n} is not a host name Crewdeck can add`);
+  address = { short: !!a.short, names };
+}
+const allNames = () => [...BASE_NAMES, ...address.names];
 
 /** The Host header names this machine (blocks DNS rebinding: a page on evil.example resolving to 127.0.0.1). */
-export const isLocalHost = (host?: string) => LOCAL_HOST.test(host ?? '');
+export function isLocalHost(host?: string): boolean {
+  const m = /^(\[::1\]|[^:]+)(?::(\d{1,5}))?$/.exec(host ?? '');
+  return !!m && allNames().includes(m[1].toLowerCase());
+}
 
-/** The origins a page served by this very port can have. */
-export const ownOrigins = (port: number) => [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://[::1]:${port}`];
+/** The origins a page served by this very port can have (with the short address, the port-less ones too: the redirect
+ * from port 80 lands on this port, so the browser's origin has no port). */
+export const ownOrigins = (port: number) => [
+  ...allNames().map((n) => `http://${n}:${port}`),
+  ...(address.short ? [ADDRESS_NAME, ...address.names].map((n) => `http://${n}`) : []),
+];
 
 /** No Origin (a tool, curl, the server's own page on GET) or exactly this port's own origin. */
 export function originIsOwnOrAbsent(req: IncomingMessage): boolean {
@@ -41,10 +61,11 @@ export const SECURITY_HEADERS: Record<string, string> = {
   'cache-control': 'no-store',
 };
 
-export const SHELL_CSP = [
+/** The shell's CSP: its frames (Notes, boards, apps) are other ports of the names this machine answers to. */
+export const shellCsp = () => [
   "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self' data:", "connect-src 'self'",
-  "frame-src 'self' http://localhost:* http://127.0.0.1:*", "object-src 'none'", "base-uri 'none'",
-  "form-action 'self'", "frame-ancestors 'self'",
+  `frame-src 'self' ${['localhost', '127.0.0.1', ADDRESS_NAME, ...address.names].map((n) => `http://${n}:*`).join(' ')}`,
+  "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'self'",
 ].join('; ');
 
 // ---- shared by the shell server and the Jobs API ----
@@ -58,7 +79,7 @@ export class HttpError extends Error {
 
 export function send(res: ServerResponse, code: number, body: string | Buffer, type = 'application/json; charset=utf-8', extra: Record<string, string> = {}) {
   const headers: Record<string, string> = { ...SECURITY_HEADERS, 'content-type': type, ...extra };
-  if (type.startsWith('text/html') && !headers['content-security-policy']) headers['content-security-policy'] = SHELL_CSP;
+  if (type.startsWith('text/html') && !headers['content-security-policy']) headers['content-security-policy'] = shellCsp();
   if (code === 413) headers.connection = 'close';
   res.writeHead(code, headers);
   res.end(body);

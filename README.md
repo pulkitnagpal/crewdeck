@@ -18,6 +18,10 @@ Crewdeck builds as little as it can. It wires together mature open-source tools:
 
 Everything runs on your machine, bound to `127.0.0.1`. No accounts, no cloud, no telemetry.
 
+**Where it lives:** **http://crewdeck.localhost:4848** in any browser or in Claude desktop's browser pane, and
+**`/crewdeck`** in any Claude session, which opens today's to-dos, jobs and tickets beside the chat. With the background
+service it is always running ([Always on](#always-on-and-from-anywhere)).
+
 ## Who it's for
 
 **Anyone looking for work**, in any field and any country: a nurse on nights, an accountant in Berlin, a store manager
@@ -46,9 +50,13 @@ I am not a developer: explain each step in plain words and ask me before you run
 3. Clone the repository into ~/crewdeck, then run `npm ci` in it.
 4. Run `node src/cli.ts setup` there and tell me what each line of its output means. If installing the plugin fails,
    tell me how to add it in the app instead (+ → Plugins → Add marketplace, with the path of ~/crewdeck).
+   Before you run it, ask me whether Crewdeck should run in the background and start when I log in (recommended): if I
+   say yes, add `--service`, if no, `--no-service`.
 5. Run `node src/cli.ts doctor` and explain anything marked ✗.
-6. Start Crewdeck with `node src/cli.ts up` in the background, leave it running, and open http://localhost:4848 in the
-   browser pane. Then tell me the next step from docs/jobs/first-run.md: a new Code session in ~/Crewdeck/jobs.
+6. If I said no to the background service, start Crewdeck with `node src/cli.ts up` in the background and leave it
+   running. Open http://crewdeck.localhost:4848 in the browser pane. Tell me I can type /crewdeck in any new Claude
+   session to see today's to-dos, jobs and tickets beside the chat. Then tell me the next step from
+   docs/jobs/first-run.md: a new Code session in ~/Crewdeck/jobs.
 ```
 
 Claude runs the commands with your approval, one by one. The full walk-through, with what you should see at each step,
@@ -94,29 +102,31 @@ A step-by-step walk-through for a new user, with what you should see at each ste
 git clone https://github.com/pulkitnagpal/crewdeck.git
 cd crewdeck
 npm ci
-node src/cli.ts setup           # everything: ~/.crewdeck, your vault, Jobs, your jobs folder, the plugin in Claude
-node src/cli.ts up              # start it: http://localhost:4848
+node src/cli.ts setup --service # everything: ~/.crewdeck, your vault, Jobs, your jobs folder, the plugin in Claude,
+                                # and Crewdeck running in the background from now on: http://crewdeck.localhost:4848
 ```
+
+Without `--service`, start it yourself with `node src/cli.ts up` and leave that running.
 
 `npm link` in the checkout puts `crewdeck` on your PATH; this README writes `crewdeck …` for `node src/cli.ts …`.
 `crewdeck up` also writes `~/.crewdeck/bin/crewdeck`, a small script that runs this checkout (the skills use it).
 
 Then:
 
-1. Open **http://localhost:4848** in Claude desktop's browser pane (or any browser) and click **Jobs**.
+1. Open **http://crewdeck.localhost:4848** in Claude desktop's browser pane (or any browser) and click **Jobs**.
 2. In Claude desktop, start a new Code session in your jobs folder, **`~/Crewdeck/jobs`**, and say hello. Its status
    line shows `Crewdeck · jobs`, and the Jobs page shows **Claude connected**.
 3. On the Jobs page click **Set up with Claude** and answer Claude's questions in that chat.
 
-`setup` options: `--preset <name>` (see Presets), `--vault <path>` puts the vault elsewhere, `--no-plugin` skips the
-plugin. It runs the same steps as `crewdeck init`, `crewdeck jobs init` and the plugin install below, each of which also
+`setup` options: `--service` / `--no-service` (run in the background, see [Always on](#always-on-and-from-anywhere)),
+`--preset <name>` (see Presets), `--vault <path>` puts the vault elsewhere, `--no-plugin` skips the plugin. It runs the same steps as `crewdeck init`, `crewdeck jobs init` and the plugin install below, each of which also
 works on its own (`jobs init` also takes `--home <dir>` for the tracker, `--workspace <dir>` for the jobs folder and
 `--no-providers` to skip the download). Running any of them again is safe.
 Add a project board with `crewdeck add-project <name> <path-to-git-repo>`.
 
 ## Install the plugin
 
-The plugin is called `crewdeck` (version 0.5.0). The repo is its own plugin marketplace, also called `crewdeck`.
+The plugin is called `crewdeck` (version 0.6.0). The repo is its own plugin marketplace, also called `crewdeck`.
 `crewdeck setup` installs it for you from your checkout; the commands below do the same by hand.
 
 **From your checkout** (works before anything is published). Claude keeps a copy of the plugin per version, so after a
@@ -149,6 +159,27 @@ claude plugin marketplace remove crewdeck
 ```
 
 `claude plugin list` shows what is installed; `claude plugin validate /path/to/crewdeck` checks the manifests.
+
+## Always on and from anywhere
+
+- **The address.** `http://crewdeck.localhost:4848` works in every browser on this computer with nothing to set up:
+  names ending in `.localhost` always mean this computer. `http://localhost:4848` still works.
+- **Always running.** `crewdeck service install` runs Crewdeck in the background and starts it when you log in (a
+  LaunchAgent on macOS, a `systemd --user` unit on Linux; no admin password). `crewdeck service status` says whether it
+  runs and shows its last log lines; `crewdeck service restart` after a `git pull`; `crewdeck service uninstall` removes
+  it. Its log is `~/.crewdeck/logs/service.log`. Without it, `crewdeck up` runs Crewdeck until you stop it; `up` says so
+  and does nothing when Crewdeck is already running.
+- **`crewdeck open`** (or `open jobs`, `open notes`) starts Crewdeck if it isn't running and opens it in your browser.
+- **In any Claude session**, type **`/crewdeck`**: a panel beside the chat shows today's to-dos (tick them, add one),
+  what Jobs is waiting on, and your open tickets, with buttons to open Crewdeck, Jobs or today's notes. It starts
+  Crewdeck first when it isn't running. `/crewdeck open`, `/crewdeck jobs` and `/crewdeck notes` open the page. Saying
+  "open Crewdeck" works too. To-dos are the checkboxes of today's journal page (`journal/YYYY-MM-DD.md` in your vault),
+  so Notes and Obsidian show the same list.
+- **Without the port** (macOS, optional): `crewdeck address --short` sets up `http://crewdeck.localhost`, and
+  `--name crew.deck` adds `http://crew.deck`. Your admin password is needed once, so Crewdeck only writes the files and
+  prints the commands for you to run: a redirect from port 80 to Crewdeck's port on this computer only, loaded at
+  startup. `crewdeck address --undo` prints how to remove it. The first time, type `crew.deck/` with the slash: a
+  browser may search for a bare `crew.deck`.
 
 ## What's stored where
 
@@ -344,7 +375,8 @@ Crewdeck runs on your machine for you alone. The full model is in [docs/design.m
 what it defends against, and what it can't:
 
 - **Other web pages.** Everything binds to `127.0.0.1`. Every Crewdeck port (the page, Notes, each board) refuses
-  requests whose `Host` isn't `localhost`, `127.0.0.1` or `[::1]` (DNS rebinding). Notes and each board run behind their
+  requests whose `Host` isn't `crewdeck.localhost`, `localhost`, `127.0.0.1` or `[::1]` (DNS rebinding; a `.localhost`
+  name always means this computer, so it can't be rebound), plus any name you added with `crewdeck address --name`. Notes and each board run behind their
   own proxy port, so each is its own origin. The page's API takes changes only from the page itself (exact origin,
   `Sec-Fetch-Site: same-origin`, a JSON body). No endpoint sends CORS headers. A strict Content Security Policy keeps
   scripts to the page's own.
@@ -364,6 +396,11 @@ what it defends against, and what it can't:
   checked, the connection pinned to it), 5 re-checked redirects, a 15 s deadline, a 2 MB cap.
 - **Job-board providers** (third-party code from a pinned career-ops commit, every file hash-checked) run in a Node
   permission-model child with no network, processes, workers or file writes (Node 25+); Crewdeck makes their requests.
+- **The `/crewdeck` panel** reads and writes through two agent endpoints that need the token (today's to-dos, a look at
+  Jobs, open tickets). It can add a to-do or tick one (named by its line and text, so a page edited meanwhile is
+  refused), and nothing else: it can't start a Find, Prepare or Apply.
+- **The background service** runs as you, with no admin rights. The short address is a redirect you install yourself,
+  on the loopback interface only; Crewdeck never runs `sudo`.
 - **Risky switches** need your click in a native dialog (above).
 - The repo is scanned for personal data on every test run and in CI (`scripts/leak-scan.mjs`).
 
@@ -397,6 +434,8 @@ the browser, the job notes, the jobs workspace files, the providers, and whether
 |---|---|
 | "No Claude session is working Jobs" | Open a Claude Code session in the folder the banner shows (copy button). Check the plugin is installed (`claude plugin list`) and its `port` matches Crewdeck's |
 | The status line says "Crewdeck: server failed its identity check" | Something else answers on Crewdeck's port, or Crewdeck restarted with a new token: check `crewdeck up` is running, then send any message in the session |
+| `crewdeck.localhost:4848` doesn't load | `crewdeck service status` (or start it: `crewdeck open`). An old browser may not know `.localhost` names: use `http://localhost:4848` |
+| `/crewdeck` isn't offered in a session | The plugin is 0.6.0 or newer (`claude plugin list`; `crewdeck setup` updates it), in a session started after the update |
 | `EADDRINUSE` on `crewdeck up` | Another Crewdeck (or app) uses 4848 or 4849: stop it, or change `port` / `silverbullet.port` in the config (and the plugin's `port`) |
 | "Job boards not set up" | `crewdeck jobs providers install`, and run Crewdeck on Node 25+ for sourcing |
 | Sourcing "needs Node 25 or newer" | Start `crewdeck up` with Node 25 (the server runs the timer and writes `~/.crewdeck/bin/crewdeck` with the Node that started it) |
@@ -435,8 +474,9 @@ jobs:                      # written by `crewdeck jobs init`
 
 ### Run it from the Claude desktop app
 
-Add this to `.claude/launch.json` in any folder you open in Claude Code, then ask Claude to "start crewdeck"; it starts
-the server and opens the page in the browser pane:
+With the background service and the plugin you don't need this: type `/crewdeck`, or ask Claude to "open Crewdeck".
+Without them, add this to `.claude/launch.json` in any folder you open in Claude Code, then ask Claude to "start
+crewdeck"; it starts the server and opens the page in the browser pane:
 
 ```json
 {

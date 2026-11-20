@@ -16,7 +16,8 @@ includes Claude Code, an internet connection, and your resume if you have one (n
 Skip this if you never ran Crewdeck. To start over as a brand-new user, move your old data aside. **Never delete it**:
 these moves are backups you can put back.
 
-1. Stop the running Crewdeck: Ctrl-C in the terminal where `crewdeck up` runs (or stop it where Claude started it).
+1. Stop the running Crewdeck: `crewdeck service uninstall` if it runs in the background (`crewdeck service status`
+   says), else Ctrl-C in the terminal where `crewdeck up` runs (or stop it where Claude started it).
    `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:4848/` should then print `000`.
 2. Move the old Crewdeck home, vault and jobs folder aside:
    ```bash
@@ -66,9 +67,11 @@ Node and run `npm ci` again.
 ## 2. Set everything up (one command)
 
 ```bash
-crewdeck setup
+crewdeck setup --service
 ```
 
+`--service` keeps Crewdeck running in the background from now on and starts it when you log in (no admin password;
+`crewdeck service uninstall` removes it). Without it (`--no-service`), you start Crewdeck yourself in step 3.
 (`--vault <path>` puts your notes somewhere else. `--preset <name>` still exists for one release but is deprecated:
 setup with Claude proposes sources from your own profile.)
 
@@ -80,8 +83,9 @@ It does, in order:
 - **Your jobs folder** `~/Crewdeck/jobs`: the folder you open a Claude session in to work on Jobs. Crewdeck writes a
   `CLAUDE.md` (the hard rules) and `.claude/settings.json` (Claude Code's sandbox) there and rewrites them on every
   start, so don't edit them.
-- **The `crewdeck` plugin** in Claude (from this checkout): it brings your clicks on the Jobs page into that session
-  and carries the Jobs skills.
+- **The `crewdeck` plugin** in Claude (from this checkout): `/crewdeck` in any session, the bridge that brings your
+  clicks on the Jobs page into the jobs session, and the Jobs skills.
+- With `--service`, **the background service** (a LaunchAgent on a Mac, a `systemd --user` unit on Linux).
 
 **You should see** (with your own paths):
 ```
@@ -96,13 +100,15 @@ Vault ready: /Users/you/Crewdeck/vault
 ✓ browser for reading forms and resume PDFs: Google Chrome
 ✓ job-board providers: 137 from career-ops-hq/career-ops@f3b043d (MIT), 166 files verified
 ✓ installed the crewdeck plugin in Claude (it loads in new sessions)
+✓ Crewdeck runs in the background now, and starts when you log in (/Users/you/Library/LaunchAgents/io.crewdeck.server.plist)
 
 Done. Now:
-  1. Start Crewdeck: crewdeck up   (leave it running)
-  2. Open http://localhost:4848 (in Claude desktop: ask Claude to open it in the browser pane) and click Jobs.
-  3. In Claude desktop, start a new Code session in the folder /Users/you/Crewdeck/jobs
+  1. Crewdeck is running at http://crewdeck.localhost:4848 (open it in any browser, or in Claude desktop's browser pane).
+  2. In any Claude session, type /crewdeck for today's to-dos, jobs and tickets beside the chat.
+  3. For Jobs: in Claude desktop, start a new Code session in the folder /Users/you/Crewdeck/jobs
      and say hello. Then click "Set up with Claude" on the Jobs page: Claude interviews you there.
 ```
+Without `--service`, line 1 says to start Crewdeck with `crewdeck up` and leave it running.
 Running it again is safe: it never overwrites a note you changed (those show as "kept your …").
 
 **If not:**
@@ -119,15 +125,17 @@ Running it again is safe: it never overwrites a note you changed (those show as 
 If it says "✗ another Crewdeck answers on port 4848 (its notes: …), not this one", an older Crewdeck is still running:
 stop it (step 0.1).
 
-## 3. Start Crewdeck and open the Jobs tab
+## 3. Open Crewdeck and the Jobs tab
 
-Either:
+With the background service, Crewdeck is already running: go to **http://crewdeck.localhost:4848** in any browser, or
+in the Claude desktop app's Code tab ask Claude to "open Crewdeck" (it opens the page in the browser pane). In any
+session, `/crewdeck` opens a panel beside the chat with today's to-dos, what Jobs waits on and your tickets.
+
+Without the service, either:
 - **From a terminal:** `crewdeck up` (with Node 25 for job-board fetching). It prints
-  `Crewdeck on http://localhost:4848  (notes: …; projects: none yet)` and keeps running; leave that window open. Then,
-  in the Claude desktop app's Code tab, open the browser pane and go to **http://localhost:4848** (or ask Claude "open
-  http://localhost:4848 in the browser").
-- **From Claude:** ask the session that installed it to start `crewdeck up` in the background and open the page, or use
-  the `.claude/launch.json` from the README ("Run it from the Claude desktop app").
+  `Crewdeck on http://crewdeck.localhost:4848  (notes: …; projects: none yet)` and keeps running; leave that window
+  open. Then open that address as above.
+- **From Claude:** type `/crewdeck`, or ask "open Crewdeck": it starts Crewdeck in the background and opens it.
 
 Click **Jobs** in the rail on the left.
 
@@ -338,6 +346,8 @@ setup skill runs again over your current notes, and Claude writes only what you 
 
 - **Notes in the wrong theme** (light while the rest is dark, or the other way) on the first load after an older
   Crewdeck: reload the page once; it then follows Claude's light/dark.
+- **`crewdeck.localhost`** works in Chrome, Edge, Brave, Firefox, Safari and Claude's browser pane with nothing set up.
+  An address without the port is optional: `crewdeck address --short` (your admin password, once).
 - **The plugin loads only in new sessions.** A session that was open before `crewdeck setup` never connects: start a
   new one in `~/Crewdeck/jobs`.
 - **Requests wait for an idle session.** While Claude is answering you, page clicks queue up ("Waiting for Claude");

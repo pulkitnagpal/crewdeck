@@ -49,7 +49,14 @@ export type JobsApi = {
   /** Tell open pages to refresh (the server's own writes). */
   emit(topic: string): void;
   scheduler: import('./schedule.ts').SourceScheduler;
+  /** Today panel's look at Jobs (docs/everywhere.md E7): what waits on the person, never any payload or posting text. */
+  glance(): JobsGlance;
   close(): void;
+};
+export type JobsGlance = {
+  setup_needed: boolean; connected: boolean;
+  counts: { needs_you: number; ready: number; in_progress: number; applied_today: number };
+  queue: { company: string; title: string; chip: string; kind: string }[];
 };
 export type JobsApiOptions = {
   configPath?: string; pollMs?: number; platform?: string;
@@ -785,8 +792,20 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return out;
   }
 
+  function glance(): JobsGlance {
+    const v = today();
+    const kinds = v.queue.map((q: any) => q.chip?.kind as string);
+    const count = (k: string) => kinds.filter((x) => x === k).length;
+    return {
+      setup_needed: setupView(notesOf(ctx)).needed,
+      connected: requests.presence(LANE).connected,
+      counts: { needs_you: count('first') + count('warn'), ready: count('ready'), in_progress: kinds.filter((k) => !['first', 'warn', 'ready', 'applied'].includes(k)).length, applied_today: count('applied') },
+      queue: v.queue.filter((q: any) => q.chip?.kind !== 'applied').slice(0, 6).map((q: any) => ({ company: String(q.company), title: String(q.title), chip: String(q.chip?.text ?? ''), kind: String(q.chip?.kind ?? '') })),
+    };
+  }
+
   return {
-    handle, contextFor, emit, scheduler,
+    handle, contextFor, emit, scheduler, glance,
     close() {
       scheduler.stop();
       for (const ch of children) { try { ch.kill('SIGKILL'); } catch {} }

@@ -10,9 +10,10 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize, sep } from 'node:path';
-import { CLI_WRAPPER, REPO, type Config } from './config.ts';
+import { CLI_WRAPPER, REPO, effectiveAddress, pageUrl, type Config } from './config.ts';
 import { Requests, RequestError, laneFor, publicView } from './requests.ts';
-import { HttpError, NONCE, fromAgent, fromOwnPage, isLocalHost, json, ownRead, proofFor, readJson, send } from './http.ts';
+import { TodayError, addTodo, localDate, setTodo, ticketsOf, todosOf } from './today.ts';
+import { HttpError, NONCE, fromAgent, fromOwnPage, isLocalHost, json, ownRead, proofFor, readJson, send, useAddress } from './http.ts';
 import { tokensCss } from './appearance.ts';
 import type { JobsApi, JobsApiOptions } from './jobs/api.ts';
 
@@ -39,6 +40,8 @@ const shq = (p: string) => (/^[\w@%+=:,./-]+$/.test(p) ? p : `'${p.replace(/'/g,
 const cliFor = () => (existsSync(CLI_WRAPPER) ? shq(CLI_WRAPPER) : `node ${shq(join(REPO, 'src', 'cli.ts'))}`);
 
 export function createShell(c: Config, requests = new Requests(), opts: ShellOptions): Server {
+  // The names and origins every port in this process answers to (crewdeck.localhost, and the user's extra names).
+  useAddress(effectiveAddress(c));
   // Jobs: imported (and its database opened) only when switched on.
   let jobs: Promise<JobsApi> | null = null;
   const jobsApi = (): Promise<JobsApi> => (jobs ??= import('./jobs/api.ts').then((m) => m.createJobsApi(c, requests, { ...opts.jobs, token: opts.token })).catch((e) => {
@@ -46,6 +49,22 @@ export function createShell(c: Config, requests = new Requests(), opts: ShellOpt
     throw new HttpError(500, `Jobs could not start: ${e?.message ?? e}`);
   }));
   const jobsOn = () => !!c.jobs?.enabled;
+
+  const dateOf = (d: unknown) => {
+    if (d === undefined || d === null || d === '') return localDate();
+    if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new HttpError(400, 'date is YYYY-MM-DD');
+    return d;
+  };
+  async function todayGlance(d: unknown) {
+    const date = dateOf(d);
+    let jobs: unknown = null;
+    if (jobsOn()) { try { jobs = (await jobsApi()).glance(); } catch { jobs = { error: 'Jobs could not start' }; } }
+    return {
+      date, url: pageUrl(c), notes_page: `journal/${date}`,
+      todos: todosOf(c.vault, date), jobs, ...ticketsOf(c.projects),
+      projects: c.projects.map((p) => ({ name: p.name, label: p.label ?? p.name })),
+    };
+  }
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
     if (!isLocalHost(req.headers.host)) return send(res, 403, 'forbidden', 'text/plain');
@@ -73,9 +92,20 @@ export function createShell(c: Config, requests = new Requests(), opts: ShellOpt
       }
       // Agent endpoints.
       const m = /^\/api\/requests\/(\d+)\/(done|fail|show|progress)$/.exec(path);
-      if (path !== '/api/claim' && path !== '/api/requeue' && !m) throw new HttpError(404, 'not found');
+      if (path !== '/api/claim' && path !== '/api/requeue' && path !== '/api/today' && path !== '/api/today/todo' && !m) throw new HttpError(404, 'not found');
       if (!fromAgent(req, opts.token)) throw new HttpError(401, 'missing or wrong token');
       const b = await readJson(req);
+      // The Today panel (docs/everywhere.md E7): today's to-dos, a look at Jobs, open tickets, and where to open them.
+      if (path === '/api/today') return json(res, 200, await todayGlance(b.date));
+      if (path === '/api/today/todo') {
+        const date = dateOf(b.date);
+        try {
+          if (b.op === 'add') addTodo(c.vault, date, b.text);
+          else if (b.op === 'set') setTodo(c.vault, date, b.line, b.text, b.done);
+          else throw new TodayError('op is add or set');
+        } catch (e) { if (e instanceof TodayError) throw new HttpError(400, e.message); throw e; }
+        return json(res, 200, await todayGlance(date));
+      }
       if (path === '/api/claim') {
         const nonce = String(b.nonce ?? '');
         if (!NONCE.test(nonce)) throw new HttpError(400, 'nonce required');

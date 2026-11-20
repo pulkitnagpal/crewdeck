@@ -19,6 +19,9 @@ right Claude session.
 | Agents | Claude Code (desktop app) | Sessions do the work; the `crewdeck` plugin bridges page requests to sessions and carries the skills |
 | Job boards | [career-ops](https://github.com/career-ops-hq/career-ops) providers (MIT) | Downloaded at a pinned commit, hash-checked, run in a sandboxed child |
 
+How people reach it (the `crewdeck.localhost` address, the background service, `/crewdeck` and the Today panel in every
+Claude session): [everywhere.md](everywhere.md).
+
 ## Non-goals and anti-goals
 
 - No new note editor or kanban: if SilverBullet or Backlog.md does it, use theirs.

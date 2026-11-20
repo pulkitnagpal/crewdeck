@@ -28,6 +28,17 @@ export type Config = {
   /** auto (default: follow the system, i.e. Claude desktop's light/dark), light or dark: one look for every tool. */
   appearance: Appearance;
   jobs: JobsConfig;
+  /** How people reach Crewdeck (docs/everywhere.md): `short` once the port-80 redirect is installed (crewdeck address
+   * --short), `names` extra host names from the hosts file (e.g. crew.deck). */
+  address: AddressConfig;
+};
+export type AddressConfig = { short: boolean; names: string[]; port?: number };
+
+/** The short address applies only while the redirect points at this port (security review #7): after a port change the
+ * page goes back to the address with the port until `crewdeck address --short` runs again. */
+export const effectiveAddress = (c: { port: number; address?: AddressConfig }): AddressConfig => {
+  const a = c.address ?? { short: false, names: [] };
+  return { ...a, short: a.short && a.port === c.port };
 };
 
 /** Risky Jobs features (design §12): all off until the user switches them on (Jobs → Settings or a real terminal). */
@@ -58,7 +69,7 @@ export const expand = (p: string) => (p.startsWith('~/') ? join(homedir(), p.sli
 const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 export function defaults(): Config {
-  return { port: 4848, vault: '~/Crewdeck/vault', silverbullet: { port: 4849, version: SB_VERSION }, projects: [], apps: [], appearance: 'auto', jobs: normaliseJobs(undefined) };
+  return { port: 4848, vault: '~/Crewdeck/vault', silverbullet: { port: 4849, version: SB_VERSION }, projects: [], apps: [], appearance: 'auto', jobs: normaliseJobs(undefined), address: { short: false, names: [] } };
 }
 
 /** Validate and default the `jobs` section; errors name the field. */
@@ -131,6 +142,19 @@ export function setJobsSettings(changes: { enabled?: boolean; home?: string; wor
   renameSync(tmp, path);
 }
 
+/** Change the `address` section (crewdeck address --done), keeping the rest of the file and its comments. */
+export function setAddress(a: AddressConfig, path = CONFIG_PATH) {
+  normaliseAddress(a);
+  const doc = parseDocument(existsSync(path) ? readFileSync(path, 'utf8') : '');
+  if (doc.errors.length) throw new Error(`${path}: ${doc.errors[0].message}`);
+  if (doc.contents === null) doc.contents = doc.createNode({}) as any;
+  doc.setIn(['address'], doc.createNode(a));
+  ensureHome(dirname(path));
+  const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+  writeFileSync(tmp, doc.toString(), { mode: 0o600 });
+  renameSync(tmp, path);
+}
+
 export function loadConfig(path = CONFIG_PATH): Config {
   if (!existsSync(path)) throw new Error(`No config yet. Run: crewdeck init`);
   const c = { ...defaults(), ...(parse(readFileSync(path, 'utf8')) ?? {}) } as Config;
@@ -147,9 +171,26 @@ export function loadConfig(path = CONFIG_PATH): Config {
   });
   c.appearance = normaliseAppearance(c.appearance);
   c.jobs = normaliseJobs((c as any).jobs);
+  c.address = normaliseAddress((c as any).address);
   c.vault = expand(c.vault);
   return c;
 }
+
+const HOST_NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+/** Validate the `address` section; errors name the field. */
+export function normaliseAddress(raw: unknown): AddressConfig {
+  const a = (raw ?? {}) as Record<string, any>;
+  if (typeof a !== 'object' || Array.isArray(a)) throw new Error('address: must be a map of settings');
+  for (const k of Object.keys(a)) if (!['short', 'names', 'port'].includes(k)) throw new Error(`address.${k}: unknown setting (known: short, names, port)`);
+  if (a.port !== undefined && (!Number.isInteger(a.port) || a.port < 1024 || a.port > 65535)) throw new Error('address.port: the shell port the redirect points at');
+  if (a.short !== undefined && typeof a.short !== 'boolean') throw new Error('address.short: use true or false');
+  const names = a.names ?? [];
+  if (!Array.isArray(names) || names.some((n) => typeof n !== 'string' || !HOST_NAME.test(n.toLowerCase()) || /^(localhost|crewdeck\.localhost)$/i.test(n))) throw new Error('address.names: a list of host names, like crew.deck');
+  return { short: !!a.short, names: names.map((n: string) => n.toLowerCase()), ...(a.port !== undefined ? { port: a.port } : {}) };
+}
+
+/** The address people open: http://crewdeck.localhost:<port>, or without the port once the redirect is installed. */
+export const pageUrl = (c: Pick<Config, 'port'> & { address?: AddressConfig }, path = '') => `http://crewdeck.localhost${effectiveAddress(c).short ? '' : `:${c.port}`}${path}`;
 
 export function saveConfig(c: Config, path = CONFIG_PATH) {
   ensureHome(dirname(path));

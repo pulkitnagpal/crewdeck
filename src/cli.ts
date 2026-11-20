@@ -5,7 +5,8 @@ import { execFileSync } from 'node:child_process';
 import { join, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parse } from 'yaml';
-import { CONFIG_PATH, HOME, REPO, SB_VERSION, TOKEN_PATH, defaults, ensureHome, ensureToken, expand, loadConfig, readToken, rotateToken, saveConfig, writeCliWrapper, type Config } from './config.ts';
+import { CONFIG_PATH, HOME, REPO, SB_VERSION, TOKEN_PATH, defaults, effectiveAddress, ensureHome, ensureToken, expand, loadConfig, pageUrl, readToken, rotateToken, saveConfig, writeCliWrapper, type Config } from './config.ts';
+import { useAddress } from './http.ts';
 import { freePort, notesSocketPath, silverbulletService } from './services.ts';
 import { supervise, silverbulletBin, backlogBin } from './supervisor.ts';
 import { createProxy } from './proxy.ts';
@@ -105,14 +106,89 @@ async function setup(args: string[]) {
   const preset = flag(args, 'preset');
   for (const l of await jobsInit({ preset, quiet: true })) say(l);
   const c = loadConfig();
+  let plugin = false;
   if (args.includes('--no-plugin')) say('· plugin not installed (--no-plugin)');
-  else { const p = installPlugin(c.port); say(`${p.ok ? '✓' : '✗'} ${p.text}`); }
+  else { const p = installPlugin(c.port); plugin = p.ok; say(`${p.ok ? '✓' : '✗'} ${p.text}`); }
+  // Always on (docs/everywhere.md E4): only when asked. The README's install prompt has Claude ask the person first.
+  const svc = await import('./service.ts');
+  if (args.includes('--service')) { for (const l of svc.installService()) say(l); }
+  else if (!args.includes('--no-service') && !svc.serviceInstalled()) say('· Crewdeck runs only while crewdeck up runs. To keep it running in the background (it starts when you log in): crewdeck service install');
+  const running = svc.serviceInstalled() && (await svc.waitForCrewdeck(c.port, 15_000));
   say(['', 'Done. Now:',
-    '  1. Start Crewdeck: crewdeck up   (leave it running)',
-    `  2. Open http://localhost:${c.port} (in Claude desktop: ask Claude to open it in the browser pane) and click Jobs.`,
-    `  3. In Claude desktop, start a new Code session in the folder ${c.jobs.workspace}`,
+    running ? `  1. Crewdeck is running at ${pageUrl(c)} (open it in any browser, or in Claude desktop's browser pane).` : `  1. Start Crewdeck: crewdeck up (leave it running), then open ${pageUrl(c)}`,
+    plugin ? '  2. In any new Claude session, type /crewdeck for today\'s to-dos, jobs and tickets beside the chat.' : '  2. With the crewdeck plugin (crewdeck setup without --no-plugin), /crewdeck in any Claude session shows today beside the chat.',
+    `  3. For Jobs: in Claude desktop, start a new Code session in the folder ${c.jobs.workspace}`,
     '     and say hello. Then click "Set up with Claude" on the Jobs page: Claude interviews you there.',
   ].join('\n'));
+}
+
+/** crewdeck open [jobs|notes]: start Crewdeck if it isn't running, then open it in the default browser. */
+async function openCmd(args: string[]) {
+  const c = loadConfig();
+  const where = args.find((a) => !a.startsWith('--')) ?? '';
+  const paths: Record<string, string> = { '': '/', jobs: '/#jobs', notes: '/#notes' };
+  if (!Object.hasOwn(paths, where)) throw new Error('usage: crewdeck open [jobs|notes]');
+  const svc = await import('./service.ts');
+  const who = await svc.whoAnswers(c.port);
+  if (who === 'other') throw new Error(`Another program answers on port ${c.port}: stop it, or change port in ${CONFIG_PATH}`);
+  if (who === 'none') {
+    say(`Starting Crewdeck (${svc.startDetached()})…`);
+    if (!(await svc.waitForCrewdeck(c.port))) throw new Error(`Crewdeck did not start in 20 s: see ${join(HOME, 'logs')}`);
+  }
+  const url = pageUrl(c, paths[where]);
+  const o = svc.opener();
+  if (o && !args.includes('--print')) execFileSync(o[0], [...o[1], url], { stdio: 'ignore' });
+  say(url);
+}
+
+/** crewdeck service install|uninstall|status|restart: Crewdeck in the background, started at login (E4). */
+async function serviceCmd(args: string[]) {
+  const c = loadConfig();
+  const svc = await import('./service.ts');
+  const verb = args[0];
+  if (verb === 'install') { for (const l of svc.installService()) say(l); if (await svc.waitForCrewdeck(c.port)) say(`✓ running at ${pageUrl(c)}`); else say(`✗ not answering yet: see ${join(HOME, 'logs', 'service.log')}`); return; }
+  if (verb === 'uninstall') { for (const l of svc.uninstallService()) say(l); return; }
+  if (verb === 'restart') { for (const l of svc.restartService()) say(l); return; }
+  if (verb === 'status') {
+    const plan = svc.servicePlan();
+    say(`${svc.serviceInstalled(plan) ? '✓ installed' : '· not installed'} (${plan.file})`);
+    const who = await svc.whoAnswers(c.port);
+    say(who === 'this' ? `✓ running at ${pageUrl(c)}` : who === 'other' ? `✗ another program answers on port ${c.port}` : '· not running');
+    for (const l of svc.serviceLogTail()) say(`  ${l}`);
+    return;
+  }
+  throw new Error('usage: crewdeck service install|uninstall|status|restart');
+}
+
+/** crewdeck address [--short [--name crew.deck]] [--undo]: the address without a port (E3); prints sudo steps, runs none. */
+async function addressCmd(args: string[]) {
+  const c = loadConfig();
+  const { shortAddressPlan, writeShortAddress } = await import('./address.ts');
+  if (!args.includes('--short') && !args.includes('--undo')) {
+    say(`Crewdeck's address: ${pageUrl(c)}`);
+    if (!c.address.short) say('Without the port (http://crewdeck.localhost): crewdeck address --short   (needs your admin password once)');
+    return;
+  }
+  const name = flag(args, 'name');
+  const undo = args.includes('--undo');
+  if (args.includes('--done')) {
+    const { setAddress } = await import('./config.ts');
+    if (undo) { setAddress({ short: false, names: [] }); say(`✓ Crewdeck's address is ${pageUrl({ port: c.port })} again`); }
+    else {
+      const { shortAddressReaches } = await import('./address.ts');
+      const token = readToken();
+      if (!token || !(await shortAddressReaches(c.port, token))) throw new Error('http://crewdeck.localhost (port 80) does not reach this Crewdeck, or another program answers on [::1]:80: is Crewdeck running, did each sudo step succeed, and is nothing else using port 80? Nothing changed.');
+      const names = [...new Set([...c.address.names, ...(name ? [name.toLowerCase()] : [])])];
+      setAddress({ short: true, names, port: c.port });
+      say(`✓ Crewdeck's address is now http://crewdeck.localhost${names.length ? ` (and ${names.map((n) => `http://${n}`).join(', ')})` : ''}`);
+    }
+    const svc = await import('./service.ts');
+    if (svc.serviceInstalled()) { for (const l of svc.restartService()) say(l); }
+    else say('Restart Crewdeck (stop crewdeck up and start it again) so it answers to the new address.');
+    return;
+  }
+  const plan = shortAddressPlan({ port: c.port, name, undo });
+  for (const l of writeShortAddress(plan)) say(l);
 }
 
 function loadConfigRaw(): Config {
@@ -137,6 +213,19 @@ function addProject(args: string[]) {
 async function up() {
   const c = loadConfig();
   ensureHome();
+  // Already running (the background service, or another terminal): say where, and leave its token alone. The background
+  // service waits instead, and takes over when that one stops (security review #9: launchd wouldn't restart a clean exit).
+  const { whoAnswers, takeStartLock } = await import('./service.ts');
+  const service = process.env.CREWDECK_SERVICE === '1';
+  for (;;) {
+    const who = await whoAnswers(c.port);
+    if (who === 'other') throw new Error(`Another program answers on port ${c.port}: stop it, or change port in ${CONFIG_PATH}`);
+    if (who === 'none' && takeStartLock()) break;
+    if (!service) return say(`Crewdeck is already ${who === 'this' ? 'running' : 'starting'}: ${pageUrl(c)}`);
+    await new Promise((r) => setTimeout(r, 15_000));
+  }
+  if (c.address.short && c.address.port !== c.port) say(`! The address without a port still points at port ${c.address.port ?? '?'}, not ${c.port}: run crewdeck address --short again. Until then use ${pageUrl({ port: c.port })}`);
+  useAddress(effectiveAddress(c));
   // A fresh token every start: one that leaked stops working (the bridge re-reads it when the proof stops matching).
   const token = rotateToken();
   writeCliWrapper();
@@ -161,7 +250,7 @@ async function up() {
     createProxy({ target: { host: '127.0.0.1', port: internal }, injectHead: boardHead(c.appearance, theme) })
       .listen(p.boardPort!, '127.0.0.1');
   }
-  createShell(c, undefined, { token }).listen(c.port, '127.0.0.1', () => say(`Crewdeck on http://localhost:${c.port}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));
+  createShell(c, undefined, { token }).listen(c.port, '127.0.0.1', () => say(`Crewdeck on ${pageUrl(c)}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));
 }
 
 const api = agentCall;
@@ -229,6 +318,16 @@ async function doctor() {
   ok(!!readToken() && (statSync(TOKEN_PATH).mode & 0o077) === 0, `bridge token ${TOKEN_PATH} (0600)`);
   ok(existsSync(join(c.vault, 'CLAUDE.md')), `vault ${c.vault}`);
   for (const p of c.projects) ok(existsSync(join(p.path, 'backlog', 'config.yml')), `board ${p.name} (${p.path})`);
+  // Always on and from anywhere (docs/everywhere.md).
+  const svc = await import('./service.ts');
+  try { const plan = svc.servicePlan(); say(svc.serviceInstalled(plan) ? `✓ background service installed (${plan.file})` : '· not running in the background: crewdeck service install keeps it running and starts it at login'); } catch {}
+  const who = await svc.whoAnswers(c.port);
+  say(who === 'this' ? `✓ Crewdeck answers at ${pageUrl(c)}` : who === 'other' ? `✗ another program answers on port ${c.port}` : `· Crewdeck isn't running: crewdeck open (or crewdeck up)`);
+  if (c.address.short) {
+    const { answersOn } = await import('./address.ts');
+    if (c.address.port !== c.port) say(`✗ the address without a port points at port ${c.address.port ?? '?'}, not ${c.port}: crewdeck address --short again`);
+    if (await answersOn('::1', 80)) say('✗ another program answers on [::1]:80, where browsers may look for http://crewdeck.localhost first: stop it, or use the address with the port');
+  }
   // Jobs reads forms and prints resumes in the user's own Chromium-based browser, headless.
   const b = findBrowser(c.jobs.browser);
   if (!c.jobs.enabled) ok(!!b, b ? `browser for Jobs (forms, resume PDFs): ${b.name} (${b.path})` : `no Chromium-based browser for Jobs (forms, resume PDFs). ${installHint()}`);
@@ -241,8 +340,8 @@ const flag = (a: string[], n: string) => { const i = a.indexOf(`--${n}`); return
 const [cmd, ...rest] = process.argv.slice(2);
 // Jobs loads only when used.
 const jobs = (a: string[]) => import('./jobs/cli.ts').then((m) => m.main(a));
-const run: Record<string, (a: string[]) => unknown> = { setup, init: (a: string[]) => init(a), up, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, progress: progressCmd, jobs };
-const USAGE = 'usage: crewdeck setup [--vault <path>] [--preset <name>] [--no-plugin] | init [--vault <path>] | add-project <name> <repo> | up | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>';
+const run: Record<string, (a: string[]) => unknown> = { setup, init: (a: string[]) => init(a), up, open: openCmd, service: serviceCmd, address: addressCmd, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, progress: progressCmd, jobs };
+const USAGE = 'usage: crewdeck setup [--vault <path>] [--preset <name>] [--no-plugin] [--service|--no-service] | init [--vault <path>] | add-project <name> <repo> | up | open [jobs|notes] | service install|uninstall|status|restart | address [--short [--name <host>]] [--undo] | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>';
 if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help' || !Object.hasOwn(run, cmd)) { say(USAGE); process.exit(cmd && !['--help', '-h', 'help'].includes(cmd) ? 1 : 0); }
 // --help never runs a command (jobs has its own help).
 if (cmd !== 'jobs' && (rest.includes('--help') || rest.includes('-h'))) { say(USAGE); process.exit(0); }

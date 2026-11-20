@@ -54,8 +54,8 @@ test('presets (deprecated alias, D39): each one is a valid search.md; sources co
 
 const skillNames = () => readdirSync(SKILLS).filter((d) => existsSync(join(SKILLS, d, 'SKILL.md')));
 
-test('skills: the four playbooks, each with a name that matches its folder and a description that says when to use it', () => {
-  assert.deepEqual(skillNames().sort(), ['crewdeck-memory', 'jobs-daily-run', 'jobs-setup', 'jobs-workspace']);
+test('skills: the five playbooks, each with a name that matches its folder and a description that says when to use it', () => {
+  assert.deepEqual(skillNames().sort(), ['crewdeck-memory', 'crewdeck-open', 'jobs-daily-run', 'jobs-setup', 'jobs-workspace']);
   for (const name of skillNames()) {
     const text = read('plugin', 'skills', name, 'SKILL.md');
     const fm = parse(splitNote(text).front!);
@@ -106,7 +106,7 @@ test('skills: the four playbooks, each with a name that matches its folder and a
 
 const SRC_TOP = read('src', 'cli.ts');
 const SRC_JOBS = read('src', 'jobs', 'cli.ts') + read('src', 'jobs', 'commands.ts') + read('src', 'jobs', 'sources-cmd.ts');
-const TOP = ['init', 'up', 'add-project', 'doctor', 'requests', 'request', 'progress', 'jobs'];
+const TOP = ['setup', 'init', 'up', 'open', 'service', 'address', 'add-project', 'doctor', 'requests', 'request', 'progress', 'jobs'];
 /** Commands whose next word is a verb. */
 const VERBS = new Set(['me', 'pref', 'request', 'event', 'question', 'linkedin', 'contact', 'message', 'followup', 'view', 'sources']);
 const literal = (src: string, w: string) => src.includes(`'${w}'`) || src.includes(`"${w}"`);
@@ -183,11 +183,11 @@ test('every crewdeck command in the skills, the generated workspace CLAUDE.md an
 
 // ---- the plugin ----
 
-test('the plugin is named crewdeck (0.5.0) everywhere; the bridge keeps its token and proof', () => {
+test('the plugin is named crewdeck (0.6.0) everywhere; the bridge keeps its token and proof', () => {
   const p = JSON.parse(read('plugin', '.claude-plugin', 'plugin.json'));
   assert.equal(p.name, 'crewdeck');
   assert.equal(p.displayName, 'Crewdeck');
-  assert.equal(p.version, '0.5.0');
+  assert.equal(p.version, '0.6.0');
   const m = JSON.parse(read('.claude-plugin', 'marketplace.json'));
   assert.deepEqual(m.plugins.map((x: any) => x.name), ['crewdeck']);
   const reg = read('plugin', 'hooks', 'register.tsx');

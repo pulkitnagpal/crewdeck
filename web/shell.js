@@ -77,16 +77,32 @@
     if (r.status === 'done' || r.status === 'failed') { setSent(`${r.status === 'done' ? '✓' : '✗'} ${r.result || r.status}`, r.status === 'done' ? 'ok' : 'bad'); watching = null; }
   }, 2000);
 
+  /** Show Notes on one page (a vault path like journal/2026-11-20), if it is a plain page name. */
+  function openNote(page) {
+    if (!/^[A-Za-z0-9 _.-]+(\/[A-Za-z0-9 _.-]+)*$/.test(page) || page.includes('..')) return false;
+    show('notes');
+    frames.notes.src = `${host}:${state.notes.port}/${page.split('/').map(encodeURIComponent).join('/')}`;
+    return true;
+  }
   // Jobs asks to open a note ("Open in Notes"): switch to Notes on that page. Only this origin's own frames may ask.
   addEventListener('message', (e) => {
     if (e.origin !== location.origin || e.data?.type !== 'crewdeck:open-notes') return;
-    const page = String(e.data.page ?? '');
-    if (!/^[A-Za-z0-9 _.-]+(\/[A-Za-z0-9 _.-]+)*$/.test(page) || page.includes('..')) return;
-    show('notes');
-    frames.notes.src = `${host}:${state.notes.port}/${page.split('/').map(encodeURIComponent).join('/')}`;
+    openNote(String(e.data.page ?? ''));
   });
+
+  // A link straight to a view (crewdeck open, the Today panel): #jobs, #notes, #notes/journal/2026-11-20, #board:<name>.
+  function fromHash() {
+    let h = '';
+    try { h = decodeURIComponent(location.hash.slice(1)); } catch { return false; }
+    if (!h) return false;
+    if (h.startsWith('notes/')) return openNote(h.slice(6));
+    if (!real.some((v) => v.id === h)) return false;
+    show(h);
+    return true;
+  }
+  addEventListener('hashchange', fromHash);
 
   let last = null;
   try { last = localStorage.getItem('crewdeck:view'); } catch {}
-  show(last ?? 'notes');
+  if (!fromHash()) show(last ?? 'notes');
 })();

@@ -3,6 +3,28 @@
 What changed for people using Crewdeck. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Crewdeck is not released yet: versions below name the `crewdeck` plugin's version and the state of `main`.
 
+## [Unreleased] — Crewdeck everywhere (plugin 0.6.0)
+
+One address, always on, in every Claude session ([design](docs/everywhere.md)).
+
+### Added
+
+- **`http://crewdeck.localhost:4848`**: a name to type, in every browser and Claude's browser pane, with nothing to set
+  up (`.localhost` names always mean this computer). `crewdeck address --short` prints the steps for the address
+  without a port (`http://crewdeck.localhost`, and `--name crew.deck`), which need your admin password once.
+- **Always on**: `crewdeck service install|uninstall|status|restart` runs Crewdeck in the background and starts it at
+  login (macOS LaunchAgent, Linux `systemd --user`). `crewdeck setup --service` installs it.
+- **`crewdeck open [jobs|notes]`** starts Crewdeck if needed and opens it in your browser. Links like `/#jobs` and
+  `/#notes/journal/2026-11-20` open that view.
+- **`/crewdeck` in every Claude session** (plugin 0.6.0): a Today panel beside the chat with today's to-dos (tick, add),
+  what Jobs is waiting on and your open tickets, which starts Crewdeck when it isn't running. `/crewdeck open|jobs|notes`
+  open the page; the `crewdeck-open` skill handles "open Crewdeck" said in words.
+
+### Changed
+
+- `crewdeck up` when Crewdeck already runs says where and leaves it alone (it no longer rotates the running one's token
+  or fails with `EADDRINUSE`). Every printed address is `http://crewdeck.localhost:<port>`.
+
 ## [Unreleased] — Jobs v0.4: Jobs for anyone
 
 The owner's first run as a new user found 1 role in 1,480 postings: the search had been built around one person. v0.4

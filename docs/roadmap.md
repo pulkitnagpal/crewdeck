@@ -26,6 +26,7 @@ What is built, what is deferred and why, and what Crewdeck will never do. Dates 
 |---|---|---|
 | Import data from the private Job Agent that Jobs grew out of | Every user, its author included, starts fresh as a new user; an import script is optional | A user with history worth keeping asks |
 | A packaged installer (Jobs v0.4, D40) | "Let Claude install it" covers non-developers today; an installer is a separate project | Users who can't run Claude desktop's Code tab |
+| A signed Mac app (menu bar icon, Node inside) | The background service and `/crewdeck` cover "always on" and "from anywhere" ([everywhere.md](everywhere.md)); an app needs signing and packaging | People who shouldn't install Node themselves |
 | A mobile client (D40) | Apply happens in the browser pane next to Crewdeck, which needs a desktop | A way to fill forms safely without the pane |
 | UI translations (D40) | No translations we can check; strings are English, Claude speaks the user's language | A maintained translation per language |
 | New job sources for uncovered markets (Naukri, Indeed, Apna, JobStreet PH, NHS Jobs…) | Providers come from career-ops through the reviewed re-pin, after checking each site's terms | Upstream adds them |

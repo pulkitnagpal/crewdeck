@@ -20,6 +20,7 @@
 //   requests this session holds keep their lease; on start, put back what a previous load of this session held.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Dollar, Register } from 'claude-code'
+import type { Today } from '../types'
 
 // A request is either text the person typed (Ask box) or a typed request from a page's own button (kind, ref and the
 // names of its payload fields only: the values, such as links or posting text, are read with `request show`).
@@ -42,6 +43,10 @@ const busy = atom({ plugin: 'crewdeck', key: 'busy' } as const, false, { shape: 
 const holdUntil = atom({ plugin: 'crewdeck', key: 'holdUntil' } as const, 0, { shape: 'hold-1' })
 const inflight = atom({ plugin: 'crewdeck', key: 'inflight' } as const, [] as number[], { shape: 'inflight-1' })
 const laneAtom = atom({ plugin: 'crewdeck', key: 'lane' } as const, '', { shape: 'lane-1' })
+// The Today panel (docs/everywhere.md E7): the last answer of /api/today, or why there is none.
+const todayAtom = atom({ plugin: 'crewdeck', key: 'today' } as const, null as Today | null, { shape: 'today-1' })
+const todayNote = atom({ plugin: 'crewdeck', key: 'todayNote' } as const, '', { shape: 'todayNote-1' })
+const paneOpen = atom({ plugin: 'crewdeck', key: 'paneOpen' } as const, false, { shape: 'paneOpen-1' })
 
 // The token, read once per load (module variables start over on reload, which re-reads it).
 let token = ''
@@ -62,12 +67,20 @@ async function sha256Hex(text: string): Promise<string> {
   return [...d].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+/** A value in curl's config syntax: double-quoted, with \ and " escaped (JSON text has no raw newlines). */
+const cfg = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+
 async function curl($: Dollar, port: number, path: string, body: unknown, withToken: boolean): Promise<unknown> {
-  const headers = ['-H', 'content-type: application/json', ...(withToken ? ['-H', `x-crewdeck-token: ${token}`] : [])]
-  const { exitCode, stdout } = await $.process.run(
-    ['curl', '-s', '-m', '3', '-X', 'POST', ...headers, '--data-binary', '@-', `http://127.0.0.1:${port}${path}`],
-    { stdin: JSON.stringify(body), timeoutMs: 5000 },
-  )
+  // Headers, body and address go to curl on stdin (--config -), never in its arguments: other users of the computer can
+  // read a process's arguments (ps), and the token must not be among them.
+  const config = [
+    `url = ${cfg(`http://127.0.0.1:${port}${path}`)}`,
+    'header = "content-type: application/json"',
+    ...(withToken ? [`header = ${cfg(`x-crewdeck-token: ${token}`)}`] : []),
+    `data-binary = ${cfg(JSON.stringify(body))}`,
+    '',
+  ].join('\n')
+  const { exitCode, stdout } = await $.process.run(['curl', '-s', '-m', '3', '-X', 'POST', '--config', '-'], { stdin: config, timeoutMs: 5000 })
   if (exitCode !== 0 || !stdout.trim()) return null
   try {
     return JSON.parse(stdout)
@@ -178,11 +191,166 @@ async function begin($: Dollar, port: number): Promise<void> {
   })
 }
 
+// ---- /crewdeck and the Today panel -------------------------------------------------------------------------------
+
+const PANE = 'crewdeck-today'
+
+async function crewdeckHome($: Dollar): Promise<string> {
+  const home = await $.process.run(['sh', '-c', 'printf %s "${CREWDECK_HOME:-$HOME/.crewdeck}"'], { timeoutMs: 3000 })
+  return home.exitCode === 0 ? home.stdout : ''
+}
+
+/** `crewdeck open --print`: starts Crewdeck when it isn't running (the service, or a detached `up`) and prints its address. */
+async function ensureRunning($: Dollar, port: number): Promise<string | null> {
+  if (await verified($, port)) return null
+  const home = await crewdeckHome($)
+  if (!home) return 'Crewdeck is not set up on this computer yet: see the README, "Let Claude install it".'
+  const cli = `${home}/bin/crewdeck`
+  const r = await $.process.run([cli, 'open', '--print'], { timeoutMs: 40_000 }).catch(() => null)
+  if (!r) return `Crewdeck is not set up yet (no ${cli}): run crewdeck setup once.`
+  if (r.exitCode !== 0) return `Crewdeck did not start: ${(r.stderr || r.stdout).trim().split('\n').pop() ?? ''}`
+  token = '' // a new start wrote a new token
+  return (await verified($, port)) ? null : 'Crewdeck started but does not answer yet: try again in a few seconds.'
+}
+
+async function refreshToday($: Dollar, port: number, body: Record<string, unknown> = {}, path = '/api/today'): Promise<void> {
+  const got = (await post($, port, path, body)) as (Today & { error?: string }) | null
+  if (!got) {
+    await update($, todayNote, () => (path === '/api/today' ? 'Crewdeck is not running. Press Start, or type /crewdeck.' : 'That did not save: Crewdeck is not running.'))
+    if (path === '/api/today') await update($, todayAtom, () => null)
+    return
+  }
+  if (got.error) { await update($, todayNote, () => String(got.error)); return }
+  await update($, todayAtom, () => got)
+  await update($, todayNote, () => '')
+}
+
+/** Open an address of Crewdeck in the person's default browser. */
+async function openUrl($: Dollar, url: string): Promise<void> {
+  if (!/^http:\/\/[a-z0-9.\-]+(:\d+)?\//.test(url)) return
+  const r = await $.process.run(['open', url], { timeoutMs: 5000 }).catch(() => null)
+  if (!r || r.exitCode !== 0) await $.process.run(['xdg-open', url], { timeoutMs: 5000 }).catch(() => null)
+}
+
+async function openToday($: Dollar, port: number): Promise<string> {
+  const problem = await ensureRunning($, port)
+  await update($, paneOpen, () => true)
+  if (problem) { await update($, todayNote, () => problem); await update($, todayAtom, () => null) }
+  else await refreshToday($, port)
+  await $.ui.open({ id: PANE, title: 'Crewdeck · Today' })
+  return problem ?? 'Crewdeck is open beside the chat.'
+}
+
+const DAY = (iso: string) => {
+  const d = new Date(`${iso}T12:00:00`)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+async function startToday($: Dollar, port: number): Promise<void> {
+  await $.command.register({ name: 'crewdeck', description: 'Crewdeck beside the chat: today\'s to-dos, jobs and tickets (starts Crewdeck if it is not running). /crewdeck open opens the full page.', argumentHint: '[open|jobs|notes]' })
+  // Every 20 s while the panel is open in this session: what changed on the page or in the files shows up here.
+  $.clock.every(20_000, async () => { if (await read($, paneOpen)) await refreshToday($, port) })
+}
+
 export const register: Register = (on, options) => {
   const port = Number((options as { port?: number }).port ?? 4848)
 
+
+  on('ui.close', async ($, e, next) => {
+    if (e.id === PANE) await update($, paneOpen, () => false)
+    return next(e)
+  })
+
+  on('command.run', { command: 'crewdeck' }, async ($, e) => {
+    const arg = String(e.args ?? '').trim().toLowerCase()
+    if (arg === 'open' || arg === 'jobs' || arg === 'notes') {
+      const problem = await ensureRunning($, port)
+      if (problem) return { text: problem }
+      await refreshToday($, port)
+      const t = await read($, todayAtom)
+      const url = `${t?.url ?? `http://crewdeck.localhost:${port}`}/${arg === 'open' ? '' : `#${arg}`}`
+      await openUrl($, url)
+      return { text: `Opened ${url} in your browser.` }
+    }
+    return { text: await openToday($, port) }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text, Button, Input } = $.ui.resolve(e)
+    const t = await read($, todayAtom)
+    const note = await read($, todayNote)
+    const glance = e.props.placement === 'widget'
+    if (!t) {
+      return (
+        <Box flexDirection="column" gap={1}>
+          <Text bold>Crewdeck</Text>
+          <Text>{note || 'Loading…'}</Text>
+          <Button key="start" label="Start Crewdeck" variant="primary" onPress={async () => { await openToday($, port) }} />
+        </Box>
+      )
+    }
+    const open = t.todos.filter((x) => !x.done)
+    const j = t.jobs
+    if (glance) {
+      return (
+        <Box flexDirection="column">
+          <Text bold>Today · {open.length} to do{j && 'counts' in j ? ` · ${j.counts.needs_you + j.counts.ready} jobs for you` : ''}</Text>
+          {open.slice(0, 3).map((x) => <Text key={`g${x.line}`}>☐ {x.text}</Text>)}
+        </Box>
+      )
+    }
+    const toggle = (line: number, text: string, done: boolean) => refreshToday($, port, { date: t.date, op: 'set', line, text, done }, '/api/today/todo')
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Box flexDirection="column">
+          <Text bold>{DAY(t.date)}</Text>
+          {note ? <Text color="warning">{note}</Text> : null}
+        </Box>
+
+        <Box flexDirection="column">
+          <Text bold>To do</Text>
+          {t.todos.length === 0 && <Text dimColor>Nothing yet. Add one below.</Text>}
+          {t.todos.map((x) => (
+            <Button key={`todo-${x.line}`} plain label={`${x.done ? '☑' : '☐'} ${x.text}`} onPress={() => toggle(x.line, x.text, !x.done)} />
+          ))}
+          <Input key="add-todo" placeholder="Add a to-do and press Enter" submitLabel="add"
+            onSubmit={async (v) => { if (v.trim()) await refreshToday($, port, { date: t.date, op: 'add', text: v.trim() }, '/api/today/todo') }} />
+        </Box>
+
+        {j && 'counts' in j ? (
+          <Box flexDirection="column">
+            <Text bold>Jobs</Text>
+            {j.setup_needed ? <Text>Not set up yet: open Jobs and click Set up with Claude.</Text> : (
+              <Text>{[j.counts.needs_you ? `${j.counts.needs_you} need you` : '', j.counts.ready ? `${j.counts.ready} ready to submit` : '', j.counts.in_progress ? `${j.counts.in_progress} in progress` : '', j.counts.applied_today ? `${j.counts.applied_today} applied today` : ''].filter(Boolean).join(' · ') || 'Nothing waiting. Find jobs on the Jobs page.'}</Text>
+            )}
+            {j.queue.map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
+            {!j.connected && <Text dimColor>Jobs work needs a Claude Code session open in your jobs folder.</Text>}
+            <Button key="open-jobs" label="Open Jobs" onPress={() => openUrl($, `${t.url}/#jobs`)} />
+          </Box>
+        ) : j && 'error' in j ? <Text color="warning">Jobs: {String(j.error)}</Text> : null}
+
+        {t.projects.length > 0 && (
+          <Box flexDirection="column">
+            <Text bold>Tickets</Text>
+            {t.tickets.length === 0 && <Text dimColor>No open tickets.</Text>}
+            {t.tickets.map((k) => <Text key={`t-${k.project}-${k.id}`}>{k.id} {k.title} · {k.status}{t.projects.length > 1 ? ` (${k.project})` : ''}</Text>)}
+            {t.more > 0 && <Text dimColor>and {t.more} more on the boards</Text>}
+          </Box>
+        )}
+
+        <Box flexDirection="row" gap={1}>
+          <Button key="open" label="Open Crewdeck" variant="primary" onPress={() => openUrl($, `${t.url}/`)} />
+          <Button key="notes" label="Today's notes" onPress={() => openUrl($, `${t.url}/#notes/${t.notes_page}`)} />
+          <Button key="refresh" label="Refresh" onPress={() => refreshToday($, port)} />
+        </Box>
+      </Box>
+    )
+  })
+
+
   on('session.start', async ($, e, next) => {
     await begin($, port)
+    await startToday($, port)
     return next(e)
   })
 
