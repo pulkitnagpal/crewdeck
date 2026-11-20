@@ -242,3 +242,10 @@ test('review #5: a FIFO, symlink or huge file on a board is skipped, never read'
   writeFileSync(join(dir, 'task-4.md'), '---\nid: TASK-4\ntitle: Big\nstatus: To Do\n---\n' + 'x'.repeat(300_000));
   assert.deepEqual(ticketsOf([{ name: 'a', path: repo }]).tickets.map((t) => t.id), ['TASK-1']);
 });
+
+test('E11: the jobs session link opens Claude desktop on the jobs folder with a hello, both encoded', async () => {
+  const { sessionLink, JOBS_SESSION_PROMPT } = await import('../src/session-link.ts');
+  assert.equal(sessionLink('/srv/a b/Crewdeck/jobs', JOBS_SESSION_PROMPT), `claude://code/new?folder=%2Fsrv%2Fa%20b%2FCrewdeck%2Fjobs&q=${encodeURIComponent(JOBS_SESSION_PROMPT)}`);
+  assert.equal(sessionLink('/x&q=evil'), 'claude://code/new?folder=%2Fx%26q%3Devil');
+  assert.throws(() => sessionLink('~/Crewdeck/jobs'), /absolute/);
+});

@@ -1,7 +1,7 @@
 // What is missing (design §2.9): no Claude session on the jobs lane, a note that fails validation, no browser.
 import { html, noop, plural, CopyButton } from '../lib.js';
 
-export function Banners({ state, onNotes = noop, onToast = noop }) {
+export function Banners({ state, onNotes = noop, onToast = noop, onOpenSession = noop }) {
   if (!state) return null;
   const a = state.agent ?? {};
   const waiting = a.waiting?.length ?? 0;
@@ -9,10 +9,10 @@ export function Banners({ state, onNotes = noop, onToast = noop }) {
   if (!a.connected && !state.setup?.needed) {
     list.push(html`<div class=${`banner ${waiting ? 'warn' : ''}`} key="session">
       <div class="body">
-        <span><b>No Claude session is working Jobs.</b> In Claude desktop, start a new Code session in this folder: <code>${a.workspace}</code>${waiting ? html` · ${plural(waiting, 'request')} waiting` : ''}</span>
+        <span><b>No Claude session is working Jobs.</b> Open one in Claude desktop: <b>Open in Claude</b> starts a Code session in your jobs folder, <code>${a.workspace}</code>${waiting ? html` · ${plural(waiting, 'request')} waiting` : ''}</span>
         <span class="fix">Your requests wait here until that session picks them up. It needs the crewdeck plugin, which <code>crewdeck setup</code> installs.</span>
       </div>
-      <div class="row-flex"><${CopyButton} text=${a.workspace} label="Copy folder" onCopied=${onToast} /></div>
+      <div class="row-flex">${a.open_session ? html`<button type="button" class="btn small primary" onClick=${onOpenSession}>Open in Claude</button>` : null}<${CopyButton} text=${a.workspace} label="Copy folder" onCopied=${onToast} /></div>
     </div>`);
   }
   for (const [i, b] of (state.banners ?? []).entries()) {

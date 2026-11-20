@@ -14,6 +14,7 @@ import { type FSWatcher, existsSync, readFileSync, realpathSync, statSync, watch
 import { parse as parseYaml } from 'yaml';
 import { basename, join, sep } from 'node:path';
 import { type Config, CONFIG_PATH, HOME, REPO, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, featureValue, normaliseJobs, setFeature } from '../config.ts';
+import { JOBS_SESSION_PROMPT, sessionLink } from '../session-link.ts';
 import { HttpError, SECURITY_HEADERS, fromAgent, fromOwnPage, json, ownRead, readJson, send } from '../http.ts';
 import { type JobKind, type Request, type Requests, RequestError, isOpen } from '../requests.ts';
 import { type Ctx, makeCtx, notesOf, todayOf } from './ctx.ts';
@@ -55,6 +56,8 @@ export type JobsApi = {
 };
 export type JobsGlance = {
   setup_needed: boolean; connected: boolean;
+  /** Opens a Claude Code session in the jobs folder (claude://code/new…). */
+  session_link: string;
   counts: { needs_you: number; ready: number; in_progress: number; applied_today: number };
   queue: { company: string; title: string; chip: string; kind: string }[];
 };
@@ -62,6 +65,8 @@ export type JobsApiOptions = {
   configPath?: string; pollMs?: number; platform?: string;
   /** Show a file in Finder (tests replace it). */
   reveal?: (file: string) => Promise<void>;
+  /** Open a claude://code/new link with the system's handler (tests replace it). */
+  openLink?: (link: string) => Promise<void>;
   browser?: () => { name: string; path: string } | null;
   /** The sourcing timer (tests replace the child run and the delays). */
   sources?: Partial<Pick<SchedulerOptions, 'run' | 'firstDelayMs' | 'everyMs' | 'ready'>>;
@@ -371,7 +376,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const recent = all.filter((r) => !isOpen(r) && Date.now() - Date.parse(r.updated) < 3_600_000).slice(0, 5);
     const lines = all.flatMap((r) => (r.progress ?? []).map((l) => ({ ...l, request: r.id }))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
     return {
-      connected: p.connected, seen: p.seen, workspace: c.jobs.workspace,
+      connected: p.connected, seen: p.seen, workspace: c.jobs.workspace, open_session: platform === 'darwin' || platform === 'linux',
       working: all.filter((r) => r.status === 'picked').map(item), waiting: all.filter((r) => r.status === 'new').reverse().map(item),
       recent: recent.map(item), lines,
     };
@@ -684,6 +689,15 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
         .finally(() => { resolving.delete(key); emit('sources'); });
       return { ok: true, key, started };
     },
+    // "Open in Claude": a new Claude Code session in the jobs folder, in Claude desktop (docs/everywhere.md E11). The link
+    // is built here from the config, never from the page; the page's frame can't open a claude:// link itself (CSP).
+    openSession: async () => {
+      if (platform !== 'darwin' && platform !== 'linux') throw new HttpError(404, 'Open in Claude needs macOS or Linux');
+      const link = sessionLink(c.jobs.workspace, JOBS_SESSION_PROMPT);
+      const cmd = platform === 'darwin' ? 'open' : 'xdg-open';
+      await (o.openLink ?? ((l: string) => new Promise<void>((ok, bad) => execFile(cmd, [l], (e) => (e ? bad(new HttpError(500, 'Claude desktop did not open: is it installed?')) : ok())))))(link);
+      return { ok: true };
+    },
     reveal: async (b) => {
       if (platform !== 'darwin') throw new HttpError(404, 'Show in Finder is only on macOS');
       const r = roleArg(b.role);
@@ -799,6 +813,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       setup_needed: setupView(notesOf(ctx)).needed,
       connected: requests.presence(LANE).connected,
+      session_link: sessionLink(c.jobs.workspace, JOBS_SESSION_PROMPT),
       counts: { needs_you: count('first') + count('warn'), ready: count('ready'), in_progress: kinds.filter((k) => !['first', 'warn', 'ready', 'applied'].includes(k)).length, applied_today: count('applied') },
       queue: v.queue.filter((q: any) => q.chip?.kind !== 'applied').slice(0, 6).map((q: any) => ({ company: String(q.company), title: String(q.title), chip: String(q.chip?.text ?? ''), kind: String(q.chip?.kind ?? '') })),
     };

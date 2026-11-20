@@ -47,7 +47,7 @@ function AnswerBox({ label, options = [], onSave, required = true }) {
   </div>`;
 }
 
-export function ApplyPanel({ d, panel, reveal = false, workspace = '', onApply = noop, onCancel = noop, onMarkApplied = noop, onAnswer = noop, onReveal = noop, onToast = noop }) {
+export function ApplyPanel({ d, panel, reveal = false, workspace = '', openSession = false, onOpenSession = noop, onApply = noop, onCancel = noop, onMarkApplied = noop, onAnswer = noop, onReveal = noop, onToast = noop }) {
   const p = panel ?? { state: 'ready', progress: [] };
   const c = d.counts;
   const url = safeHref(d.url);
@@ -80,7 +80,7 @@ export function ApplyPanel({ d, panel, reveal = false, workspace = '', onApply =
       break;
     case 'waiting':
       body = html`<div class="state info" role="status"><span class="title"><span class="dot wait"></span>Waiting for Claude</span>
-        <span class="small">${p.connected ? 'Claude picks it up as soon as the chat is idle.' : html`No Claude session is working Jobs: open one in <code>${workspace}</code>.`}</span>
+        <span class="small">${p.connected ? 'Claude picks it up as soon as the chat is idle.' : html`No Claude session is working Jobs: open one in <code>${workspace}</code>.${openSession ? html` <button type="button" class="btn small primary" onClick=${onOpenSession}>Open in Claude</button>` : ''}`}</span>
         <div class="row-flex">${cancel}</div></div>
         <${Steps} state="waiting" />`;
       break;

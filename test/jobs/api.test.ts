@@ -14,7 +14,7 @@ import { resumePath } from '../../src/jobs/views.ts';
 import { jobsServer, preparedRole, wait, TOKEN } from './api-helpers.ts';
 import { role } from './helpers.ts';
 
-const ACTIONS = ['setup', 'find', 'addLink', 'approve', 'retryApply', 'improve', 'editAnswer', 'answer', 'firstTimeChoice', 'notInterested', 'markApplied', 'select', 'prefs', 'feature', 'reveal', 'refreshSources'];
+const ACTIONS = ['setup', 'find', 'addLink', 'approve', 'retryApply', 'improve', 'editAnswer', 'answer', 'firstTimeChoice', 'notInterested', 'markApplied', 'select', 'prefs', 'feature', 'reveal', 'openSession', 'refreshSources'];
 
 test('jobs off: no Jobs page, no Jobs API, and the workspace is not a lane', async () => {
   const s = await jobsServer('example', { enabled: false });
@@ -532,4 +532,20 @@ test('C4: Cancel on the panel closes a waiting or stuck request; presence needs 
     assert.equal(t.json.panel.reason, 'Cancelled on the page');
     assert.equal((await s.action('cancel', { request: a.json.request })).status, 400, 'already closed');
   } finally { await s.close(); }
+});
+
+test('E11: Open in Claude opens the jobs folder\'s session link, built from the config; the state says where it works; a glance carries it', async () => {
+  const opened: string[] = [];
+  const s = await jobsServer('example', { api: { platform: 'darwin', openLink: async (l) => { opened.push(l); } } });
+  try {
+    const st = (await s.get('state')).json;
+    assert.equal(st.agent.open_session, true);
+    assert.equal((await s.action('openSession', { folder: '/etc', q: 'evil' })).status, 200);
+    assert.deepEqual(opened, [`claude://code/new?folder=${encodeURIComponent(st.agent.workspace)}&q=${encodeURIComponent('Hello! This is my Crewdeck Jobs session.')}`], 'the page\'s body is ignored');
+  } finally { await s.close(); }
+  const win = await jobsServer('example', { api: { platform: 'win32', openLink: async () => { throw new Error('never'); } } });
+  try {
+    assert.equal((await win.get('state')).json.agent.open_session, false);
+    assert.equal((await win.action('openSession', {})).status, 404);
+  } finally { await win.close(); }
 });

@@ -55,8 +55,9 @@ I am not a developer: explain each step in plain words and ask me before you run
 5. Run `node src/cli.ts doctor` and explain anything marked ✗.
 6. If I said no to the background service, start Crewdeck with `node src/cli.ts up` in the background and leave it
    running. Open http://crewdeck.localhost:4848 in the browser pane. Tell me I can type /crewdeck in any new Claude
-   session to see today's to-dos, jobs and tickets beside the chat. Then tell me the next step from
-   docs/jobs/first-run.md: a new Code session in ~/Crewdeck/jobs.
+   session to see today's to-dos, jobs and tickets beside the chat.
+7. For Jobs, run `node src/cli.ts open session`: Claude desktop opens a new Code session in ~/Crewdeck/jobs. Tell me to
+   confirm the folder and press Enter on the hello, then click "Set up with Claude" on the Jobs page.
 ```
 
 Claude runs the commands with your approval, one by one. The full walk-through, with what you should see at each step,
@@ -65,7 +66,9 @@ is [docs/jobs/first-run.md](docs/jobs/first-run.md).
 ## What's in it
 
 - **Notes.** Your vault: what Claude knows about you (`me/`), a wiki Claude keeps, a journal, notes per project. The
-  vault's `CLAUDE.md` tells every agent the rules.
+  vault's `CLAUDE.md` tells every agent the rules. Your files are listed on the left; the buttons at the top open
+  **Today** (today's journal page with a To do list), make a **new page**, and add bold, a checkbox, a heading or a link
+  to another page. Type `/` in a page for more. They are SilverBullet's own features, switched on by Crewdeck.
 - **Boards.** One kanban per project (To Do · In Progress · Needs you · Done). Tickets live in the project's repo.
 - **Jobs.** A job search for any role in any country. Claude interviews you once and writes your notes; it finds roles
   within a token budget, reads a posting you paste, prepares every answer from your own words, and fills the form in a
@@ -114,7 +117,8 @@ Without `--service`, start it yourself with `node src/cli.ts up` and leave that 
 Then:
 
 1. Open **http://crewdeck.localhost:4848** in Claude desktop's browser pane (or any browser) and click **Jobs**.
-2. In Claude desktop, start a new Code session in your jobs folder, **`~/Crewdeck/jobs`**, and say hello. Its status
+2. Click **Open in Claude** on the Jobs page (or run `crewdeck open session`): Claude desktop opens a new Code session
+   in your jobs folder, **`~/Crewdeck/jobs`**. Confirm the folder and press Enter on the hello it fills in. Its status
    line shows `Crewdeck · jobs`, and the Jobs page shows **Claude connected**.
 3. On the Jobs page click **Set up with Claude** and answer Claude's questions in that chat.
 
@@ -170,6 +174,9 @@ claude plugin marketplace remove crewdeck
   it. Its log is `~/.crewdeck/logs/service.log`. Without it, `crewdeck up` runs Crewdeck until you stop it; `up` says so
   and does nothing when Crewdeck is already running.
 - **`crewdeck open`** (or `open jobs`, `open notes`) starts Crewdeck if it isn't running and opens it in your browser.
+  **`crewdeck open session`** opens a new Claude Code session in your jobs folder in Claude desktop (the same as **Open
+  in Claude** on the Jobs page and **Start the Jobs session** in the `/crewdeck` panel): Claude desktop asks you to
+  confirm the folder and fills in a hello you send with Enter.
 - **In any Claude session**, type **`/crewdeck`**: a panel beside the chat shows today's to-dos (tick them, add one),
   what Jobs is waiting on, and your open tickets, with buttons to open Crewdeck, Jobs or today's notes. It starts
   Crewdeck first when it isn't running. `/crewdeck open`, `/crewdeck jobs` and `/crewdeck notes` open the page. Saying

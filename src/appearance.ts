@@ -83,6 +83,46 @@ export function notesAppearancePage(a: Appearance): string {
     '```space-lua\nevent.listen {\n  name = "editor:init",\n  run = function()\n' + body + '\n  end\n}\n```\n';
 }
 
+/**
+ * Notes made easier with SilverBullet 2.12's own features only (docs/everywhere.md E12): its file tree open on the left,
+ * its Journal pointed at the vault's `journal/` with a "To do" checklist, and top-bar buttons for what a newcomer needs.
+ * Managed like the appearance page: rewritten on every start.
+ */
+export function notesHelpersPage(): string {
+  return `---\ndescription: Managed by Crewdeck. Rewritten on every start.\ntags: meta\n---\n` +
+    'Crewdeck turns on these SilverBullet features: the file list on the left (**Files**), **Today** (today\'s journal page, ' +
+    'with a To do checklist) and buttons for a new page, bold, a checkbox, a heading and a link to another page. ' +
+    'Type `/` in a page for more (headings, tasks, tables).\n\n' +
+    // Runs after the vault's own Library/Crewdeck/Setup.md (lower priority loads later), whose view.defaults it keeps.
+    '```space-lua\n-- priority: -1\n' +
+    'config.set("journal.prefix", "journal/")\n' +
+    'config.set("journal.template", "Library/Crewdeck/Journal Template")\n' +
+    // The file list open on the left unless the person set it otherwise (their own view.defaults stay as they are).
+    'local views = {}\n' +
+    'for k, v in pairs(config.get("view.defaults", {})) do views[k] = v end\n' +
+    'if views["std.spaceTree"] == nil then views["std.spaceTree"] = { dock = "lhs", open = true, width = 260 } end\n' +
+    'config.set("view.defaults", views)\n' +
+    'actionButton.define { icon = "sidebar", description = "Files", command = "Navigate: Tree", priority = 2.9, dropdown = false }\n' +
+    'actionButton.define { icon = "calendar", description = "Today", command = "Journal: Today", priority = 2.8, dropdown = false }\n' +
+    'actionButton.define { icon = "file-plus", description = "New page", priority = 2.7, run = function()\n' +
+    '  local n = editor.prompt("Name of the new page")\n' +
+    '  if n and n ~= "" then editor.navigate(n) end\n' +
+    'end }\n' +
+    'actionButton.define { icon = "md-format-bold", description = "Bold", command = "Text: Bold", priority = 2.4, mobile = false }\n' +
+    'actionButton.define { icon = "md-checklist", description = "Checkbox", command = "Text: Taskify Line", priority = 2.3, mobile = false }\n' +
+    'actionButton.define { icon = "md-format-size", description = "Heading", priority = 2.2, mobile = false, run = function()\n' +
+    '  local l = editor.getCurrentLine()\n' +
+    '  editor.replaceRange(l.from, l.to, "## " .. string.gsub(l.textWithCursor, "^#+%s*", ""), true)\n' +
+    'end }\n' +
+    'actionButton.define { icon = "md-link", description = "Link to a page", command = "Text: Wiki Link", priority = 2.1, mobile = false }\n' +
+    '```\n';
+}
+
+/** The template Journal: Today uses: the same `## To do` list the /crewdeck panel reads and adds to. */
+export function notesJournalTemplate(): string {
+  return '---\ntags: meta/template\ndescription: Managed by Crewdeck. Rewritten on every start.\n---\n# ${date.today()}\n\n## To do\n- [ ] |^|\n';
+}
+
 const boardVars = (p: Palette) =>
   `--cd-ground: ${p.ground}; --cd-panel: ${p.panel}; --cd-card: ${p.card}; --cd-line: ${p.line}; --cd-ink: ${p.ink}; ` +
   `--cd-muted: ${p.soft}; --cd-accent: ${p.accent}; --cd-accent-bg: ${p.accentBg};`;

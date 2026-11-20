@@ -11,7 +11,7 @@ function fileState(f) {
   return html`<span class="chip ok">ok</span>`;
 }
 
-export function SetupCard({ state, onSetup = noop, onNotes = noop, onToast = noop, onCancel = noop }) {
+export function SetupCard({ state, onSetup = noop, onNotes = noop, onToast = noop, onCancel = noop, onOpenSession = noop }) {
   const [editing, setEditing] = useState(false);
   const s = state.setup;
   const a = state.agent ?? {};
@@ -23,10 +23,10 @@ export function SetupCard({ state, onSetup = noop, onNotes = noop, onToast = noo
       <p class="lead">Claude asks about your work, from your resume or just by talking if you don't have one, then the kinds of job you want, where you can work and where to look. Before anything is used, it shows how many real postings your choices catch. Everything lands in notes you can read and change at any time.</p>
     </div>
     <ol class="how">
-      <li><div class="stack"><span>In Claude desktop, start a new <b>Code</b> session in your jobs folder and say hello</span>
-        <span class="row-flex"><code>${a.workspace}</code><${CopyButton} text=${a.workspace} label="Copy" onCopied=${onToast} />
+      <li><div class="stack"><span>Open a Claude <b>Code</b> session in your jobs folder and say hello</span>
+        <span class="row-flex">${a.open_session && !a.connected ? html`<button type="button" class="btn small primary" onClick=${onOpenSession}>Open in Claude</button>` : null}<code>${a.workspace}</code><${CopyButton} text=${a.workspace} label="Copy" onCopied=${onToast} />
           ${a.connected ? html`<span class="chip ok">Claude connected</span>` : html`<span class="chip">not connected yet</span>`}</span>
-        <span class="small soft">Pick the folder in the session's folder chooser (or paste the path). Claude works on Jobs only from there, with its own safety rules.</span></div></li>
+        <span class="small soft"><b>Open in Claude</b> starts the session in Claude desktop: confirm the folder, then press Enter on the hello it fills in. Or pick the folder in a new session's folder chooser. Claude works on Jobs only from there, with its own safety rules.</span></div></li>
       <li><div class="stack"><span>Click <b>Set up with Claude</b> and answer its questions in that chat, in your own words and your own language.</span>
         <span class="small soft">Have your resume or CV ready if you have one; no resume is fine too. It takes about 20 to 30 minutes.</span></div></li>
       <li><div class="stack"><span>Claude proposes job boards for your field and country, checks the careers pages of employers you name, fetches once and previews what passes your rules.</span>

@@ -14,6 +14,10 @@ One address, always on, in every Claude session ([design](docs/everywhere.md)).
   without a port (`http://crewdeck.localhost`, and `--name crew.deck`), which need your admin password once.
 - **Always on**: `crewdeck service install|uninstall|status|restart` runs Crewdeck in the background and starts it at
   login (macOS LaunchAgent, Linux `systemd --user`). `crewdeck setup --service` installs it.
+- **Open in Claude**: one click on the Jobs page (or **Start the Jobs session** in the panel, or `crewdeck open session`)
+  opens a Claude Code session in your jobs folder in Claude desktop, with a hello ready to send.
+- **Notes for newcomers**, with SilverBullet's own features: your files listed on the left, and buttons for Today
+  (today's journal page with a To do list), New page, bold, checkbox, heading and links.
 - **`crewdeck open [jobs|notes]`** starts Crewdeck if needed and opens it in your browser. Links like `/#jobs` and
   `/#notes/journal/2026-11-20` open that view.
 - **`/crewdeck` in every Claude session** (plugin 0.6.0): a Today panel beside the chat with today's to-dos (tick, add),

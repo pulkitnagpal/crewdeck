@@ -19,7 +19,9 @@ it" section. Don't install anything without the person's yes.
    --print`). It starts Crewdeck if it isn't running and prints the address. Then:
    - in Claude desktop, open that address in the browser pane (your browser tool for local pages);
    - anywhere else, run `crewdeck open` (or `crewdeck open jobs`) to open it in the person's default browser.
-3. **Today's to-dos, asked in words.** They are the `- [ ]` lines of today's journal page in their vault,
+3. **The jobs session.** Jobs work happens in a Claude Code session opened in the jobs folder. `crewdeck open session`
+   opens one in Claude desktop: tell the person to confirm the folder and press Enter on the hello it fills in.
+4. **Today's to-dos, asked in words.** They are the `- [ ]` lines of today's journal page in their vault,
    `journal/YYYY-MM-DD.md` (the vault folder is in `crewdeck jobs check`'s first lines, by default `~/Crewdeck/vault`).
    Read them from that file. To add one, add a `- [ ] <their words>` line under the page's `## To do` heading (create
    the page as `# YYYY-MM-DD`, a blank line, `## To do` if it doesn't exist). Change nothing else on the page.

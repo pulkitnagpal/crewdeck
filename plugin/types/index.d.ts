@@ -12,6 +12,7 @@ export type Today = {
     | {
         setup_needed: boolean
         connected: boolean
+        session_link: string
         counts: { needs_you: number; ready: number; in_progress: number; applied_today: number }
         queue: { company: string; title: string; chip: string; kind: string }[]
       }

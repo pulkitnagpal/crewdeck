@@ -29,6 +29,8 @@ take notes", reachable "anytime from anywhere".
 | E7 | **The Today panel** (a mod `Pane`, drawn by the desktop app beside the chat, or as a widget when minimised): Crewdeck's state, today's to-dos (tick, add), Jobs (what waits on you, ready to apply, whether the jobs session is connected), tickets in progress, and buttons: **Open Crewdeck**, **Open Jobs**, **Open today's notes**. Read and written through two new agent endpoints with the token (`POST /api/today`, `POST /api/today/todo`). | A glance and the daily actions without leaving the chat. The panel draws text, buttons, inputs and Markdown only (no web page inside it), so it is a summary that opens the full page. |
 | E8 | **To-dos are lines in today's journal page** (`journal/YYYY-MM-DD.md`, `- [ ]` / `- [x]` under `## To do`), the same file Notes and Obsidian show. The panel adds and ticks lines; it never rewrites other lines. | One source of truth, in the user's own notes, readable by every tool. |
 | E9 | **Tickets are read from each project's Backlog.md folder** (`backlog/tasks/*.md` frontmatter `status`), read-only in the panel; "In Progress" first. | Backlog.md stays the ticket tool (design.md non-goal: no new kanban). |
+| E11 | **Opening the jobs session is one click.** Claude desktop's documented link `claude://code/new?folder=<path>&q=<prompt>` ([support article](https://support.claude.com/en/articles/14729294-open-claude-desktop-with-a-link)) opens a Code session in the jobs folder with a hello in the message box (never sent by itself; the folder is always confirmed). The Jobs page's **Open in Claude** asks the server to open it (`openSession` page action: the link is built from the config, and the page's frame can't open a `claude://` link itself under the shell's CSP); the panel's **Start the Jobs session** and `crewdeck open session` open it with `open`/`xdg-open`. | New users missed "start a session in this folder"; this was the step most likely to stop them. |
+| E12 | **Notes uses SilverBullet's own helpers** (the owner: "if SilverBullet provides something natively, we can use it, otherwise park it"): a managed page `Library/Crewdeck/Notes.md` (Space Lua, priority -1) opens the built-in file tree (`std.spaceTree`) on the left unless the person set it otherwise, points `Journal: Today` at `journal/` with a "To do" template (`Library/Crewdeck/Journal Template.md`), and adds top-bar buttons: Files, Today, New page, Bold, Checkbox, Heading, Link to a page. | A newcomer saw a blank page with no list of files and no buttons. A richer editor is parked. |
 | E10 | **The panel never queues Jobs work.** Find, Prepare and Apply stay the Jobs page's own buttons (design §14: Jobs requests only from the page). The panel links to them. | The agent token must not become a way to start applications. |
 
 ## 3. Security
@@ -123,3 +125,18 @@ line by number and text (E7) and refuses a page edited since the panel drew.
 Checked and fine (the reviewer's words, summarised): the Host list is exact, the token endpoints refuse browsers, dates
 can't traverse, to-dos can't add lines, the plist is escaped, the mod opens only `http://` addresses from a server that
 proved itself.
+
+**After the first release candidate** (2026-11-20, owner: "complete work… as if released to the public now"):
+- Installed on the owner's Mac: the LaunchAgent runs Crewdeck at `http://crewdeck.localhost:4848` with their notes; a
+  `kill -9` of the server was restarted by launchd within a second (Notes with it); `claude -p "/crewdeck"` through the
+  installed plugin 0.6.0 answered "Crewdeck is open beside the chat." (the hello's proof and `/api/today` against the
+  real server); the jobs session reconnected to the new server.
+- E11 found in the browser pane: a plain `claude://` link inside the Jobs frame was blocked by the shell's CSP
+  (`frame-src`), so the button asks the server instead (`openSession`), which ran `open` and returned 200.
+- E12 found in a real SilverBullet: the vault's own `Library/Crewdeck/Setup.md` also sets `view.defaults` and won the
+  race, so the managed page loads after it (`-- priority: -1`) and merges instead of replacing. On a brand-new vault
+  SilverBullet applies the page from its second load (it indexes it on the first).
+- A second review of this delta (no high findings): the panel now opens only a session link with Crewdeck's exact hello
+  and an absolute folder (a forged answer could otherwise prefill other words); managed vault pages are written to a
+  temp file and renamed, never through a planted symlink. Tests for both.
+- Screenshots retaken: `jobs-setup-light.png` (Open in Claude), `notes-light.png` (file list, buttons, made-up to-dos).

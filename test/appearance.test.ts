@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PALETTE, boardHead, normaliseAppearance, notesAppearancePage, notesHead, tokensCss } from '../src/appearance.ts';
+import { PALETTE, boardHead, normaliseAppearance, notesAppearancePage, notesHead, notesHelpersPage, notesJournalTemplate, tokensCss } from '../src/appearance.ts';
 
 test('appearance: auto unless light or dark is asked for', () => {
   assert.equal(normaliseAppearance(undefined), 'auto');
@@ -35,4 +35,17 @@ test('boards: Backlog.md\'s own switch follows the system when auto, palette for
   assert.match(auto, /html \{ --cd-ground: #FBFAF7.*html\.dark \{ --cd-ground: #171716/s);
   assert.match(boardHead('dark', ''), /setItem\('backlog-theme','dark'\)/);
   assert.match(boardHead('dark', '/*rules*/'), /\/\*rules\*\/<\/style>$/);
+});
+
+test('E12: Notes turns on SilverBullet 2.12\'s own file tree, journal and buttons, after the vault\'s Setup page', () => {
+  const p = notesHelpersPage();
+  const lua = /```space-lua\n([\s\S]*?)```/.exec(p)![1];
+  assert.match(lua, /^-- priority: -1\n/, 'loads after Library/Crewdeck/Setup.md (no priority), so its view.defaults survive');
+  assert.match(lua, /config\.set\("journal\.prefix", "journal\/"\)/);
+  assert.match(lua, /config\.set\("journal\.template", "Library\/Crewdeck\/Journal Template"\)/);
+  assert.match(lua, /for k, v in pairs\(config\.get\("view\.defaults", \{\}\)\) do views\[k\] = v end/);
+  assert.match(lua, /if views\["std\.spaceTree"\] == nil then/);
+  for (const cmd of ['Navigate: Tree', 'Journal: Today', 'Text: Bold', 'Text: Taskify Line', 'Text: Wiki Link']) assert.ok(lua.includes(`command = "${cmd}"`), cmd);
+  // The panel and Today's checklist agree: the template's list is the same "## To do" with "- [ ]" items.
+  assert.match(notesJournalTemplate(), /^---\ntags: meta\/template\n[\s\S]*---\n# \$\{date\.today\(\)\}\n\n## To do\n- \[ \] \|\^\|\n$/);
 });

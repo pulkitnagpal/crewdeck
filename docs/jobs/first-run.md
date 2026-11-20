@@ -156,9 +156,12 @@ Click **Jobs** in the rail on the left.
 
 ## 4. Open a Claude Code session in your jobs folder
 
-In Claude desktop's Code tab, start a **new** session and pick the folder `~/Crewdeck/jobs` in the folder chooser (the
-setup card shows the full path; **Copy** puts it on your clipboard). Trust the folder when Claude Code asks, then say
-hello.
+Click **Open in Claude** on the setup card (or run `crewdeck open session`). Claude desktop opens a new Code session in
+your jobs folder: it asks you to confirm the folder (it always asks for a folder that comes from a link), and puts
+"Hello! This is my Crewdeck Jobs session." in the message box. Press Enter.
+
+By hand instead: in Claude desktop's Code tab, start a **new** session and pick the folder `~/Crewdeck/jobs` in the
+folder chooser (the setup card shows the full path; **Copy** puts it on your clipboard), then say hello.
 
 **You should see** within a few seconds: the session's status line reads `Crewdeck · jobs`, the card's "not connected
 yet" turns into **Claude connected**, and the top bar says **Claude connected**.
@@ -346,6 +349,9 @@ setup skill runs again over your current notes, and Claude writes only what you 
 
 - **Notes in the wrong theme** (light while the rest is dark, or the other way) on the first load after an older
   Crewdeck: reload the page once; it then follows Claude's light/dark.
+- **Notes' file list and buttons** (Files, Today, New page, bold, checkbox, heading, link) appear from the second time
+  Notes loads on a new vault: SilverBullet reads Crewdeck's settings page once it has indexed it. Reload Notes once.
+- **Open in Claude** needs the Claude desktop app; your browser may ask once whether to open it.
 - **`crewdeck.localhost`** works in Chrome, Edge, Brave, Firefox, Safari and Claude's browser pane with nothing set up.
   An address without the port is optional: `crewdeck address --short` (your admin password, once).
 - **The plugin loads only in new sessions.** A session that was open before `crewdeck setup` never connects: start a

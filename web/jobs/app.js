@@ -97,6 +97,7 @@ function App() {
     onMarkApplied: (role) => run('markApplied', { role }, 'Marked applied'),
     onCancel: (request) => run('cancel', { request }, 'Cancelled'),
     onReveal: (role) => run('reveal', { role }),
+    onOpenSession: () => run('openSession', {}, 'Claude desktop is opening: confirm the folder, then press Enter on the hello'),
     onSetup: () => run('setup', {}, 'Claude will start the setup in the chat'),
     onNotes: openNotes,
     onToast: say,
@@ -132,7 +133,7 @@ function App() {
     <${TopBar} screen=${screen} onNav=${nav} agent=${state?.agent} quota=${state?.quota ?? 5} setupNeeded=${!!state?.setup?.needed}
       onFind=${() => run('find', { count: state?.quota ?? 5 }, 'Sent to Claude')} onLink=${onLink}
       sources=${state?.sources} onRefresh=${() => run('refreshSources', {}, (r) => (r.already ? 'Already fetching' : 'Fetching new roles (no Claude needed)'))} />
-    <${Banners} state=${state} onNotes=${openNotes} onToast=${say} />
+    <${Banners} state=${state} onNotes=${openNotes} onToast=${say} onOpenSession=${actions.onOpenSession} />
     ${warned ? html`<div class="banners"><div class="banner warn"><div class="body"><b>That link wasn't added</b><span class="fix">${warned.result}</span></div>
       <div class="row-flex"><button type="button" class="btn small" onClick=${() => { const url = sentLinks.current.get(warned.id); sentLinks.current.delete(warned.id); run('addLink', { url, force: true }, 'Sent to Claude: add it anyway'); }}>Add it anyway</button>
       <button type="button" class="btn quiet small" onClick=${() => { sentLinks.current.delete(warned.id); load(); }}>Dismiss</button></div></div></div>` : null}

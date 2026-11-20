@@ -156,7 +156,7 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onSour
 export function Today({ data, state, preview = null, actions = {} }) {
   const a = { onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onCancel: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onDryRun: null, ...actions };
   const setup = state?.setup?.needed;
-  if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} onCancel=${a.onCancel} /></div>`;
+  if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onOpenSession=${a.onOpenSession} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} onCancel=${a.onCancel} /></div>`;
   const why = data.find ? html`<${WhySoFew} find=${data.find} preview=${preview} onFix=${a.onFix} onPreview=${a.onPreview} onSources=${a.onSources} />` : null;
   if (!data.queue.length) {
     return html`<div class="page">${why}<div class="empty">
@@ -181,7 +181,7 @@ export function Today({ data, state, preview = null, actions = {} }) {
     </nav>
     ${data.detail ? html`<div class="work">
       <${Detail} d=${data.detail} asking=${data.asking ?? []} exclude=${data.exclude_title_words ?? []} actions=${a} />
-      <${ApplyPanel} d=${data.detail} panel=${data.panel} reveal=${!!state?.reveal} workspace=${state?.agent?.workspace ?? ''}
+      <${ApplyPanel} d=${data.detail} panel=${data.panel} reveal=${!!state?.reveal} workspace=${state?.agent?.workspace ?? ''} openSession=${!!state?.agent?.open_session} onOpenSession=${a.onOpenSession}
         onApply=${a.onApply} onCancel=${a.onCancel} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />
     </div>` : null}
   </div></div>`;

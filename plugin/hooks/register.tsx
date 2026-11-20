@@ -225,9 +225,19 @@ async function refreshToday($: Dollar, port: number, body: Record<string, unknow
   await update($, todayNote, () => '')
 }
 
-/** Open an address of Crewdeck in the person's default browser. */
+/** What the jobs session's message box says (src/session-link.ts JOBS_SESSION_PROMPT): the only text the panel opens. */
+const JOBS_SESSION_Q = encodeURIComponent('Hello! This is my Crewdeck Jobs session.')
+/** A jobs-session link as Crewdeck builds it: an absolute folder and exactly the fixed hello, nothing else (review: a forged
+ * answer from the port must not prefill other words or open another kind of link). */
+function isJobsSessionLink(url: string): boolean {
+  const m = /^claude:\/\/code\/new\?folder=([^&#\s]+)&q=([^&#\s]*)$/.exec(url)
+  if (!m || m[2] !== JOBS_SESSION_Q) return false
+  try { return decodeURIComponent(m[1] ?? '').startsWith('/') } catch { return false }
+}
+
+/** Open an address of Crewdeck in the person's default browser, or a new Claude Code session (claude://code/new…). */
 async function openUrl($: Dollar, url: string): Promise<void> {
-  if (!/^http:\/\/[a-z0-9.\-]+(:\d+)?\//.test(url)) return
+  if (!/^http:\/\/[a-z0-9.\-]+(:\d+)?\//.test(url) && !isJobsSessionLink(url)) return
   const r = await $.process.run(['open', url], { timeoutMs: 5000 }).catch(() => null)
   if (!r || r.exitCode !== 0) await $.process.run(['xdg-open', url], { timeoutMs: 5000 }).catch(() => null)
 }
@@ -325,7 +335,10 @@ export const register: Register = (on, options) => {
             )}
             {j.queue.map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
             {!j.connected && <Text dimColor>Jobs work needs a Claude Code session open in your jobs folder.</Text>}
-            <Button key="open-jobs" label="Open Jobs" onPress={() => openUrl($, `${t.url}/#jobs`)} />
+            <Box flexDirection="row" gap={1}>
+              <Button key="open-jobs" label="Open Jobs" onPress={() => openUrl($, `${t.url}/#jobs`)} />
+              {!j.connected && j.session_link ? <Button key="jobs-session" label="Start the Jobs session" onPress={() => openUrl($, j.session_link)} /> : null}
+            </Box>
           </Box>
         ) : j && 'error' in j ? <Text color="warning">Jobs: {String(j.error)}</Text> : null}
 

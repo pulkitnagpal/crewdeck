@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // crewdeck — setup | init | up | add-project <name> <path> | doctor | jobs <cmd>
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync, chmodSync, rmSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync, chmodSync, rmSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, sep } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -11,7 +11,7 @@ import { freePort, notesSocketPath, silverbulletService } from './services.ts';
 import { supervise, silverbulletBin, backlogBin } from './supervisor.ts';
 import { createProxy } from './proxy.ts';
 import { createShell } from './server.ts';
-import { boardHead, notesAppearancePage, notesHead } from './appearance.ts';
+import { boardHead, notesAppearancePage, notesHead, notesHelpersPage, notesJournalTemplate } from './appearance.ts';
 import { findBrowser, installHint } from './jobs/browser.ts';
 import { agentCall, localRead } from './agent-client.ts';
 import { checkedPath, notCrewdeckFile } from './files.ts';
@@ -117,8 +117,9 @@ async function setup(args: string[]) {
   say(['', 'Done. Now:',
     running ? `  1. Crewdeck is running at ${pageUrl(c)} (open it in any browser, or in Claude desktop's browser pane).` : `  1. Start Crewdeck: crewdeck up (leave it running), then open ${pageUrl(c)}`,
     plugin ? '  2. In any new Claude session, type /crewdeck for today\'s to-dos, jobs and tickets beside the chat.' : '  2. With the crewdeck plugin (crewdeck setup without --no-plugin), /crewdeck in any Claude session shows today beside the chat.',
-    `  3. For Jobs: in Claude desktop, start a new Code session in the folder ${c.jobs.workspace}`,
-    '     and say hello. Then click "Set up with Claude" on the Jobs page: Claude interviews you there.',
+    `  3. For Jobs: open a Claude Code session in your jobs folder, ${c.jobs.workspace}: run crewdeck open session`,
+    '     (Claude desktop asks you to confirm the folder; press Enter on the hello). Then click "Set up with Claude" on',
+    '     the Jobs page: Claude interviews you in that session.',
   ].join('\n'));
 }
 
@@ -126,8 +127,16 @@ async function setup(args: string[]) {
 async function openCmd(args: string[]) {
   const c = loadConfig();
   const where = args.find((a) => !a.startsWith('--')) ?? '';
+  if (where === 'session') {
+    // A Claude Code session in the jobs folder, in Claude desktop (it asks to confirm the folder; the hello is not sent).
+    const { sessionLink, JOBS_SESSION_PROMPT } = await import('./session-link.ts');
+    const link = sessionLink(c.jobs.workspace, JOBS_SESSION_PROMPT);
+    const o = (await import('./service.ts')).opener();
+    if (o && !args.includes('--print')) execFileSync(o[0], [...o[1], link], { stdio: 'ignore' });
+    return say(link);
+  }
   const paths: Record<string, string> = { '': '/', jobs: '/#jobs', notes: '/#notes' };
-  if (!Object.hasOwn(paths, where)) throw new Error('usage: crewdeck open [jobs|notes]');
+  if (!Object.hasOwn(paths, where)) throw new Error('usage: crewdeck open [jobs|notes|session]');
   const svc = await import('./service.ts');
   const who = await svc.whoAnswers(c.port);
   if (who === 'other') throw new Error(`Another program answers on port ${c.port}: stop it, or change port in ${CONFIG_PATH}`);
@@ -210,6 +219,14 @@ function addProject(args: string[]) {
   say(`Added ${name} → ${expand(path)}`);
 }
 
+/** A page Crewdeck manages in the vault: written to a temp file and renamed over, so a link planted there is replaced, never
+ * followed out of the vault (security review). */
+function managedPage(file: string, text: string) {
+  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, text, { flag: 'wx' });
+  renameSync(tmp, file);
+}
+
 async function up() {
   const c = loadConfig();
   ensureHome();
@@ -234,7 +251,10 @@ async function up() {
   const theme = readFileSync(join(REPO, 'themes', 'backlog.css'), 'utf8');
   // Notes follows Crewdeck's appearance through a managed vault page (SilverBullet's own light/dark switch).
   mkdirSync(join(c.vault, 'Library', 'Crewdeck'), { recursive: true });
-  writeFileSync(join(c.vault, 'Library', 'Crewdeck', 'Appearance.md'), notesAppearancePage(c.appearance));
+  managedPage(join(c.vault, 'Library', 'Crewdeck', 'Appearance.md'), notesAppearancePage(c.appearance));
+  // SilverBullet's own file tree, journal and buttons, switched on for newcomers (managed pages, rewritten every start).
+  managedPage(join(c.vault, 'Library', 'Crewdeck', 'Notes.md'), notesHelpersPage());
+  managedPage(join(c.vault, 'Library', 'Crewdeck', 'Journal Template.md'), notesJournalTemplate());
   // SilverBullet on a private Unix socket (no TCP port); each board on a random internal port. Only the public proxy
   // ports (their own origins, Host/Origin checks) are documented; internal ports are never shown (design §14, W1/W2).
   const socket = notesSocketPath(HOME);
@@ -341,7 +361,7 @@ const [cmd, ...rest] = process.argv.slice(2);
 // Jobs loads only when used.
 const jobs = (a: string[]) => import('./jobs/cli.ts').then((m) => m.main(a));
 const run: Record<string, (a: string[]) => unknown> = { setup, init: (a: string[]) => init(a), up, open: openCmd, service: serviceCmd, address: addressCmd, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, progress: progressCmd, jobs };
-const USAGE = 'usage: crewdeck setup [--vault <path>] [--preset <name>] [--no-plugin] [--service|--no-service] | init [--vault <path>] | add-project <name> <repo> | up | open [jobs|notes] | service install|uninstall|status|restart | address [--short [--name <host>]] [--undo] | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>';
+const USAGE = 'usage: crewdeck setup [--vault <path>] [--preset <name>] [--no-plugin] [--service|--no-service] | init [--vault <path>] | add-project <name> <repo> | up | open [jobs|notes|session] | service install|uninstall|status|restart | address [--short [--name <host>]] [--undo] | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>';
 if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help' || !Object.hasOwn(run, cmd)) { say(USAGE); process.exit(cmd && !['--help', '-h', 'help'].includes(cmd) ? 1 : 0); }
 // --help never runs a command (jobs has its own help).
 if (cmd !== 'jobs' && (rest.includes('--help') || rest.includes('-h'))) { say(USAGE); process.exit(0); }
