@@ -20,7 +20,7 @@
 // Findings name the file, line and rule, never the private phrase.
 import { execFileSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -124,7 +124,7 @@ const git = (...a) => {
 };
 for (const f of git('ls-files', '-z', '--cached', '--others', '--exclude-standard').toString('utf8').split('\0').filter(Boolean)) {
   const p = join(ROOT, f);
-  if (!existsSync(p)) continue;
+  if (!existsSync(p) || statSync(p).isDirectory()) continue; // a nested checkout (a worktree) is listed as a folder
   scanText(f, textOf(readFileSync(p)), { denylist: !attributionFiles.has(f) });
 }
 

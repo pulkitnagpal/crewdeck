@@ -107,7 +107,7 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
     expect(await ui.find({ type: 'Text', text: /1 need you · 2 ready to submit/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Acme · Backend Engineer \(Needs you\)/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /TASK-2 Fix login · In Progress/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /its own Claude chat, in your jobs folder/ })).toBeDefined()
+    expect((await ui.find({ key: 'jobs-session' }))?.props.label).toBe('Start the Jobs session')
     await ui.unmount()
   }
 
@@ -249,7 +249,7 @@ test('in a project folder that is not a board yet, the panel adds it with one cl
   await $.session.start({ cwd: '/work/flight-stack/site', surface: 'desktop', isInteractive: true })
   await $.command.run(typed('crewdeck'))
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /\/work\/flight-stack isn't a Crewdeck board yet/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /flight-stack · not on Crewdeck yet/ })).toBeDefined()
   await ui.press({ key: 'add-board' })
   expect(s.added).toEqual(['flight-stack /work/flight-stack'])
   await ui.unmount()
@@ -277,7 +277,7 @@ test('an older Crewdeck than the plugin: the panel offers Update Crewdeck, which
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   await $.command.run(typed('crewdeck'))
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /You have 0\.0\.9/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /You have 0\.0\.9 · your data stays/ })).toBeDefined()
   await ui.press({ key: 'update' })
   expect(spawned).toEqual(['sh -s'])
   expect(s.calls.length).toBeGreaterThan(0)

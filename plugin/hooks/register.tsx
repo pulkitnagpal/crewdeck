@@ -405,10 +405,8 @@ export const register: Register = (on, options) => {
       return (
         <Box flexDirection="column" gap={1}>
           <Text bold>Welcome to Crewdeck</Text>
-          <Text>Your notes, your projects and a job search, next to this chat. Claude does the work; you decide.</Text>
-          {inst.phase === 'none' && <Box flexDirection="column">
-            <Text dimColor>Set up downloads Node and Crewdeck {CREWDECK_VERSION} (about 70 MB, each checked before it is used), creates your notes in ~/Crewdeck/vault and keeps Crewdeck running in the background. It takes 2 to 5 minutes and needs nothing else from you.</Text>
-          </Box>}
+          <Text>Notes, projects and your job search, next to this chat.</Text>
+          {inst.phase === 'none' && <Text dimColor>About 3 minutes · nothing else to install</Text>}
           {inst.phase === 'running' && <Progress label={inst.step} value={inst.done} max={5} />}
           {inst.phase === 'failed' && <Text color="error">{inst.step}</Text>}
           {inst.lines.map((l, i) => <Text key={`il-${i}`} dimColor={!l.startsWith('✗')} color={l.startsWith('✗') ? 'warning' : undefined}>{l}</Text>)}
@@ -446,8 +444,8 @@ export const register: Register = (on, options) => {
 
         {t.version && older(t.version, CREWDECK_VERSION) ? (
           <Box flexDirection="column">
-            <Text bold>Crewdeck {CREWDECK_VERSION} is ready</Text>
-            {inst.phase === 'running' ? <Progress label={inst.step} value={inst.done} max={5} /> : <Text dimColor>You have {t.version}. The update keeps your notes and job data, and takes a minute or two.</Text>}
+            <Text bold>Update to {CREWDECK_VERSION}</Text>
+            {inst.phase === 'running' ? <Progress label={inst.step} value={inst.done} max={5} /> : <Text dimColor>You have {t.version} · your data stays</Text>}
             {inst.phase === 'failed' && <Text color="error">{inst.step}</Text>}
             {inst.phase !== 'running' && <Button key="update" label="Update Crewdeck" variant="primary" onPress={() => runInstall($, port)} />}
           </Box>
@@ -455,7 +453,7 @@ export const register: Register = (on, options) => {
 
         <Box flexDirection="column">
           <Text bold>To do</Text>
-          {t.todos.length === 0 && <Text dimColor>Nothing yet. Add one below.</Text>}
+          {t.todos.length === 0 && <Text dimColor>Nothing yet</Text>}
           {t.todos.map((x) => (
             <Button key={`todo-${x.line}`} plain label={`${x.done ? '☑' : '☐'} ${x.text}`} onPress={() => toggle(x.line, x.text, !x.done)} />
           ))}
@@ -466,11 +464,10 @@ export const register: Register = (on, options) => {
         {j && 'counts' in j ? (
           <Box flexDirection="column">
             <Text bold>Jobs</Text>
-            {j.setup_needed ? <Text>Next: set up your job search. Claude interviews you in a chat of its own (about 20 minutes, with or without a resume).</Text> : (
-              <Text>{[j.counts.needs_you ? `${j.counts.needs_you} need you` : '', j.counts.ready ? `${j.counts.ready} ready to submit` : '', j.counts.in_progress ? `${j.counts.in_progress} in progress` : '', j.counts.applied_today ? `${j.counts.applied_today} applied today` : ''].filter(Boolean).join(' · ') || 'Nothing waiting. Find jobs on the Jobs page.'}</Text>
+            {j.setup_needed ? <Text dimColor>Not set up yet · about 20 minutes</Text> : (
+              <Text>{[j.counts.needs_you ? `${j.counts.needs_you} need you` : '', j.counts.ready ? `${j.counts.ready} ready to submit` : '', j.counts.in_progress ? `${j.counts.in_progress} in progress` : '', j.counts.applied_today ? `${j.counts.applied_today} applied today` : ''].filter(Boolean).join(' · ') || 'Nothing waiting'}</Text>
             )}
             {j.queue.map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
-            {!j.connected && !j.setup_needed && <Text dimColor>Jobs work needs its own Claude chat, in your jobs folder.</Text>}
             <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
               <Button key="open-jobs" label="Open Jobs" onPress={() => openUrl($, `${t.url}/#jobs`)} />
               {!j.connected && j.session_link ? <Button key="jobs-session" label={j.setup_needed ? 'Set up my job search' : 'Start the Jobs session'} variant={j.setup_needed ? 'primary' : undefined} onPress={() => openUrl($, j.session_link)} /> : null}
@@ -481,19 +478,19 @@ export const register: Register = (on, options) => {
         {here ? (
           <Box flexDirection="column">
             <Text bold>This project</Text>
-            <Text dimColor>{here} isn't a Crewdeck board yet. Add it to see its tickets as a kanban next to your notes and jobs.</Text>
-            <Button key="add-board" label="Add this folder as a board" onPress={() => addBoard($, port, here)} />
+            <Text dimColor>{here.split('/').pop()} · not on Crewdeck yet</Text>
+            <Button key="add-board" label="Add as a board" onPress={() => addBoard($, port, here)} />
           </Box>
         ) : null}
 
         {t.projects.length > 0 && (
           <Box flexDirection="column">
             <Text bold>Tickets</Text>
-            {t.tickets.length === 0 && <Text dimColor>No open tickets.</Text>}
+            {t.tickets.length === 0 && <Text dimColor>No open tickets</Text>}
             {t.tickets.map((k) => <Text key={`t-${k.project}-${k.id}`}>{k.id} {k.title} · {k.status}{t.projects.length > 1 ? ` (${k.project})` : ''}</Text>)}
-            {t.more > 0 && <Text dimColor>and {t.more} more on the boards</Text>}
+            {t.more > 0 && <Text dimColor>+{t.more} more</Text>}
             <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
-              {t.projects.map((p) => <Button key={`board-${p.name}`} label={`Open ${p.label === 'Board' ? p.name : p.label} board`} onPress={() => openUrl($, `${t.url}/#board:${p.name}`)} />)}
+              {t.projects.map((p) => <Button key={`board-${p.name}`} label={`${p.label === 'Board' ? p.name : p.label} board`} onPress={() => openUrl($, `${t.url}/#board:${p.name}`)} />)}
             </Box>
           </Box>
         )}
