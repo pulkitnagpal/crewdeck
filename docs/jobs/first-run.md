@@ -27,7 +27,7 @@ these moves are backups you can put back.
    (If your vault was elsewhere, `vault:` in the old `config.yaml` says where; the jobs folder is `jobs.workspace`.)
    To go back later: stop Crewdeck, move the new folders aside the same way, and move the backups back to their names.
 3. The plugin: if `claude plugin list` shows `crewdeck@crewdeck` installed from this same checkout, keep it (`crewdeck
-   setup` says "the crewdeck plugin is already installed"). If it shows the old `crewdeck-bridge`, or a `crewdeck`
+   setup` updates it to this checkout's version and says "the crewdeck plugin is installed and up to date"). If it shows the old `crewdeck-bridge`, or a `crewdeck`
    marketplace from somewhere else, remove them first (the new marketplace has the same name):
    ```bash
    claude plugin uninstall crewdeck-bridge@crewdeck

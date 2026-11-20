@@ -116,11 +116,12 @@ Add a project board with `crewdeck add-project <name> <path-to-git-repo>`.
 
 ## Install the plugin
 
-The plugin is called `crewdeck` (version 0.4.0). The repo is its own plugin marketplace, also called `crewdeck`.
+The plugin is called `crewdeck` (version 0.5.0). The repo is its own plugin marketplace, also called `crewdeck`.
 `crewdeck setup` installs it for you from your checkout; the commands below do the same by hand.
 
-**From your checkout** (works before anything is published; the plugin is read from the checkout, so `git pull` updates
-it after a restart of Claude):
+**From your checkout** (works before anything is published). Claude keeps a copy of the plugin per version, so after a
+`git pull` run `crewdeck setup` again (or `claude plugin marketplace update crewdeck && claude plugin update
+crewdeck@crewdeck`) and start a new session:
 
 ```bash
 claude plugin marketplace add /path/to/crewdeck

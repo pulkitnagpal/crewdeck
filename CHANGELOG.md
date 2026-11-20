@@ -12,6 +12,9 @@ graduate in Manila, a warehouse worker without a resume, a freelance translatorâ
 
 ### Added
 
+- **Plugin 0.5.0** with the v0.4 skills (setup interview v2, priority-aware daily run, sources and targets in
+  memory). `crewdeck setup` now updates an installed plugin instead of keeping the old copy.
+
 - **Where to look, from your notes.** A catalog of every source Crewdeck can fetch (kind, regions, fields, limits,
   confidence), `crewdeck jobs sources list|suggest|add|remove|move|enable|disable|resolve|set-url`, and a coverage line
   that says plainly when no job board covers your field where you live, and what still works. Employers are added by

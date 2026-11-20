@@ -82,7 +82,13 @@ function installPlugin(port: number): { ok: boolean; text: string } {
   }
   const plugins = (() => { try { return claude(['plugin', 'list']); } catch { return ''; } })();
   if (/crewdeck-bridge@/.test(plugins)) say('  note: the old crewdeck-bridge plugin is installed; remove it with claude plugin uninstall crewdeck-bridge@crewdeck');
-  if (/❯\s*crewdeck@crewdeck/.test(plugins)) return { ok: true, text: 'the crewdeck plugin is already installed' };
+  if (/❯\s*crewdeck@crewdeck/.test(plugins)) {
+    // Claude keeps a copy of an installed plugin per version: refresh the marketplace from this checkout, then update,
+    // so new skills reach new sessions (a no-op when nothing changed).
+    try { claude(['plugin', 'marketplace', 'update', 'crewdeck']); claude(['plugin', 'update', 'crewdeck@crewdeck']); }
+    catch (e: any) { return { ok: false, text: `the crewdeck plugin is installed, but updating it failed: ${String(e?.stderr || e?.message).trim().slice(0, 300)}. Try: claude plugin marketplace update crewdeck && claude plugin update crewdeck@crewdeck` }; }
+    return { ok: true, text: 'the crewdeck plugin is installed and up to date (new Claude sessions load it)' };
+  }
   try { claude(['plugin', 'install', 'crewdeck@crewdeck', '--config', `port=${port}`]); }
   catch (e: any) { return { ok: false, text: `installing the crewdeck plugin failed: ${String(e?.stderr || e?.message).trim().slice(0, 300)}` }; }
   return { ok: true, text: 'installed the crewdeck plugin in Claude (it loads in new sessions)' };
