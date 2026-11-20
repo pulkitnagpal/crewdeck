@@ -57,7 +57,7 @@ test('apply panel: every state, as design §2.3a describes it', async () => {
   assert.match(show(P(null)), /Apply.*questions.*Claude opens the real form/);
   const waiting = show(P(req('new')));
   assert.match(waiting, /Waiting for Claude/);
-  assert.match(waiting, /picks it up as soon as the chat is idle/);
+  assert.match(waiting, /Starts when Claude is free/);
   assert.match(show(P(req('new'), { connected: false })), /No Claude session is working Jobs: open one in \/tmp\/jobs-folder/);
   const filling = show(P(req('picked', undefined, lines)));
   assert.match(filling, /Claude is filling the form/);
@@ -90,7 +90,7 @@ test('apply panel: every state, as design §2.3a describes it', async () => {
   // C4: a waiting or picked request can be cancelled from the panel; a picked one with no session says so.
   assert.match(waiting, /Cancel/);
   assert.match(filling, /Open the form\s*Cancel/);
-  assert.match(show(P(req('picked'), { connected: false })), /No Claude session is connected: if it closed, cancel and try again/);
+  assert.match(show(P(req('picked'), { connected: false })), /No Claude session is connected: cancel and try again/);
   assert.doesNotMatch(turn, /Cancel/);
 });
 
@@ -177,8 +177,9 @@ test('first run, banners and the top bar', async () => {
   } finally { await fresh.close(); }
   const st = (await s.get('state')).json;
   const b = text(render(html`<${Banners} state=${{ ...st, banners: [{ kind: 'note', text: 'jobs/search.md: pay.floor must be a number', fix: 'Until then Jobs uses the last valid version.', page: 'jobs/search' }] }} />`));
-  assert.match(b, /No Claude session is working Jobs\. Open one in Claude desktop: Open in Claude starts a Code session in your jobs folder/);
-  assert.match(b, /pay\.floor must be a number.*last valid version.*Open in Notes/);
+  // One sentence and the action up front; the how and why behind a More (a native <details>).
+  assert.match(b, /No Claude session is working Jobs\.\s*Why\?\s*Open one in Claude desktop: Open in Claude starts a Code session in your jobs folder/);
+  assert.match(b, /pay\.floor must be a number\s*How to fix\s*Until then Jobs uses the last valid version\..*Open in Notes/);
   assert.equal(render(html`<${Banners} state=${{ ...st, agent: { ...st.agent, connected: true }, banners: [] }} />`), '');
   const bar = text(render(html`<${TopBar} screen="today" agent=${st.agent} quota=${3} />`));
   assert.match(bar, /Today Sources Applications What Claude knows Preferences Settings/);
@@ -216,9 +217,9 @@ test('no innerHTML (or anything like it) with data in the Jobs page', () => {
 test('Today with nothing to review says what to do next: sources to add, a fetch to run, or Find (P9i rehearsal)', () => {
   const data = { queue: [], detail: null, find: null };
   const text = (sources: object) => render(html`<${Today} data=${data} state=${{ quota: 5, sources, setup: { needed: false } }} />`).replace(/<[^>]+>/g, '');
-  assert.match(text({ ready: true, listed: 0, waiting: 0 }), /No sources yet: add some on the Sources tab \(or ask Claude\)/);
-  assert.match(text({ ready: true, listed: 2, waiting: 0 }), /No fetched roles are waiting to be judged\. Refresh sources at the top fetches now/);
-  assert.match(text({ ready: true, listed: 2, waiting: 12 }), /Paste a job link above, or click Find 5 jobs/);
+  assert.match(text({ ready: true, listed: 0, waiting: 0 }), /No sources yet\.Add sources/);
+  assert.match(text({ ready: true, listed: 2, waiting: 0 }), /No new roles yet: click Refresh sources at the top\./);
+  assert.match(text({ ready: true, listed: 2, waiting: 12 }), /Click Find 5 jobs at the top, or paste a link\.More ways/);
   // The setup card's request: no session yet says so, and a cancel is not shown as a failure.
   const card = (request: object, connected: boolean) => render(html`<${SetupCard} state=${{ setup: { needed: true, files: [], request }, agent: { connected, workspace: '/x' } }} />`).replace(/<[^>]+>/g, '');
   assert.match(card({ id: 1, status: 'new' }, false), /Waiting for a Claude session.*No Claude session is connected yet/);
