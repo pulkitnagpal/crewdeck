@@ -431,3 +431,7 @@ fieldset.f legend { padding: 0; margin-bottom: 5px; font-size: 0.875rem; font-we
 .more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .more-body { color: var(--soft); font-size: 0.875rem; line-height: 1.55; padding: 0.35rem 0 0.25rem 1rem; display: grid; gap: 0.4rem; }
 @media (prefers-reduced-motion: reduce) { .more > summary::before { transition: none; } }
+/* Part A of the UX pass: details behind More inside banners, empty states and the apply panel. */
+.empty .more-body { padding-left: 0; text-align: left; }
+.banner .more, .banner .more > summary { min-height: 24px; color: var(--ink); }
+.setup .more-body p, .why .more-body p, .side .more-body p, .banner .more-body p, .empty .more-body p { margin: 0; }

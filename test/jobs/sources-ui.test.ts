@@ -203,7 +203,7 @@ test('the apply panel (P9h): walk-in shows where and when from the posting, acco
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
   await page.goto(`http://localhost:${s.port}/jobs/#today`);
   await page.locator('.side .state .title', { hasText: 'This site needs an account' }).waitFor({ timeout: 15_000 });
-  assert.match(await page.locator('.side').textContent() ?? '', /Create it in the form tab \(Claude never creates accounts\), sign in, then click Continue/);
+  assert.match(await page.locator('.side').textContent() ?? '', /Create it and sign in in the form tab, then click Continue/);
   assert.equal(await page.getByRole('button', { name: 'Continue', exact: true }).count(), 1);
   const items = await audit(page, '.side');
   assert.deepEqual(items.filter((x) => x.size < 14), [], 'nothing under 14 px');

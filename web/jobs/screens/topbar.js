@@ -15,7 +15,7 @@ export function agentLine(agent) {
   if (working) return { dot: 'busy', head: waiting.length ? `Claude is working (${waiting.length} waiting):` : 'Claude is working:', text: `${what(working)}${working.last ? ` · ${working.last.text}` : ''}` };
   if (waiting.length && !agent.connected) return { dot: 'off', head: 'No Claude session:', text: `${plural(waiting.length, 'request')} waiting` };
   if (waiting.length) return { dot: 'wait', head: 'Waiting for Claude:', text: `${what(waiting[0])}${waiting.length > 1 ? ` (+${waiting.length - 1})` : ''}` };
-  if (!agent.connected) return { dot: 'off', head: 'No Claude session', text: 'on Jobs' };
+  if (!agent.connected) return { dot: 'off', head: 'No Claude session', text: '' };
   const last = agent.recent?.[0];
   return { dot: 'ok', head: 'Claude connected', text: last?.result ? `· Last: ${last.result}` : '' };
 }

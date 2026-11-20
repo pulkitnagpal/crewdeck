@@ -1,7 +1,7 @@
 // Today: the roles waiting for the user, one role's application (first-time questions on top, every answer with its
 // source), and its apply panel.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { html, noop, cls, safeHref, Icon } from '../lib.js';
+import { html, noop, cls, safeHref, Icon, More } from '../lib.js';
 import { ApplyPanel } from './apply.js';
 import { SetupCard } from './setup.js';
 
@@ -21,7 +21,7 @@ function FirstTimeRow({ row, onAnswer }) {
       ${row.options.length ? html`<div class="options" role="group" aria-label=${row.label}>${row.options.map((o) => html`<button type="button" class="option" onClick=${() => onAnswer(row.field_id, { option: o })}>${o}</button>`)}</div>`
         : html`<div class="editbox"><textarea rows="2" aria-label=${`Your answer: ${row.label}`} placeholder="Your answer, in your words" value=${text} onInput=${(e) => setText(e.currentTarget.value)}></textarea>
           <div class="row-flex"><button type="button" class="btn small" disabled=${!text.trim()} onClick=${() => { onAnswer(row.field_id, { text }); setText(''); }}>Save my answer</button></div></div>`}
-      <span class="hint">${row.reason && !/^met on|^sensitive/.test(row.reason) ? row.reason : 'Answer once here (or tell Claude): it is remembered for every later form.'}</span>
+      <span class="hint">${row.reason && !/^met on|^sensitive/.test(row.reason) ? row.reason : 'Answer once: Claude remembers it for every form.'}</span>
     </div>
   </div>`;
 }
@@ -42,7 +42,7 @@ function AnswerRow({ row, asking, onEdit, onImprove }) {
           <button type="button" class="linkbtn" aria-expanded=${askOpen} onClick=${() => setAskOpen(!askOpen)}>Ask Claude</button>
         </span></div>
       ${editing ? html`<div class="editbox"><textarea aria-label=${`Edit: ${row.label}`} rows=${Math.min(8, Math.max(2, Math.ceil(text.length / 70)))} value=${text} onInput=${(e) => setText(e.currentTarget.value)}></textarea>
-          <div class="row-flex"><button type="button" class="btn small primary" disabled=${!text.trim()} onClick=${() => { onEdit(row.field_id, text); setEditing(false); }}>Save</button><span class="hint">Your words are kept as they are: Claude never redrafts them.</span></div></div>`
+          <div class="row-flex"><button type="button" class="btn small primary" disabled=${!text.trim()} onClick=${() => { onEdit(row.field_id, text); setEditing(false); }}>Save</button><span class="hint">Kept word for word.</span></div></div>`
         : html`<p class="ans">${row.text}</p>`}
       ${askOpen ? html`<div class="editbox"><input aria-label=${`What should Claude change in: ${row.label}`} placeholder="What should change? e.g. shorter, mention the dashboards" value=${note} onInput=${(e) => setNote(e.currentTarget.value)} />
           <div class="row-flex"><button type="button" class="btn small" onClick=${() => { onImprove(row.field_id, note); setAskOpen(false); setNote(''); }}>Send to Claude</button></div></div>` : null}
@@ -78,10 +78,10 @@ function NotInterested({ d, exclude = [], onSave, onCancel, onDryRun = null }) {
   }, [key]);
   return html`<div class="skipbox">
     <b>Not interested in ${d.company}?</b>
-    <label class="f"><span class="lab">Why? Later searches read this in your words.</span>
+    <label class="f"><span class="lab">Why? Claude remembers it.</span>
       <textarea class="field" rows="2" placeholder="e.g. too much travel for me" value=${reason} onInput=${(e) => setReason(e.currentTarget.value)}></textarea></label>
-    <label class="f"><span class="lab">Also skip every future role with these words in the title (optional, comma-separated)</span>
-      <input class="field" value=${words} placeholder="e.g. Sales" onInput=${(e) => setWords(e.currentTarget.value)} /></label>
+    <label class="f"><span class="lab">Skip titles with these words (optional)</span>
+      <input class="field" value=${words} placeholder="e.g. Sales, Intern" onInput=${(e) => setWords(e.currentTarget.value)} /></label>
     <p class="small soft" role="status">${drop}</p>
     <div class="row-flex"><button type="button" class="btn primary small" disabled=${!reason.trim()} onClick=${() => onSave(reason, list)}>Skip and remember</button>
       <button type="button" class="btn quiet small" onClick=${onCancel}>Cancel</button></div>
@@ -111,11 +111,11 @@ function Detail({ d, asking, actions, exclude = [] }) {
         html`<button type="button" role="tab" aria-selected=${tab === k} onClick=${() => setTab(k)}>${label}${n ? html`<span class="n">${n}</span>` : null}</button>`)}
     </div>
     ${tab === 'form' ? html`<section class="rows" aria-label="Questions and answers">
-        ${first.length ? html`<p class="small soft">${first.length === 1 ? 'One question is' : `${first.length} questions are`} new to Claude: answer once and it is remembered.</p>` : null}
+        ${first.length ? html`<p class="small soft">${first.length === 1 ? 'One new question' : `${first.length} new questions`}: answer once, remembered after.</p>` : null}
         ${d.rows.map((r) => (r.status === 'first_time'
           ? html`<${FirstTimeRow} key=${`f${r.field_id}`} row=${r} onAnswer=${(f, v) => actions.onAnswer(d.id, { field_id: f, ...v })} />`
           : html`<${AnswerRow} key=${`a${r.field_id}:${r.answer_id ?? ''}`} row=${r} asking=${asking.includes(r.field_id)} onEdit=${(f, t) => actions.onEdit(d.id, f, t)} onImprove=${(f, n) => actions.onImprove(d.id, f, n)} />`))}
-        ${d.rows.length ? null : html`<p class="soft">Claude hasn't read this application form yet: it does that while preparing the role.</p>`}
+        ${d.rows.length ? null : html`<p class="soft">Form not read yet: Claude reads it while preparing the role.</p>`}
         ${d.questions.length ? html`<div class="qa"><span class="ref">?</span><div class="body"><span class="q">Claude would like to know</span>${d.questions.map((q) => html`<p key=${q.id}>${q.text}</p>`)}<span class="hint">Answer in the chat.</span></div></div>` : null}
       </section>` : null}
     ${tab === 'resume' ? html`<section class="stack">${d.resume ? html`<p class="soft">${d.resume.note} · ${d.resume.file}</p><iframe class="pdf" src=${d.resume.url} title="Tailored resume"></iframe>` : html`<p class="soft">No tailored resume yet.</p>`}</section>` : null}
@@ -140,10 +140,13 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onSour
     <div class="stack">
       <h2 id="why-title">Why so few? <span class="soft">Find ${f.need} jobs: ${f.picked} picked</span></h2>
       <p class="funnel">${f.line}</p>
-      ${rulesCause && f.rules_line ? html`<p class="soft">${f.rules_line}</p>` : null}
-      ${judgeCause && f.judge_reasons.length ? html`<div class="soft"><span>The judge's most common reasons:</span><ul class="reasons">${f.judge_reasons.map((r, i) => html`<li key=${i}>${r.text}${r.n > 1 ? ` (${n(r.n)})` : ''}</li>`)}</ul></div>` : null}
-      ${f.sources?.empty ? html`<p class="soft">Sources: ${f.sources.empty} of your ${f.sources.total} returned nothing${f.sources.why.length ? ` (${f.sources.why.join('; ')})` : ''}. <button type="button" class="linkbtn" onClick=${onSources}>Open your sources</button></p>` : null}
-      ${f.coverage ? html`<p class="soft">${f.coverage}</p>` : null}
+      ${f.sources?.empty ? html`<p class="soft">${f.sources.empty} of ${f.sources.total} sources returned nothing. <button type="button" class="linkbtn" onClick=${onSources}>Open sources</button></p>` : null}
+      ${(rulesCause && f.rules_line) || (judgeCause && f.judge_reasons.length) || f.coverage || f.sources?.why?.length ? html`<${More} summary="Why?">
+        ${rulesCause && f.rules_line ? html`<p>${f.rules_line}</p>` : null}
+        ${judgeCause && f.judge_reasons.length ? html`<div><span>The judge's most common reasons:</span><ul class="reasons">${f.judge_reasons.map((r, i) => html`<li key=${i}>${r.text}${r.n > 1 ? ` (${n(r.n)})` : ''}</li>`)}</ul></div>` : null}
+        ${f.sources?.empty && f.sources.why.length ? html`<p>Empty sources: ${f.sources.why.join('; ')}</p>` : null}
+        ${f.coverage ? html`<p>${f.coverage}</p>` : null}
+      </${More}>` : null}
       <div class="row-flex">
         ${fixes.map((s, i) => html`<button type="button" key=${i} class=${`btn small${i === 0 ? ' primary' : ''}`} title=${s.text} onClick=${() => onFix(s)}>${s.label}</button>`)}
         ${preview ? null : html`<span class="small soft" role="status">Checking what one change would bring back…</span>`}
@@ -166,11 +169,12 @@ export function Today({ data, state, preview = null, actions = {} }) {
         // Nothing fetched waiting to be judged yet (a new user right after setup): Find would have nothing to read.
         const src = state?.sources;
         const empty = src?.ready && !src.running && (src.waiting ?? 0) === 0;
+        const tail = html`<${More} summary="More ways"><p>Paste a job link at the top, or ask Claude in the chat. Roles you applied to are in Applications.</p></${More}>`;
         return empty && src.listed === 0
-          ? html`<p class="soft">No sources yet: add some on the <a href="#sources">Sources</a> tab (or ask Claude), or paste a job link above. Roles you applied to are in Applications.</p>`
+          ? html`<p class="soft">No sources yet.</p><a class="btn primary" href="#sources" onClick=${(e) => { e.preventDefault(); a.onSources(); }}>Add sources</a>${tail}`
           : empty
-            ? html`<p class="soft">No fetched roles are waiting to be judged. <b>Refresh sources</b> at the top fetches now (no Claude needed), or paste a job link above; then <b>Find ${state?.quota ?? 5} jobs</b> has something to judge. Roles you applied to are in Applications.</p>`
-            : html`<p class="soft">Paste a job link above, or click <b>Find ${state?.quota ?? 5} jobs</b>: Claude judges the best candidates and prepares each pick. Roles you applied to are in Applications.</p>`;
+            ? html`<p class="soft">No new roles yet: click <b>Refresh sources</b> at the top.</p>${tail}`
+            : html`<p class="soft">Click <b>Find ${state?.quota ?? 5} jobs</b> at the top, or paste a link.</p>${tail}`;
       })()}
     </div></div>`;
   }
