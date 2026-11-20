@@ -38,7 +38,7 @@ Claude desktop
 │     ├── a session in the jobs workspace    → lane jobs     (Claude Code's sandbox; one CLI let out)
 │     └── any other session                  → lane cockpit
 │           the bridge claims its lane's requests only while the session is idle, with the token
-└── browser pane → http://localhost:4848  (one Node process: `crewdeck up`)
+└── browser pane → http://crewdeck.localhost:4848  (one Node process: `crewdeck up`, or the background service)
       ├── shell server  /  /api/*  /jobs/  /api/jobs/*        page endpoints (same-origin) · agent endpoints (token)
       ├── Notes proxy   :4849 → SilverBullet --single on a Unix socket in ~/.crewdeck/run (no TCP port, shell off)
       ├── board proxies :4858… → backlog browser per project on a random internal port (theme CSS injected)

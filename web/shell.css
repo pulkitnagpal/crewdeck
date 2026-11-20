@@ -1,13 +1,13 @@
 @import url("tokens.css");
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
-.shell { display: flex; height: 100vh; }
-.rail { width: 72px; flex: none; background: var(--rail); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 14px; }
+.shell { display: flex; height: 100vh; height: 100dvh; }
+.rail { width: 72px; flex: none; background: var(--rail); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 14px; overflow-y: auto; }
 .logo { width: 34px; height: 34px; border-radius: 10px; background: var(--ink); display: flex; align-items: center; justify-content: center; }
 .logo svg { width: 18px; height: 18px; fill: none; stroke: var(--ground); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .group { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 0 8px; }
 .sep { height: 1px; background: var(--line); margin: 6px 6px; }
-.nav { width: 100%; border: 0; border-radius: 10px; background: transparent; color: var(--soft); display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px 6px; cursor: pointer; font: 500 10.5px/1.1 var(--font); }
+.nav { width: 100%; border: 0; border-radius: 10px; background: transparent; color: var(--soft); display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px 6px; cursor: pointer; font: 500 14px/1.15 var(--font); }
 .nav .ico { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; }
 .nav svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav .mono { font: 700 12px var(--font); letter-spacing: .02em; }
@@ -15,23 +15,51 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 .nav:hover { color: var(--ink); }
 .nav.on { color: var(--accent); }
 .nav.on .ico { background: var(--accent-bg); }
-.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.stage { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .bar { height: 44px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--line); }
 .crumb { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
 .crumb-name { flex: none; }
-.crumb-kind { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--chip); border-radius: 999px; padding: 2px 8px; }
+.crumb-kind { font-size: 14px; font-weight: 600; color: var(--muted); background: var(--chip); border-radius: 999px; padding: 2px 8px; }
 .crumb-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spacer { flex: 1; }
-.open { font-size: 12px; color: var(--muted); text-decoration: none; white-space: nowrap; }
+.open { font-size: 14px; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .open:hover { color: var(--accent); }
-.frames { flex: 1; position: relative; background: var(--ground); }
+.frames { flex: 1; min-height: 0; position: relative; background: var(--ground); }
 .frames iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--ground); visibility: hidden; }
 .frames iframe.on { visibility: visible; }
-@media (max-width: 560px) { .rail { width: 60px; } .nav .lbl { display: none; } }
 
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .ask { display: flex; align-items: center; gap: 6px; background: var(--chip); border-radius: 10px; padding: 3px 3px 3px 10px; min-width: 160px; flex: 0 1 420px; }
-.ask input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: 13px var(--font); outline: none; padding: 5px 0; }
-.ask button { border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font: 600 12px var(--font); padding: 6px 10px; cursor: pointer; }
-.sent { font-size: 12px; color: var(--muted); max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ask input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: 14px var(--font); outline: none; padding: 5px 0; }
+.ask button { border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font: 600 14px var(--font); padding: 6px 12px; cursor: pointer; }
+.sent { font-size: 14px; color: var(--muted); max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sent.ok { color: var(--ok); } .sent.bad { color: var(--bad); }
+
+/* ---- a narrow window (Claude desktop's browser pane can be ~360 px): the rail becomes a bottom bar so the page gets
+   the full width; the top bar keeps the crumb and the Ask box on one row, "Open alone" goes (the frame is the page). */
+@media (max-width: 600px) {
+  .shell { flex-direction: column-reverse; }
+  .rail { width: 100%; flex-direction: row; justify-content: center; gap: 8px; padding: 6px 12px; padding-bottom: max(6px, env(safe-area-inset-bottom)); border-right: 0; border-top: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; }
+  .logo { display: none; }
+  .group { flex-direction: row; justify-content: center; gap: 8px; width: auto; padding: 0; }
+  .sep { width: 1px; height: auto; align-self: stretch; margin: 6px 0; }
+  .nav { width: auto; flex: none; flex-direction: row; gap: 6px; min-height: 40px; padding: 4px 12px 4px 6px; }
+  .nav .ico { width: 30px; height: 30px; }
+  .nav .lbl { max-width: 9em; }
+  .nav.on { background: var(--accent-bg); }
+  .nav.on .ico { background: transparent; }
+  .bar { height: auto; min-height: 48px; flex-wrap: wrap; gap: 8px; padding: 6px 12px; }
+  .crumb { flex: 0 1 auto; max-width: 35%; }
+  .crumb-kind { display: none; }
+  .spacer, .open { display: none; }
+  .ask { flex: 1 1 180px; min-width: 0; }
+  .ask button { min-height: 32px; }
+  .sent { order: 9; max-width: none; }
+  .sent:not(:empty) { flex: 1 1 100%; }
+}
+/* Very narrow: the boards' labels give way to their icons (the name stays in the button's label and tooltip). */
+@media (max-width: 400px) {
+  .rail { padding-left: 8px; padding-right: 8px; }
+  .nav { padding: 4px 8px 4px 4px; }
+  .nav .lbl { max-width: 6.5em; }
+}

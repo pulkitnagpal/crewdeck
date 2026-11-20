@@ -11,6 +11,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize, sep } from 'node:path';
 import { CLI_WRAPPER, REPO, effectiveAddress, pageUrl, type Config } from './config.ts';
+
+/** This Crewdeck's version (package.json): the panel offers an update when the plugin is newer. */
+const APP_VERSION: string = (() => { try { return String(JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')).version ?? ''); } catch { return ''; } })();
 import { Requests, RequestError, laneFor, publicView } from './requests.ts';
 import { TodayError, addTodo, localDate, setTodo, ticketsOf, todosOf } from './today.ts';
 import { HttpError, NONCE, fromAgent, fromOwnPage, isLocalHost, json, ownRead, proofFor, readJson, send, useAddress } from './http.ts';
@@ -60,7 +63,7 @@ export function createShell(c: Config, requests = new Requests(), opts: ShellOpt
     let jobs: unknown = null;
     if (jobsOn()) { try { jobs = (await jobsApi()).glance(); } catch { jobs = { error: 'Jobs could not start' }; } }
     return {
-      date, url: pageUrl(c), notes_page: `journal/${date}`,
+      date, url: pageUrl(c), notes_page: `journal/${date}`, version: APP_VERSION,
       todos: todosOf(c.vault, date), jobs, ...ticketsOf(c.projects),
       projects: c.projects.map((p) => ({ name: p.name, label: p.label ?? p.name, path: p.path })),
     };

@@ -112,7 +112,7 @@ as a board** (or `crewdeck add-project <name> <path-to-git-repo>`).
 
 ## Install the plugin
 
-The plugin is called `crewdeck` (version 0.6.0). The repo is its own plugin marketplace, also called `crewdeck`.
+The plugin is called `crewdeck` (version 0.7.1). The repo is its own plugin marketplace, also called `crewdeck`.
 `crewdeck setup` installs it for you from your checkout; the commands below do the same by hand.
 
 **From your checkout** (works before anything is published). Claude keeps a copy of the plugin per version, so after a
@@ -145,6 +145,12 @@ claude plugin marketplace remove crewdeck
 ```
 
 `claude plugin list` shows what is installed; `claude plugin validate /path/to/crewdeck` checks the manifests.
+
+## Updating
+
+Claude desktop shows **Update** on the plugin's page (Code tab: **+** → **Plugins**) when a new Crewdeck is out. Click
+it and start a new session: `/crewdeck` then offers **Update Crewdeck**, which downloads and checks the new version the
+same way setup did and restarts Crewdeck on it. Your notes and job data stay as they are.
 
 ## Always on and from anywhere
 
@@ -424,7 +430,7 @@ the browser, the job notes, the jobs workspace files, the providers, and whether
 | "No Claude session is working Jobs" | Open a Claude Code session in the folder the banner shows (copy button). Check the plugin is installed (`claude plugin list`) and its `port` matches Crewdeck's |
 | The status line says "Crewdeck: server failed its identity check" | Something else answers on Crewdeck's port, or Crewdeck restarted with a new token: check `crewdeck up` is running, then send any message in the session |
 | `crewdeck.localhost:4848` doesn't load | `crewdeck service status` (or start it: `crewdeck open`). An old browser may not know `.localhost` names: use `http://localhost:4848` |
-| `/crewdeck` isn't offered in a session | The plugin is 0.6.0 or newer (`claude plugin list`; `crewdeck setup` updates it), in a session started after the update |
+| `/crewdeck` does nothing, or an old panel | Update the plugin (Claude desktop: the plugin's page → **Update**), then start a new session: plugins load in sessions started after an update. The panel then offers **Update Crewdeck** when your installed Crewdeck is older |
 | `EADDRINUSE` on `crewdeck up` | Another Crewdeck (or app) uses 4848 or 4849: stop it, or change `port` / `silverbullet.port` in the config (and the plugin's `port`) |
 | "Job boards not set up" | `crewdeck jobs providers install`, and run Crewdeck on Node 25+ for sourcing |
 | Sourcing "needs Node 25 or newer" | Start `crewdeck up` with Node 25 (the server runs the timer and writes `~/.crewdeck/bin/crewdeck` with the Node that started it) |

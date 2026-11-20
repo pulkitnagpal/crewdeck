@@ -184,7 +184,7 @@ test('E7: the Today endpoints need the token and never a browser', async () => {
   assert.equal((await call('POST', '/api/today', { ...agent, origin: `http://crewdeck.localhost:${port}` }, {})).status, 401, 'a page cannot use the token');
   const r = await call('POST', '/api/today', agent, { date: '2026-11-20' });
   assert.equal(r.status, 200);
-  assert.deepEqual({ ...r.body, url: undefined }, { date: '2026-11-20', url: undefined, notes_page: 'journal/2026-11-20', todos: [], jobs: null, tickets: [], more: 0, projects: [] });
+  assert.deepEqual({ ...r.body, url: undefined }, { date: '2026-11-20', url: undefined, notes_page: 'journal/2026-11-20', todos: [], jobs: null, tickets: [], more: 0, projects: [], version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version });
   assert.match(r.body.url, /^http:\/\/crewdeck\.localhost:\d+$/);
   const added = await call('POST', '/api/today/todo', agent, { date: '2026-11-20', op: 'add', text: 'Apply for 5 jobs through Crewdeck' });
   assert.deepEqual(added.body.todos, [{ line: 4, done: false, text: 'Apply for 5 jobs through Crewdeck' }]);

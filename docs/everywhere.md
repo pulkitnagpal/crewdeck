@@ -141,3 +141,9 @@ proved itself.
   and an absolute folder (a forged answer could otherwise prefill other words); managed vault pages are written to a
   temp file and renamed, never through a planted symlink. Tests for both.
 - Screenshots retaken: `jobs-setup-light.png` (Open in Claude), `notes-light.png` (file list, buttons, made-up to-dos).
+
+**0.7.1** (2026-11-20): boards without a terminal (**Add this folder as a board** in the panel, a Boards help item in the
+rail; the owner's FlightStack board, missing from a fresh config, added back), the panel's pages open in Claude
+desktop's browser pane (`$.mcp.call('Claude_Browser', 'preview_start')`, else the default browser), `jobs/sources.md`
+lists the sources in its body, **Update Crewdeck** in the panel when the running Crewdeck is older than the plugin
+(`/api/today` reports `version`), and every screen fits small and short windows.

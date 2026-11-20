@@ -253,6 +253,12 @@ move them back. To redo only the interview, keep everything and say "redo my job
 setup skill runs again over your current notes, and Claude writes only what you confirm (each change to
 `jobs/search.md` is logged under **Changes**).
 
+## Updating Crewdeck
+
+When Claude desktop shows **Update** on the crewdeck plugin's page (Code tab: **+** → **Plugins**), click it and start a
+new session. `/crewdeck` then offers **Update Crewdeck**: it downloads and checks the new version like setup did and
+restarts Crewdeck on it. Your notes, jobs and boards stay as they are.
+
 ## Known gotchas
 
 - **Notes in the wrong theme** (light while the rest is dark, or the other way) on the first load after an older

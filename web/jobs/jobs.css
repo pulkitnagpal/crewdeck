@@ -16,9 +16,18 @@ code { font: 0.875rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; backgr
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---- frame ---- */
-.app { display: flex; flex-direction: column; height: 100%; }
+.app { display: flex; flex-direction: column; height: 100%; overflow-wrap: break-word; }
 .top { flex: none; display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--ground); flex-wrap: wrap; min-height: 52px; }
 .tabsnav { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+/* A tab row that scrolls sideways shows it: soft shadows at the edge with more tabs behind it (they scroll with the
+   row, so they go once its end is reached). */
+.tabsnav, .tabs {
+  background:
+    linear-gradient(to right, var(--ground) 40%, transparent) left center / 28px 100% no-repeat local,
+    linear-gradient(to left, var(--ground) 40%, transparent) right center / 28px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--ink) 22%, transparent), transparent) left center / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--ink) 22%, transparent), transparent) right center / 12px 100% no-repeat scroll;
+}
 .tabsnav button { border: 0; background: transparent; color: var(--soft); padding: 6px 10px; border-radius: 8px; font-weight: 500; font-size: 0.875rem; white-space: nowrap; }
 .tabsnav button:hover { color: var(--ink); background: var(--chip); }
 .tabsnav button[aria-current="page"] { color: var(--accent); background: var(--accent-bg); }
@@ -103,9 +112,9 @@ a.btn.primary { color: var(--accent-ink); }
 .dhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .dhead .meta { color: var(--soft); margin-top: 4px; }
 .dhead .why { margin-top: 8px; font-size: 0.875rem; color: var(--soft); max-width: 70ch; }
-.dhead .acts { display: flex; gap: 6px; flex: none; }
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
-.tabs button { border: 0; background: transparent; color: var(--soft); padding: 8px 10px; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 0.875rem; font-weight: 500; }
+.dhead .acts { display: flex; flex-wrap: wrap; gap: 8px; flex: none; }
+.tabs { display: flex; gap: 2px; box-shadow: inset 0 -1px 0 var(--line); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.tabs button { flex: none; white-space: nowrap; border: 0; background: transparent; color: var(--soft); padding: 8px 10px; border-bottom: 2px solid transparent; font-size: 0.875rem; font-weight: 500; }
 .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 .tabs button .n { color: var(--soft); font-weight: 400; margin-left: 4px; }
 .rows { display: flex; flex-direction: column; gap: 8px; }
@@ -118,7 +127,7 @@ a.btn.primary { color: var(--accent-ink); }
 .qa .q { font-weight: 600; }
 .qa .ans { white-space: pre-line; overflow-wrap: anywhere; }
 .qa .tools { display: flex; gap: 12px; flex: none; align-items: center; }
-.options { display: flex; flex-wrap: wrap; gap: 6px; }
+.options { display: flex; flex-wrap: wrap; gap: 8px; }
 .option { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 6px 12px; font-size: 0.875rem; }
 .option:hover { border-color: var(--accent); color: var(--accent); }
 .editbox { display: flex; flex-direction: column; gap: 6px; }
@@ -302,7 +311,7 @@ fieldset.f legend { padding: 0; margin-bottom: 5px; font-size: 0.875rem; font-we
 .srow .last.off, .srow .last.none { color: var(--soft); }
 .srow .addr { overflow-wrap: anywhere; }
 .srow .ctl, .crow .ctl { flex: none; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; max-width: 50%; }
-.srow .moves { display: flex; gap: 0.25rem; }
+.srow .moves { display: flex; gap: 0.5rem; }
 .srcs .filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; align-items: end; }
 .srcs .filters .check { grid-column: 1 / -1; justify-self: start; }
 .srcs .outcome:empty { display: none; }
@@ -332,3 +341,82 @@ fieldset.f legend { padding: 0; margin-bottom: 5px; font-size: 0.875rem; font-we
 .side .resume .file, .side .option, .side .editbox textarea { font-size: 0.875rem; }
 .side .soft, .side .hint, .side .stat span { color: var(--soft); }
 .side h3 { font-size: 0.9375rem; }
+
+/* ---- a small window: Claude desktop's browser pane can be ~360 px wide and ~480 px tall (P9j) ---- */
+/* Narrow or short: the whole page scrolls as one (the top bar and banners scroll away with it) instead of nested
+   panes that leave a sliver of content. */
+@media (max-width: 600px), (max-height: 560px) {
+  html, body, #root { height: auto; min-height: 100%; }
+  .app { height: auto; min-height: 100vh; min-height: 100dvh; }
+  .content, .content.fixed { flex: none; min-height: 0; overflow: visible; }
+  .todaycol, .today, .todaycol > .today { height: auto; flex: none; }
+  .work, .detail, .side, .queue { overflow: visible; }
+  .lines { max-height: none; }
+  /* Inline confirms and the Not interested box never outgrow the window. */
+  .confirm, .skipbox { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto; }
+}
+@media (max-width: 820px) {
+  .queue { overflow-x: auto; padding: 10px 12px; gap: 8px; scroll-padding: 0 12px; }
+  .qitem { flex: 0 0 min(220px, 72vw); }
+}
+@media (max-width: 600px) {
+  /* Tall but narrow: the top bar stays in reach while the page scrolls. */
+  .top { position: sticky; top: 0; z-index: 5; }
+  /* The top bar in three rows: the tabs (scrolling in their own row), Paste a link + Find, then Claude's status. */
+  .top { padding: 8px 12px 10px; gap: 8px; min-height: 0; }
+  .tabsnav { order: 0; flex: 1 1 100%; margin: 0 -12px; padding: 0 12px; scroll-padding: 0 12px; }
+  .tabsnav button { min-height: 36px; padding: 6px 10px; }
+  .top .grow, .top .break { display: none; }
+  .addlink { order: 1; flex: 1 1 180px; min-width: 0; }
+  .addlink input { flex: 1; width: auto; }
+  .top .find { order: 2; flex: none; min-height: 38px; }
+  .agent { order: 3; flex: 1 1 auto; max-width: none; justify-content: flex-start; }
+  .sources { order: 4; flex: 0 1 auto; max-width: 60%; }
+  .sources .linkbtn { min-height: 32px; }
+  /* Touch-sized controls, 8 px apart. */
+  .btn { min-height: 36px; }
+  .btn.small, .addlink .btn.small { min-height: 32px; }
+  .option, .tabs button { min-height: 36px; }
+  .check { min-height: 36px; }
+  .row-flex, .actions, .savebar, .panel-head, .langrow, .checks, .pv .fixes, .srow .moves { gap: 8px; flex-wrap: wrap; }
+  /* 12 px gutters everywhere, cards a little tighter. */
+  .banners { padding: 10px 12px 0; }
+  .banner { flex-wrap: wrap; }
+  .banner .row-flex { flex: 1 1 100%; }
+  .todaycol > .why { margin: 12px; }
+  .why, .pv { padding: 14px; }
+  .detail { padding: 16px 12px 32px; }
+  .side { padding: 16px 12px 20px; }
+  .page { padding: 16px 12px 40px; gap: 14px; }
+  .page-head { align-items: flex-start; }
+  h1 { font-size: 1.25rem; }
+  .section { padding: 14px; }
+  .switchrow { padding: 14px; gap: 12px; }
+  .setup { margin: 12px; padding: 18px 16px; gap: 14px; }
+  .files li { flex-wrap: wrap; }
+  .files li code { flex-basis: 100%; }
+  .kb li { flex-direction: column; gap: 6px; padding: 12px; }
+  .kb .used { white-space: normal; }
+  .qa { flex-direction: column; gap: 6px; }
+  .qa .ref { width: auto; }
+  .qa .head { flex-wrap: wrap; }
+  .kv { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .kv dd + dt { margin-top: 8px; }
+  .srcs .filters { gap: 12px; }
+  .srow .ctl { padding-left: 0; }
+  .srow .body, .crow .body, .srcs .chips { max-width: 100%; min-width: 0; }
+  .srcs .chips .chip, .srow .head .chip { white-space: normal; overflow-wrap: anywhere; }
+  /* Applications: each role a card, not a table wider than the window. */
+  .tablebox table, .tablebox tbody, .tablebox tr, .tablebox td { display: block; }
+  .tablebox thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .tablebox tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 12px 14px; border-top: 1px solid var(--line); }
+  .tablebox tr:first-child { border-top: 0; }
+  .tablebox td { padding: 0; border: 0; }
+  .tablebox td:nth-child(1) { grid-column: 1; }
+  .tablebox td:nth-child(2) { grid-column: 1; grid-row: 2; color: var(--soft); }
+  .tablebox td:nth-child(3) { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+  .tablebox td:nth-child(n+4) { grid-column: 1 / -1; }
+  .tablebox td:nth-child(4)::before { content: "Applied: "; color: var(--soft); }
+  .tablebox td:nth-child(5)::before { content: "Outreach: "; }
+  .tablebox td:nth-child(6)::before { content: "Next: "; }
+}

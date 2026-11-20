@@ -3,6 +3,20 @@
 What changed for people using Crewdeck. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Crewdeck is not released yet: versions below name the `crewdeck` plugin's version and the state of `main`.
 
+## [0.7.1] — Boards, the browser pane, small windows
+
+### Added
+
+- **Add this folder as a board** in the `/crewdeck` panel (any Claude session in a git project that isn't a board yet),
+  **Open … board** buttons, and a **Boards** item in the rail that explains how to add one while there are none.
+- `jobs/sources.md` lists your sources in words (Notes hides the frontmatter that holds them).
+
+### Changed
+
+- The panel opens Crewdeck pages in Claude desktop's own browser pane (the default browser where there is none).
+- Every screen fits Claude's narrow and short browser pane: no overflow, no overlapping buttons, even spacing.
+- The panel's button rows wrap instead of squeezing.
+
 ## [0.7.0] — Two-step onboarding
 
 Installing Crewdeck is now two steps inside the Claude desktop app, with nothing to install by hand
