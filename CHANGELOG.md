@@ -24,6 +24,8 @@ Installing Crewdeck is now two steps inside the Claude desktop app, with nothing
 
 ### Changed
 
+- `jobs/sources.md` shows your sources in words, in order, between `<!-- crewdeck:sources -->` markers that Crewdeck
+  rewrites on every change and on start: Notes hides the frontmatter that holds them.
 - The SilverBullet download in setup is checked against its release's published SHA-256.
 - The README and first-run guide start with the two steps; the source install moved under "From source (developers)".
 

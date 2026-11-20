@@ -35,9 +35,10 @@ programming. Windows: not yet.
 ## Get started: two steps
 
 1. **Add Crewdeck to Claude.** In the Claude desktop app, open the **Code** tab, click **+** next to the message box →
-   **Plugins** → **Add marketplace**, enter `pulkitnagpal/crewdeck`, and install **crewdeck**. (Or type
-   `/plugin marketplace add pulkitnagpal/crewdeck`, then `/plugin install crewdeck@crewdeck`.) If your Mac asks to
-   install the "command line developer tools", click **Install**: Claude needs them to fetch plugins, once.
+   **Plugins** → **Add marketplace**, enter `pulkitnagpal/crewdeck`, then **Add plugin** → **crewdeck**. If your Mac
+   asks to install the "command line developer tools", click **Install**: Claude needs them to fetch plugins, once.
+   (In Claude Code in a terminal: `claude plugin marketplace add pulkitnagpal/crewdeck`, then
+   `claude plugin install crewdeck@crewdeck`.)
 2. **Type `/crewdeck`** in a new Code session and click **Set up Crewdeck**. It downloads what Crewdeck needs (about
    70 MB, each download checked before it is used), creates your notes in `~/Crewdeck/vault`, and keeps Crewdeck running
    in the background from now on. It takes a few minutes; the panel shows each step.

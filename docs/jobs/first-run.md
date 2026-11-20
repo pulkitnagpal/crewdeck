@@ -28,13 +28,9 @@ project repos keep their boards (`backlog/` lives in each repo).
 ## 1. Add Crewdeck to Claude
 
 In the Claude desktop app, open the **Code** tab. Click **+** next to the message box → **Plugins** → **Add
-marketplace**, enter `pulkitnagpal/crewdeck`, then install **crewdeck** (scope: user). Or type these two lines in the
-message box, one at a time:
-
-```text
-/plugin marketplace add pulkitnagpal/crewdeck
-/plugin install crewdeck@crewdeck
-```
+marketplace**, enter `pulkitnagpal/crewdeck`, then **Add plugin** → **crewdeck** (scope: user). (The desktop app
+doesn't take `/plugin` commands typed in the message box; in Claude Code in a terminal, `claude plugin marketplace add
+pulkitnagpal/crewdeck` and `claude plugin install crewdeck@crewdeck` do the same.)
 
 **You should see** crewdeck in the plugin list as installed.
 

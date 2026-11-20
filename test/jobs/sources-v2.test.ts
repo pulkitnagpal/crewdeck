@@ -247,3 +247,27 @@ test('a fetch in priority order: providers before LinkedIn\'s row, LinkedIn, the
     assert.deepEqual(listSources(w.ctx).map((r) => r.key), ['arbeitnow', 'berlin-startup-jobs', 'example-gmbh']);
   } finally { await srv.close(); }
 });
+
+test('the note shows the sources in words: a list between markers, kept in step with every change, text outside left alone', async () => {
+  const { withSourcesList, sourcesList, LIST_START, LIST_END, refreshSourcesList } = await import('../../src/jobs/sources-note.ts');
+  const items: any[] = [
+    { key: 'remotive', name: 'Remotive', provider: 'remotive', enabled: true, employer: false, linkedin: false, fetch: 'auto' },
+    { key: 'acme', name: 'Acme *Labs*', careers_url: 'https://www.acme.example/careers', enabled: false, employer: true, linkedin: false, fetch: 'auto' },
+    { key: 'linkedin', name: 'LinkedIn', enabled: false, employer: false, linkedin: true, fetch: 'auto' },
+  ];
+  const list = sourcesList(items);
+  assert.match(list, /^<!-- crewdeck:sources -->\n## Where Crewdeck looks\n/);
+  assert.match(list, /^1\. \*\*Remotive\*\*: job board, on$/m);
+  assert.match(list, /^2\. \*\*Acme Labs\*\* \(acme\.example\): careers page, off$/m);
+  assert.match(list, /^3\. \*\*LinkedIn\*\*: LinkedIn, on or off in Jobs → Settings$/m);
+  const body = '# Job sources\n\nMy own words.\n\n## Changes\n- 2026-11-19: set up\n';
+  const once = withSourcesList(body, items);
+  assert.equal(once, `# Job sources\n\n${list}\n\nMy own words.\n\n## Changes\n- 2026-11-19: set up\n`);
+  const twice = withSourcesList(once, items.slice(0, 1));
+  assert.equal(twice.split(LIST_START).length, 2, 'replaced, never added twice');
+  assert.ok(twice.includes('My own words.') && !twice.includes('Acme'));
+  assert.equal(withSourcesList('no heading\n', []).startsWith(LIST_START), true);
+  assert.ok(sourcesList([]).includes('No sources yet'));
+  assert.equal(refreshSourcesList('/nonexistent/sources.md'), false);
+  assert.ok(LIST_END);
+});

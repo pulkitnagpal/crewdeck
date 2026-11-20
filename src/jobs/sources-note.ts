@@ -154,6 +154,53 @@ export function applyOp(doc: Document, op: SourceOp, o: { today: string; used?: 
   throw new Error('unknown operation');
 }
 
+// ---- the readable list in the note's body ----
+// The sources live in the note's frontmatter, which Notes hides ("17 frontmatter lines hidden"): the body gets the same
+// list in words, between these markers, rewritten by Crewdeck whenever the sources change. Text outside them is yours.
+export const LIST_START = '<!-- crewdeck:sources -->';
+export const LIST_END = '<!-- /crewdeck:sources -->';
+
+const kindWords = (it: SourceItem) => (it.linkedin ? 'LinkedIn' : it.employer ? 'careers page' : it.url && !it.provider ? 'web address' : 'job board');
+
+/** The list as Markdown: one line per source, in priority order, with what it is and whether it is on. */
+export function sourcesList(items: SourceItem[]): string {
+  const lines = items.map((it, i) => {
+    const state = it.linkedin ? 'on or off in Jobs → Settings' : it.enabled ? 'on' : 'off';
+    const where = it.careers_url ? ` (${hostName(it.careers_url)})` : it.url ? ` (${hostName(it.url)})` : '';
+    return `${i + 1}. **${it.name.replace(/[*_`[\]<>]/g, '')}**${where}: ${kindWords(it)}, ${state}`;
+  });
+  return [LIST_START, '## Where Crewdeck looks', '',
+    'In this order. Change it on Crewdeck → Jobs → Sources, or ask Claude; Crewdeck rewrites this list.', '',
+    ...(lines.length ? lines : ['No sources yet: Crewdeck → Jobs → Sources, or ask Claude to suggest some.']), LIST_END].join('\n');
+}
+
+/** The body with the list in place: replaced between the markers, or added after the first heading (else at the top). */
+export function withSourcesList(body: string, items: SourceItem[]): string {
+  const list = sourcesList(items);
+  const a = body.indexOf(LIST_START), b = body.indexOf(LIST_END);
+  if (a >= 0 && b > a) return body.slice(0, a) + list + body.slice(b + LIST_END.length);
+  const lines = body.split('\n');
+  const h = lines.findIndex((l) => /^#\s/.test(l));
+  if (h < 0) return `${list}\n\n${body}`;
+  lines.splice(h + 1, 0, '', list);
+  return lines.join('\n');
+}
+
+/** Bring the note's list up to date (on Crewdeck's start, after a hand edit). No Changes line: nothing about the sources changed. */
+export function refreshSourcesList(file: string): boolean {
+  if (!existsSync(file)) return false;
+  return withLock(file, () => {
+    const n = readNote(file);
+    if (n.errors.length) return false;
+    const before = statSync(file).mtimeMs;
+    const body = withSourcesList(n.body, sourceItems(n.doc.toJS() ?? {}).items);
+    if (body === n.body) return false;
+    if (statSync(file).mtimeMs !== before) return false;
+    writeAtomic(file, renderNote(n.doc, body));
+    return true;
+  });
+}
+
 function hostName(u?: string): string { try { return new URL(String(u)).hostname.replace(/^www\./, ''); } catch { return 'source'; } }
 
 /**
@@ -173,7 +220,7 @@ export function editSources(file: string, op: SourceOp, o: { today: string; used
     if (errs.length) throw new Error(errs.map((i) => `${i.path}: ${i.message}${i.fix ? ` (${i.fix})` : ''}`).join('\n'));
     const lines = [r.migrated ? `${o.today}: moved boards and watchlist into one ordered sources list` : '', r.line ? `${o.today}: ${r.line}` : ''].filter(Boolean);
     if (!lines.length) return { changed: false, key: r.key, line: '', items: sourceItems(after).items, migrated: false };
-    let body = n.body;
+    let body = withSourcesList(n.body, sourceItems(after).items);
     for (const l of lines) body = addChangeLine(body, l);
     if (existsSync(file) && statSync(file).mtimeMs !== before) throw new Error('jobs/sources.md changed while Crewdeck was writing it: try again');
     writeAtomic(file, renderNote(n.doc, body));

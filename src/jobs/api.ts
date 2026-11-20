@@ -38,7 +38,7 @@ import { type Confirm, codeFile, issueCode, nativeConfirm } from './confirm.ts';
 import { findBrowser, installHint } from './browser.ts';
 import { providersStatus } from './providers.ts';
 import { parseEvery, readSourcesState, sandboxSupport, writeSourcesState } from './sources.ts';
-import { type SourceOp, changeSources, isKey, listSources } from './sources-note.ts';
+import { type SourceOp, changeSources, isKey, listSources, refreshSourcesList } from './sources-note.ts';
 import { type SchedulerOptions, createSourceScheduler } from './schedule.ts';
 import { type ResolveState, sourcesScreen } from './sources-view.ts';
 import type { ResolveResult } from './resolve.ts';
@@ -310,6 +310,8 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     child.on('error', (e) => done(null, e.message));
     child.on('close', (code) => done(code));
   });
+  // The sources note's readable list (Notes hides the frontmatter that holds them): brought up to date on start.
+  try { refreshSourcesList(join(c.vault, NOTES.sources)); } catch {}
   const scheduler = createSourceScheduler({
     everyMs: o.sources?.everyMs ?? parseEvery(c.jobs.fetch_every),
     run: o.sources?.run ?? runSourceChild,
