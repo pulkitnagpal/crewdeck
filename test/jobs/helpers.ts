@@ -52,6 +52,9 @@ import type { JobsFeatures } from '../../src/config.ts';
 import { openJobsDb, upsertRole, type RoleInput } from '../../src/jobs/db.ts';
 import { type Ctx, makeCtx } from '../../src/jobs/ctx.ts';
 
+// No live fetch of the planned sources in tests (src/jobs/sources.ts); spawned CLIs and servers inherit it.
+process.env.CREWDECK_PLANNED ??= 'off';
+
 export type World = ReturnType<typeof tempSetup> & { ctx: Ctx; at: (iso: string) => void };
 
 export function world(person: keyof typeof PEOPLE = 'berlin-analyst', o: { features?: Partial<JobsFeatures>; now?: string } = {}): World {

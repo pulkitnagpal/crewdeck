@@ -411,7 +411,8 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
   }
 
   // Jobs v2: the person's planned sources (official APIs, company job feeds), plain code, before the rules run.
-  if (o.planned) {
+  // CREWDECK_PLANNED=off keeps a run to the notes' own sources (the test suite sets it: no live network).
+  if (o.planned && process.env.CREWDECK_PLANNED !== 'off') {
     try {
       const { runPlanned } = await import('./planned-run.ts');
       const r = await runPlanned(ctx, { net: o.net });

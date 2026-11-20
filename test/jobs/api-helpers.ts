@@ -11,6 +11,9 @@ import { prepareDraft } from '../../src/jobs/draft/draft.ts';
 import type { JobsApiOptions } from '../../src/jobs/api.ts';
 import { type PEOPLE, role, world } from './helpers.ts';
 
+// No live fetch of the planned sources in tests (src/jobs/sources.ts); spawned CLIs and servers inherit it.
+process.env.CREWDECK_PLANNED ??= 'off';
+
 export const TOKEN = 'c'.repeat(64);
 export type Res = { status: number; headers: Record<string, any>; body: string; json: any };
 
