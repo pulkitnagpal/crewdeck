@@ -1,0 +1,9 @@
+{
+ "_fixture": "UNVERIFIED: written from reed.co.uk/developers/jobseeker (search response fields), not a recorded response; the values are fictional",
+ "results": [
+  { "jobId": 51234567, "employerId": 123456, "employerName": "Northfield Care Group", "employerProfileId": null, "employerProfileName": null, "jobTitle": "Registered Nurse - Nights", "locationName": "Leeds", "minimumSalary": 36000.0, "maximumSalary": 41000.0, "currency": "GBP", "expirationDate": "18/12/2026", "date": "18/11/2026", "jobDescription": "Our 60-bed nursing home in Leeds is looking for a Registered Nurse (RGN/RMN) for night shifts... ", "applications": 4, "jobUrl": "https://www.reed.co.uk/jobs/registered-nurse-nights/51234567" },
+  { "jobId": 51234568, "employerId": 654321, "employerName": "Agile Staffing", "employerProfileId": null, "employerProfileName": null, "jobTitle": "Bank Nurse", "locationName": "Remote / Home based", "minimumSalary": 24.5, "maximumSalary": 30.0, "currency": "GBP", "expirationDate": "01/12/2026", "date": "17/11/2026", "jobDescription": "Telephone triage nurse, flexible hours... ", "applications": 12, "jobUrl": "https://www.reed.co.uk/jobs/bank-nurse/51234568" }
+ ],
+ "ambiguousLocations": [],
+ "totalResults": 230
+}
