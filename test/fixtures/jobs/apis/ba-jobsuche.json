@@ -1,0 +1,11 @@
+{
+ "_fixture": "UNVERIFIED: written from the community documentation (github.com/bundesAPI/jobsuche-api), not a recorded response: a probe with Crewdeck's User-Agent got HTTP 403 on 2026-11-20. Values are fictional",
+ "stellenangebote": [
+  { "beruf": "Gesundheits- und Krankenpfleger/in", "titel": "Pflegefachkraft (m/w/d) Intensivstation", "refnr": "10000-1198765432-S", "arbeitsort": { "plz": "10117", "ort": "Berlin", "region": "Berlin", "land": "Deutschland", "koordinaten": { "lat": 52.52, "lon": 13.39 } }, "arbeitgeber": "Klinikum Mitte GmbH", "aktuelleVeroeffentlichungsdatum": "2026-11-18", "modifikationsTimestamp": "2026-11-18T09:12:31.123", "eintrittsdatum": "2026-12-01" },
+  { "beruf": "Altenpfleger/in", "titel": "Pflegefachkraft Altenpflege", "refnr": "12345-0000123456-S", "arbeitsort": { "plz": "14467", "ort": "Potsdam", "region": "Brandenburg", "land": "Deutschland" }, "arbeitgeber": "Seniorenhaus am Park", "aktuelleVeroeffentlichungsdatum": "2026-11-15", "modifikationsTimestamp": "2026-11-16T14:00:00.000", "eintrittsdatum": "2027-01-01", "externeUrl": "https://karriere.seniorenhaus.example.org/stellen/42" }
+ ],
+ "maxErgebnisse": "180",
+ "page": "1",
+ "size": "50",
+ "facetten": {}
+}

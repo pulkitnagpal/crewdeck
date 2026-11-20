@@ -1,0 +1,191 @@
+{
+ "info": {
+  "title": "GOV UK - Teaching Vacancies",
+  "description": "Find teaching, leadership and support jobs in schools and colleges. Search vacancies, apply for jobs and get email alerts with Teaching Vacancies.",
+  "termsOfService": "https://teaching-vacancies.service.gov.uk/pages/terms-and-conditions#terms-and-conditions-for-api-users",
+  "contact": {
+   "name": "Teaching Vacancies API Support",
+   "email": "jobs@example.com"
+  },
+  "license": {
+   "name": "Open Government License",
+   "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+  },
+  "version": "0.1.0"
+ },
+ "openapi": "3.0.0",
+ "data": [
+  {
+   "@context": "http://schema.org",
+   "@type": "JobPosting",
+   "title": "Senior Science Technician (Biology)",
+   "jobBenefits": null,
+   "datePosted": "2026-11-20",
+   "description": "<div><p>We are seeking an experienced science professional who will provide a comprehensive, efficient and effective range of technical support to meet the needs of the department. This will include preparation and maintenance of resources, ordering of supplies and supporting both staff and students in the classroom. You will need to be enthusiastic, flexible and confident in supporting practical work to A level. You may be required to work across all science departments, but specific departmental training will be provided where appropriate.</p><p>This role requires candidates to have GCSE Maths and English at Grade 4 or above (or equivalent). The successful candidate will be expected to provide evidence of their GCSE certificates.</p></div>",
+   "occupationalCategory": "other_support",
+   "directApply": null,
+   "employmentType": [
+    "FULL_TIME"
+   ],
+   "industry": "Education",
+   "jobLocation": {
+    "@type": "Place",
+    "address": {
+     "@type": "PostalAddress",
+     "addressLocality": "Sheffield",
+     "addressRegion": "Yorkshire and the Humber",
+     "streetAddress": "Bents Crescent",
+     "postalCode": "S11 9QH",
+     "addressCountry": "GB"
+    }
+   },
+   "baseSalary": {
+    "@type": "MonetaryAmount",
+    "currency": "GBP",
+    "value": {
+     "@type": "QuantitativeValue",
+     "value": "£27,274.00 - £29,542.00 Annually (FTE)\n\rPro rata £23,458 - £25,409",
+     "unitText": "YEAR"
+    }
+   },
+   "url": "https://teaching-vacancies.service.gov.uk/jobs/senior-science-technician-biology-silverdale-school-sheffield-south-yorkshire",
+   "hiringOrganization": {
+    "@type": "Organization",
+    "name": "Silverdale School",
+    "sameAs": "https://www.silverdale.chorustrust.org/",
+    "identifier": "139167",
+    "description": null,
+    "logo": "/assets/images/govuk-icon-180-e3675089.png"
+   },
+   "validThrough": "2026-11-29T23:59:00+00:00"
+  },
+  {
+   "@context": "http://schema.org",
+   "@type": "JobPosting",
+   "title": "Teacher of Science (Temporary)",
+   "jobBenefits": null,
+   "datePosted": "2026-11-20",
+   "description": "<p>\r\n\r\n\r\n\r\n\r\n</p><p>Wetherby High\r\nSchool is a forward-thinking school in a semi-rural area of North Leeds. We are\r\nproud of our caring and inclusive reputation and have a strong team of\r\nprofessionals committed to developing and delivering a rich learning experience\r\nfor all our students.</p><p>\r\n\r\n\r\n\r\n</p><p>Our school\r\ncommunity is based upon an inclusive and restorative ethos that we believe best\r\nallows every student the opportunity to realise their full potential.</p><p>\r\n\r\n\r\n\r\n</p><p>We are now looking to appoint a\r\ndynamic, innovative and skilful teacher to teach Science, who is able to demonstrate:</p><p>\r\n\r\n\r\n\r\n</p><ul type=\"disc\">\r\n <li>An understanding\r\n     of, and commitment to, an inclusive school ethos, working restoratively\r\n     and ensuring the well-being of each child.</li>\r\n <li>A successful track\r\n     record of raising attainment and progress for students of all abilities.</li>\r\n <li>A passion for science,\r\n     interested in inspiring students and a wish to join a vibrant,\r\n     forward-thinking and successful team.</li>\r\n <li>A commitment to\r\n     providing a highly effective learning environment and a willingness to\r\n     positively embrace change, challenge and opportunities.</li>\r\n</ul><p>\r\n\r\n\r\n\r\n</p><p>It is essential\r\nthat the post holder shares our school ethos which is firmly rooted in a\r\nrestorative approach and the following values: to ‘Know our children well’: to be ‘Partners in Learning’: to develop\r\n‘Character for Achievement’; to ‘Enjoy and Aspire’. We firmly believe that\r\nin order to move forwards we need to be prepared and able to ‘do things\r\ndifferently and do different things’.</p><p>\r\n\r\n\r\n\r\n</p><p>We\r\nsignificantly invest in the development and training of all colleagues who are\r\nequally happy to share their expertise, skills and knowledge across the\r\norganisation. If you are looking to be stretched and challenged within a\r\npositive and creative staff team and you have a genuine desire to make a\r\npositive difference to our children, please submit an application form and covering letter to hr@wetherbyhigh\r\nco.uk, by 9am on Tuesday 8th December 2026.</p><p>To find our more about our school, this vacancy and our application form, please visit our school website using the link provided in this advert.</p><p>\r\n\r\n\r\n\r\nWe promote diversity and want a workforce which\r\nreflects the population of Leeds.  This\r\nschool is committed to safeguarding and promoting the wellbeing of children and\r\nyoung people and expects all staff and volunteers to share this commitment. All\r\nsuccessful applications will be subject to an Enhanced Disclosure and Barring\r\ncheck and satisfactory references. The school has a privacy statement for job\r\napplicants which is available in the Recruitment Pack.\r\n\r\n\r\n\r\n</p><br><p></p>",
+   "occupationalCategory": "teacher",
+   "directApply": false,
+   "employmentType": [
+    "FULL_TIME",
+    "TEMPORARY"
+   ],
+   "industry": "Education",
+   "jobLocation": {
+    "@type": "Place",
+    "address": {
+     "@type": "PostalAddress",
+     "addressLocality": "Wetherby",
+     "addressRegion": "Yorkshire and the Humber",
+     "streetAddress": "Hallfield Lane",
+     "postalCode": "LS22 6JS",
+     "addressCountry": "GB"
+    }
+   },
+   "baseSalary": {
+    "@type": "MonetaryAmount",
+    "currency": "GBP",
+    "value": {
+     "@type": "QuantitativeValue",
+     "value": "ECT / MPS / UPS - Between £34,068 and £52,834.",
+     "unitText": "YEAR"
+    }
+   },
+   "url": "https://teaching-vacancies.service.gov.uk/jobs/teacher-of-science-temporary-wetherby-high-school",
+   "hiringOrganization": {
+    "@type": "Organization",
+    "name": "Wetherby High School",
+    "sameAs": "https://wetherbyhigh.org.uk",
+    "identifier": "108088",
+    "description": null,
+    "logo": "/assets/images/govuk-icon-180-e3675089.png"
+   },
+   "validThrough": "2026-12-08T09:00:00+00:00"
+  },
+  {
+   "@context": "http://schema.org",
+   "@type": "JobPosting",
+   "title": "UKS2 Teaching Assistant and Midday Supervisory Assistant",
+   "jobBenefits": null,
+   "datePosted": "2026-11-20",
+   "description": "<p>\r\n</p><p>We are looking for an enthusiastic and dedicated Teaching Assistant and Midday Supervisory Assistant to work full time in our Year 5/6 team from September 2026.</p><p>We are looking for staff with:</p><p>-The vision to maintain and promote high standards and expectations of pupil achievement and behaviour.</p><p>-The ability to work as part of a close team to achieve the very best for our children.</p><p>-Motivation, enthusiasm and a commitment to excellence.</p><p>-Excellent interpersonal and organisational skills.</p><p>-Willingness to share the school’s vision, in order to drive the school to success.</p><p>-A good sense of humour!</p><p>The Governors and staff of Eastbury Farm arecommitted to safeguarding and promoting the welfare of children and expects all staff and visitors to share this commitment. Appointment to this post is subject to an enhanced Disclosure and Barring Service check (DBS) as well as other pre-appointment checks,including an online check, outlined in Keeping Children Safe in Education (September 2025).</p><p>Candidates must ensure that all gaps in employment are accounted for when completing the application form - including unemployment, travelling and being at home to raise children. </p><p>We warmly welcome prospective candidates to visit and see our lovely school. Please contact Miss Workman, Headteacher, on [phone] for further details and to arrange a visit.</p><p>\r\n\r\n</p>",
+   "occupationalCategory": "teaching_assistant",
+   "directApply": true,
+   "employmentType": [
+    "FULL_TIME"
+   ],
+   "industry": "Education",
+   "jobLocation": {
+    "@type": "Place",
+    "address": {
+     "@type": "PostalAddress",
+     "addressLocality": "Northwood",
+     "addressRegion": "East of England",
+     "streetAddress": "Bishops Avenue",
+     "postalCode": "HA6 3DG",
+     "addressCountry": "GB"
+    }
+   },
+   "url": "https://teaching-vacancies.service.gov.uk/jobs/uks2-teaching-assistant-and-midday-supervisory-assistant-fe0707b0-6c53-4670-aac1-d91cc1970b5b",
+   "hiringOrganization": {
+    "@type": "Organization",
+    "name": "Eastbury Farm Primary School",
+    "sameAs": "http://www.eastburyfarm.herts.sch.uk/",
+    "identifier": "117245",
+    "description": null,
+    "logo": "/assets/images/govuk-icon-180-e3675089.png"
+   },
+   "validThrough": "2026-12-04T12:00:00+00:00"
+  },
+  {
+   "@context": "http://schema.org",
+   "@type": "JobPosting",
+   "title": "Pastoral Leave (Maternity Cover)",
+   "jobBenefits": null,
+   "datePosted": "2026-11-20",
+   "description": "<p>\r\n\r\n\r\n</p><p>The successful candidate will:</p><p>\r\n\r\n\r\n\r\n</p><ul><li>Be\r\nable to communicate effectively and accurately both orally and in writing to\r\nchildren, parents / carers and other external agencies</li><li>Be welcoming and\r\nprofessional when managing the centre</li><li>Be flexible and hardworking\r\nand able to work under pressure</li><li>Be able to follow Trust\r\nprocedures and use their own initiative as required and be a good team player</li><li>Have good organisational\r\nand interpersonal skills and be able to maintain confidentiality at all times</li></ul>",
+   "occupationalCategory": "pastoral_health_and_welfare",
+   "directApply": true,
+   "employmentType": [
+    "FULL_TIME",
+    "PART_TIME",
+    "TEMPORARY"
+   ],
+   "industry": "Education",
+   "jobLocation": {
+    "@type": "Place",
+    "address": {
+     "@type": "PostalAddress",
+     "addressLocality": "Southall",
+     "addressRegion": "London",
+     "streetAddress": "Dormers Wells Lane",
+     "postalCode": "UB1 3HZ",
+     "addressCountry": "GB"
+    }
+   },
+   "url": "https://teaching-vacancies.service.gov.uk/jobs/pastoral-leave-maternity-cover-dormers-wells-high-school-southall-middlesex",
+   "hiringOrganization": {
+    "@type": "Organization",
+    "name": "Dormers Wells High School",
+    "sameAs": "http://dwhs.co.uk/",
+    "identifier": "145348",
+    "description": null,
+    "logo": "/assets/images/govuk-icon-180-e3675089.png"
+   },
+   "validThrough": "2026-12-07T09:00:00+00:00"
+  }
+ ],
+ "links": {
+  "self": "https://teaching-vacancies.service.gov.uk/api/v1/jobs.json?page=1",
+  "first": "https://teaching-vacancies.service.gov.uk/api/v1/jobs.json?page=1",
+  "last": "https://teaching-vacancies.service.gov.uk/api/v1/jobs.json?page=70",
+  "prev": null,
+  "next": "https://teaching-vacancies.service.gov.uk/api/v1/jobs.json?page=2"
+ },
+ "meta": {
+  "totalPages": 70,
+  "count": 6932
+ }
+}

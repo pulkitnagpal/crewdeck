@@ -194,7 +194,8 @@ const USAGE = `usage: crewdeck jobs <command>
   pref set <field.path> <value> --because-file <f>   jobs/search.md, logged under ## Changes
   remember --kind <kind> --text-file <f> --quote-file <f> [--key k] [--scope all|company --company-file <f>]
            [--title-words-file <f>] [--supersedes m-N]  |  remember --retire m-N
-  features [<name> <on|off|number>]       risky switches (changing needs your own terminal)`;
+  features [<name> <on|off|number>]       risky switches (changing needs your own terminal)
+  keys list|set|remove [<provider>]       your own job-API keys (set reads the key from stdin)`;
 
 /** P2a's commands, loaded only when one of them runs (they open the tracker). */
 const P2 = ['prefilter', 'refilter', 'candidates', 'judge', 'pick', 'status', 'event', 'question', 'applied', 'not-interested', 'add-role', 'role',
@@ -202,7 +203,7 @@ const P2 = ['prefilter', 'refilter', 'candidates', 'judge', 'pick', 'status', 'e
   'link', 'linkedin', 'resume', 'letter', 'request', 'source', 'providers', 'sources', 'preview'];
 
 /** Every `crewdeck jobs` command (the skills lint checks commands against this). */
-export const JOBS_COMMANDS = ['init', 'check', 'rules', 'judge-brief', 'me', 'pref', 'remember', 'features', ...P2];
+export const JOBS_COMMANDS = ['init', 'check', 'rules', 'judge-brief', 'me', 'pref', 'remember', 'features', 'keys', ...P2];
 
 export async function main(args: string[]) {
   const [cmd, ...rest] = args;
@@ -211,7 +212,8 @@ export async function main(args: string[]) {
     if (cmd === 'sources') return say((await import('./sources-cmd.ts')).SOURCES_USAGE);
     say(USAGE); say((await import('./commands.ts')).USAGE); return;
   }
-  const run: Record<string, (a: string[]) => unknown> = { init, check, rules: rulesCmd, 'judge-brief': briefCmd, me, pref, remember: rememberCmd, features };
+  const run: Record<string, (a: string[]) => unknown> = { init, check, rules: rulesCmd, 'judge-brief': briefCmd, me, pref, remember: rememberCmd, features,
+    keys: async (a) => (await import('./apis/keys-cmd.ts')).keysCmd(a) };
   if (cmd && P2.includes(cmd)) {
     const m = await import('./commands.ts');
     return await m.COMMANDS[cmd](rest);
