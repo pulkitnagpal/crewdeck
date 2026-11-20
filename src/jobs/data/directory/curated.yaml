@@ -1,0 +1,80 @@
+# Crewdeck Jobs — hand-curated company directory entries (design §8.2, ADR-0002). Read by src/jobs/directory/seed.ts.
+#
+# Two kinds of entry:
+#   - an OVERLAY on a seed.csv row (same ats + board): adds regions/families/remote/size the dataset doesn't carry, or
+#     quarantines a board found gone;
+#   - an ADDITION for an employer the dataset lacks (other ATSes: Workday, Oracle, Keka, Darwinbox, Zoho Recruit).
+#
+# Fields:
+#   ats, board   the board key. Workday boards are `<tenant>/<wdN>/<site>` (https://<tenant>.<wdN>.myworkdayjobs.com/<site>);
+#                Keka is the subdomain of <sub>.keka.com/careers; Oracle and others give `url`.
+#   name         company name
+#   url          careers URL when it isn't derivable from ats + board
+#   regions      where it mostly hires: place ids from places.yaml (countries or regions)
+#   families     field families from sources-catalog.yaml it hires for
+#   remote       true when the employer is known to hire remote (remote-first or a large remote share)
+#   size         small | mid | large (market knowledge)
+#   status       verified | quarantine. ONLY verified entries are used by default. Verified means the evidence URL was
+#                checked on `checked` and showed what the entry claims (careers link / live board). Region, family and
+#                size facts on a verified entry are market knowledge (confidence medium), not measured.
+#   evidence     the URL that was checked (or, for an overlay, the seed row's public board URL)
+#   checked      date of the check (YYYY-MM-DD)
+#   note         why quarantined, or anything a reader should know
+#
+# Light checks made on 2026-11-20 (≤ 30 public requests): 4 public ATS board APIs, 7 official careers pages, 10
+# Workday CXS probes (all refused with HTTP 429 bot protection, so nothing was verified that way and no retry was made),
+# and a few web searches. Seed-row overlays not checked live rely on the dataset's July 2026 crawl.
+
+companies:
+  # ---------------------------------------------------------------- (a) India tech employers
+  - { ats: greenhouse, board: groww, name: Groww, regions: [in], families: [engineering-it, data, product-project, finance-accounting], size: large, status: verified, evidence: "https://boards.greenhouse.io/groww", checked: 2026-08-01, note: "seed row (crawled 2026-08-01); HQ Bengaluru" }
+  - { ats: greenhouse, board: razorpaysoftwareprivatelimited, name: Razorpay, regions: [in], families: [engineering-it, data, product-project, finance-accounting, sales], size: large, status: verified, evidence: "https://boards.greenhouse.io/razorpaysoftwareprivatelimited", checked: 2026-07-17, note: "seed row; HQ Bengaluru" }
+  - { ats: greenhouse, board: postman, name: Postman, regions: [in, us], families: [engineering-it, product-project, design, sales], size: large, status: verified, evidence: "https://boards.greenhouse.io/postman", checked: 2026-07-17, note: "seed row; engineering hub in Bengaluru" }
+  - { ats: greenhouse, board: phonepe, name: PhonePe, regions: [in], families: [engineering-it, data, product-project], size: large, status: quarantine, evidence: "https://boards-api.greenhouse.io/v1/boards/phonepe", checked: 2026-11-20, note: "board returned 404 on 2026-11-20: moved off this Greenhouse board" }
+  - { ats: lever, board: cred, name: CRED, regions: [in], families: [engineering-it, design, product-project, data], size: mid, status: verified, evidence: "https://jobs.lever.co/cred", checked: 2026-07-12, note: "seed row; HQ Bengaluru" }
+  - { ats: lever, board: meesho, name: Meesho, regions: [in], families: [engineering-it, data, product-project, operations], size: large, status: verified, evidence: "https://api.lever.co/v0/postings/meesho?mode=json", checked: 2026-11-20, note: "live board checked 2026-11-20; HQ Bengaluru" }
+  - { ats: lever, board: paytm, name: Paytm, regions: [in], families: [engineering-it, data, product-project, sales, finance-accounting], size: large, status: verified, evidence: "https://jobs.lever.co/paytm", checked: 2026-07-12, note: "seed row; HQ Noida" }
+  - { ats: lever, board: zeta, name: Zeta, regions: [in], families: [engineering-it, product-project, data], size: mid, status: verified, evidence: "https://jobs.lever.co/zeta", checked: 2026-07-12, note: "seed row; the Indian banking-tech Zeta (not Zeta Global/ZetaChain)" }
+  - { ats: lever, board: mindtickle, name: Mindtickle, regions: [in, us], families: [engineering-it, product-project, sales], size: mid, status: verified, evidence: "https://jobs.lever.co/mindtickle", checked: 2026-07-12, note: "seed row; engineering in Pune" }
+  - { ats: greenhouse, board: druva, name: Druva, regions: [in, us], families: [engineering-it, sales, customer-service], size: mid, status: verified, evidence: "https://boards.greenhouse.io/druva", checked: 2026-08-01, note: "seed row; engineering in Pune" }
+  - { ats: greenhouse, board: inmobi, name: InMobi, regions: [in], families: [engineering-it, data, sales, marketing], size: large, status: verified, evidence: "https://boards.greenhouse.io/inmobi", checked: 2026-07-17, note: "seed row; HQ Bengaluru" }
+  - { ats: ashby, board: atlan, name: Atlan, regions: [in, us], families: [engineering-it, data, product-project, sales], remote: true, size: mid, status: verified, evidence: "https://api.ashbyhq.com/posting-api/job-board/atlan", checked: 2026-11-20, note: "live board checked 2026-11-20; remote-first (market knowledge)" }
+  - { ats: lever, board: freshworks, name: Freshworks, regions: [in, us], families: [engineering-it, product-project, sales, customer-service, marketing], size: large, status: verified, evidence: "https://jobs.lever.co/freshworks", checked: 2026-08-01, note: "seed row; large Chennai/Bengaluru offices" }
+  - { ats: greenhouse, board: doordashindia, name: DoorDash India, regions: [in], families: [engineering-it, data], size: large, status: verified, evidence: "https://boards.greenhouse.io/doordashindia", checked: 2026-07-17, note: "seed row; Pune engineering" }
+  - { ats: greenhouse, board: slice, name: slice, regions: [in], families: [engineering-it, finance-accounting], status: quarantine, evidence: "https://boards.greenhouse.io/slice", checked: 2026-08-01, note: "name is ambiguous (Indian fintech slice vs US Slice); not confirmed which" }
+  - { ats: keka, board: hr, name: Keka HR, url: "https://hr.keka.com/careers", regions: [in], families: [engineering-it, product-project, sales, customer-service], size: mid, status: verified, evidence: "https://hr.keka.com/careers/jobdetails/97660", checked: 2026-11-20, note: "Keka's own careers portal, Hyderabad/Bengaluru postings (found via web search)" }
+  - { ats: keka, board: kickdrum, name: Kickdrum, url: "https://kickdrum.keka.com/careers", regions: [in], families: [engineering-it], size: small, status: verified, evidence: "https://kickdrum.keka.com/careers/jobdetails/13983", checked: 2026-11-20, note: "Bengaluru engineering postings (found via web search)" }
+  - { ats: zoho-recruit, board: careers, name: Zoho Recruit careers portal, url: "https://careers.zohorecruit.com", regions: [in], families: [engineering-it, customer-service], status: quarantine, evidence: "https://careers.zohorecruit.com", checked: 2026-11-20, note: "portal lists openings, but whose (Zoho Corp itself?) was not confirmed" }
+  - { ats: darwinbox, board: darwinbox, name: Darwinbox, regions: [in], families: [engineering-it, product-project, sales], status: quarantine, note: "Darwinbox hires in Hyderabad; its own careers-portal URL on darwinbox.in was not found in a public check" }
+
+  # ---------------------------------------------------------------- (b) US hospital systems
+  - { ats: workday, board: massgeneralbrigham/wd1/MGBExternal, name: Mass General Brigham, regions: [us], families: [healthcare, care-social, science-research, office-admin], size: large, status: verified, evidence: "https://www.massgeneralbrigham.org/en/about/careers", checked: 2026-11-20, note: "official careers page links to this Workday site; Boston area" }
+  - { ats: workday, board: osu/wd1/OSUCareers, name: The Ohio State University (incl. Wexner Medical Center), regions: [us], families: [healthcare, education, science-research, office-admin], size: large, status: verified, evidence: "https://hr.osu.edu/careers/", checked: 2026-11-20, note: "official careers page links to this Workday site; Columbus, Ohio" }
+  - { ats: workday, board: chop/wd108/CHOPExternalCareers, name: Children's Hospital of Philadelphia, regions: [us], families: [healthcare, science-research, care-social], size: large, status: verified, evidence: "https://careers.chop.edu/", checked: 2026-11-20, note: "careers site (Phenom) sends applicants to this Workday site" }
+  - { ats: oracle, board: providence, name: Providence, url: "https://www.providence.jobs/", regions: [us], families: [healthcare, care-social], size: large, status: verified, evidence: "https://www.providence.jobs/", checked: 2026-11-20, note: "Oracle Recruiting Cloud (hcmUI/CandidateExperience), not Workday; needs an Oracle adapter" }
+  - { ats: phenom, board: corewellhealth, name: Corewell Health, url: "https://careers.corewellhealth.org/us/en", regions: [us], families: [healthcare], size: large, status: quarantine, evidence: "https://careers.corewellhealth.org/us/en", checked: 2026-11-20, note: "careers site is Phenom; the ATS behind it was not identified" }
+  - { ats: workday, board: ccf/wd1/ClevelandClinicCareers, name: Cleveland Clinic, regions: [us], families: [healthcare], size: large, status: quarantine, evidence: "https://jobs.clevelandclinic.org/", checked: 2026-11-20, note: "Workday tenant is a guess; the careers page didn't show its ATS" }
+  - { ats: workday, board: sutterhealth/wd1/SH, name: Sutter Health, regions: [us], families: [healthcare], size: large, status: quarantine, note: "Workday tenant is a guess, unverified" }
+  - { ats: workday, board: stanfordhealthcare/wd5/SHC_External_Career_Site, name: Stanford Health Care, regions: [us], families: [healthcare], size: large, status: quarantine, note: "Workday tenant is a guess, unverified" }
+  - { ats: workday, board: uchealth/wd1/UCHealthCareers, name: UCHealth (Colorado), regions: [us], families: [healthcare], size: large, status: quarantine, evidence: "https://www.uchealth.org/careers/", checked: 2026-11-20, note: "careers page refused the check (403); tenant unverified" }
+  - { ats: workday, board: intermountainhealth/wd5/IntermountainCareers, name: Intermountain Health, regions: [us], families: [healthcare], size: large, status: quarantine, note: "Workday tenant is a guess, unverified" }
+
+  # ---------------------------------------------------------------- (c) UK / EU employers (seed rows)
+  - { ats: greenhouse, board: monzo, name: Monzo, regions: [gb], families: [engineering-it, data, product-project, customer-service, finance-accounting], size: large, status: verified, evidence: "https://boards-api.greenhouse.io/v1/boards/monzo", checked: 2026-11-20, note: "live board checked 2026-11-20; London" }
+  - { ats: ashby, board: deliveroo, name: Deliveroo, regions: [gb], families: [engineering-it, data, product-project, operations], size: large, status: verified, evidence: "https://jobs.ashbyhq.com/deliveroo", checked: 2026-07-17, note: "seed row; London" }
+  - { ats: greenhouse, board: alphafmc, name: Alpha FMC (UK), regions: [gb], families: [finance-accounting, product-project], size: mid, status: verified, evidence: "https://boards.greenhouse.io/alphafmc", checked: 2026-07-17, note: "seed row; asset-management consulting" }
+  - { ats: greenhouse, board: greylondon, name: Grey London, regions: [gb], families: [marketing, creative-media, design], size: mid, status: verified, evidence: "https://boards.greenhouse.io/greylondon", checked: 2026-07-17, note: "seed row; advertising agency" }
+  - { ats: ashby, board: mollie, name: Mollie, regions: [nl], families: [engineering-it, finance-accounting, sales, customer-service], size: mid, status: verified, evidence: "https://jobs.ashbyhq.com/mollie", checked: 2026-07-17, note: "seed row; Amsterdam" }
+  - { ats: greenhouse, board: adyen, name: Adyen, regions: [nl], families: [engineering-it, data, finance-accounting, sales], size: large, status: verified, evidence: "https://boards.greenhouse.io/adyen", checked: 2026-07-17, note: "seed row; Amsterdam" }
+  - { ats: greenhouse, board: n26, name: N26, regions: [de], families: [engineering-it, finance-accounting, customer-service], size: mid, status: verified, evidence: "https://boards.greenhouse.io/n26", checked: 2026-08-01, note: "seed row; Berlin" }
+  - { ats: greenhouse, board: celonis, name: Celonis, regions: [de, us], families: [engineering-it, data, sales], size: large, status: verified, evidence: "https://boards.greenhouse.io/celonis", checked: 2026-07-17, note: "seed row; Munich" }
+  - { ats: ashby, board: uberall, name: Uberall, regions: [de], families: [engineering-it, sales, customer-service], size: mid, status: verified, evidence: "https://jobs.ashbyhq.com/uberall", checked: 2026-07-17, note: "seed row; Berlin" }
+  - { ats: lever, board: spotify, name: Spotify, regions: [se, gb, us], families: [engineering-it, data, design, product-project, marketing], size: large, status: verified, evidence: "https://jobs.lever.co/spotify", checked: 2026-07-11, note: "seed row; Stockholm" }
+  - { ats: greenhouse, board: canonical, name: Canonical, regions: [world], families: [engineering-it, sales, finance-accounting], remote: true, size: large, status: verified, evidence: "https://boards.greenhouse.io/canonical", checked: 2026-07-17, note: "seed row; London HQ, hires remote worldwide (market knowledge)" }
+
+  # ---------------------------------------------------------------- remote-first employers (seed rows)
+  - { ats: greenhouse, board: gitlab, name: GitLab, regions: [world], families: [engineering-it, data, product-project, sales, marketing], remote: true, size: large, status: verified, evidence: "https://boards.greenhouse.io/gitlab", checked: 2026-07-17, note: "seed row; all-remote (market knowledge)" }
+  - { ats: greenhouse, board: automatticcareers, name: Automattic, regions: [world], families: [engineering-it, design, customer-service, marketing], remote: true, size: large, status: verified, evidence: "https://boards.greenhouse.io/automatticcareers", checked: 2026-07-17, note: "seed row; fully distributed (market knowledge)" }
+  - { ats: ashby, board: zapier, name: Zapier, regions: [world], families: [engineering-it, product-project, customer-service, marketing], remote: true, size: mid, status: verified, evidence: "https://jobs.ashbyhq.com/zapier", checked: 2026-07-17, note: "seed row; all-remote, many roles Americas-only (market knowledge)" }
+  - { ats: ashby, board: deel, name: Deel, regions: [world], families: [engineering-it, people-hr, legal, sales, customer-service, finance-accounting], remote: true, size: large, status: verified, evidence: "https://jobs.ashbyhq.com/deel", checked: 2026-07-17, note: "seed row; remote-first (market knowledge)" }
+  - { ats: greenhouse, board: remotecom, name: Remote, regions: [world], families: [engineering-it, people-hr, legal, sales, finance-accounting], remote: true, size: mid, status: verified, evidence: "https://boards.greenhouse.io/remotecom", checked: 2026-07-17, note: "seed row; remote-first (market knowledge)" }
