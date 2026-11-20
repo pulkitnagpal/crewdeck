@@ -22,11 +22,15 @@ const AT = new Date('2026-11-19T10:00:00Z');
 test('JSON-LD JobPosting is read in every common shape; meta tags are the fallback', () => {
   const p = readPostingPage(`<html><head>${ld(POSTING)}</head></html>`, AT);
   assert.deepEqual(p, { title: 'Senior Data Analyst', company: 'Example Mobility GmbH', location: 'Berlin, DE', description: 'Own our Looker dashboards & models. SQL',
-    pay_text: 'EUR 60000–75000 per year', posted_at: '2026-11-15T00:00:00.000Z', closed: false, closed_reason: undefined });
+    pay_text: 'EUR 60000–75000 per year', posted_at: '2026-11-15T00:00:00.000Z', closed: false, closed_reason: undefined,
+    workplace: 'onsite', remote_countries: undefined, employment_type: undefined, valid_through: '2026-12-31T00:00:00.000Z' });
   assert.deepEqual(parsePay(p.pay_text, 'EUR')?.min, 60000);
   // @graph, an array, @type as a list, a hiringOrganization string, remote with applicant locations, a single amount.
   const graph = readPostingPage(ld({ '@graph': [{ '@type': 'WebPage' }, { ...POSTING, '@type': ['JobPosting'], jobLocation: undefined, jobLocationType: 'TELECOMMUTE', applicantLocationRequirements: [{ '@type': 'Country', name: 'Germany' }, { '@type': 'Country', name: 'Austria' }] }] }), AT);
   assert.equal(graph.location, 'Remote (Germany, Austria)');
+  // The structured fields are kept too (P1b): workplace, the countries a remote role hires from, employment type.
+  assert.deepEqual([graph.workplace, graph.remote_countries, graph.employment_type], ['remote', ['Germany', 'Austria'], undefined]);
+  assert.equal(readPostingPage(ld({ ...POSTING, employmentType: ['FULL_TIME', 'CONTRACTOR'] }), AT).employment_type, 'FULL_TIME, CONTRACTOR');
   const arr = readPostingPage(ld([{ '@type': 'Organization' }, { ...POSTING, hiringOrganization: 'Example Co', baseSalary: { currency: 'USD', value: { value: 45, unitText: 'HOUR' } } }]), AT);
   assert.equal(arr.company, 'Example Co');
   assert.equal(arr.pay_text, 'USD 45 per hour');

@@ -1,7 +1,8 @@
 // LinkedIn's public guest pages (plain HTTP through netguard, no account, no browser), only when the user switched the
 // feature on (design §12): `linkedin_links` for a pasted posting, `linkedin_search` for search. Gentle by construction:
 // one request per 2.5 s, a request cap per run, and the whole run stops at the first 429, 999 or redirect (LinkedIn's
-// "slow down" and sign-in wall). Applying happens in the user's own signed-in browser pane, never here.
+// "slow down" and sign-in wall). The cards found before a stop are kept as roles without a description (P1b), and the
+// source runner pauses LinkedIn for 1 h, 4 h, 12 h, then 24 h after each stop in a row (sources.ts). Applying happens in the user's own signed-in browser pane, never here.
 import { type Ctx, notesOf, nowIso } from './ctx.ts';
 import { addEvent, upsertRole } from './db.ts';
 import { cleanHost } from './fields.ts';
@@ -9,7 +10,7 @@ import { type FetchOptions, type NetOptions, guardedFetch } from './net/netguard
 import type { JobNotes } from './notes.ts';
 import { compileRules, prefilter } from './rules.ts';
 import { searchTerms } from './titles.ts';
-import { after, plainText } from './text.ts';
+import { DESC_CAP, after, plainText } from './text.ts';
 
 export const LINKEDIN_BASE = 'https://www.linkedin.com/jobs-guest/jobs/api';
 export const PACE_MS = 2500;
@@ -137,13 +138,25 @@ export function searchPlan(notes: Pick<JobNotes, 'search'>, days = 7) {
   return { terms, places: places.length ? places : ['Worldwide'], f_WT: wt, f_TPR: tpr };
 }
 
-export type SearchResult = { cards: number; stored: number; skipped: number; known: number; requests: number; stopped?: string; errors: string[]; roles: string[] };
+/**
+ * `stored`: roles stored with their guest-page details; `partial`: cards kept without a description because the run
+ * stopped (or reached its cap) before their detail request: they get details on a later run, or at judge time.
+ * `stop_status`: the HTTP status LinkedIn stopped the run with (0 for the request cap).
+ */
+export type SearchResult = { cards: number; stored: number; partial: number; skipped: number; known: number; requests: number; stopped?: string; stop_status?: number; errors: string[]; roles: string[] };
 
 /** Store one posting read from LinkedIn (a search hit or a pasted link) with its apply kind. */
 export function storeLinkedinRole(ctx: Ctx, d: Detail, source: 'linkedin' | 'pasted') {
   const at = nowIso(ctx);
-  const res = upsertRole(ctx.db, { url: canonicalJobUrl(d.id), title: d.title.slice(0, 300), company: d.company.slice(0, 200) || 'Unknown', location: d.location.slice(0, 300), description: d.description.slice(0, 200_000), source, posted_at: d.posted_at ?? null, apply_kind: d.apply_kind, source_key: source === 'linkedin' ? 'linkedin' : null });
+  const res = upsertRole(ctx.db, { url: canonicalJobUrl(d.id), title: d.title.slice(0, 300), company: d.company.slice(0, 200) || 'Unknown', location: d.location.slice(0, 300), description: d.description.slice(0, DESC_CAP), source, posted_at: d.posted_at ?? null, apply_kind: d.apply_kind, source_key: source === 'linkedin' ? 'linkedin' : null });
   if (res.isNew) addEvent(ctx.db, res.id, 'added', `from ${source} (${d.apply_kind === 'easy' ? 'Easy Apply' : d.apply_kind === 'external' ? 'applies on the company site' : 'apply type unknown'})`, at);
+  return res;
+}
+
+/** A search card kept as a role without a description (title, company, location, link, posted date). */
+export function storeLinkedinCard(ctx: Ctx, c: Card) {
+  const res = upsertRole(ctx.db, { url: canonicalJobUrl(c.id), title: c.title.slice(0, 300), company: c.company.slice(0, 200) || 'Unknown', location: c.location.slice(0, 300), description: '', source: 'linkedin', posted_at: c.posted_at ?? null, source_key: 'linkedin' });
+  if (res.isNew) addEvent(ctx.db, res.id, 'added', 'from linkedin (search card only: the details are read on a later run)', nowIso(ctx));
   return res;
 }
 
@@ -158,8 +171,9 @@ export async function searchLinkedin(ctx: Ctx, o: ClientOptions & { days?: numbe
   if (!plan.terms.length) throw new Error('jobs/search.md has no job titles to search for (roles.titles or roles.targets)');
   const client = new LinkedinClient(o);
   const compiled = compileRules(notes);
-  const res: SearchResult = { cards: 0, stored: 0, skipped: 0, known: 0, requests: 0, errors: [], roles: [] };
+  const res: SearchResult = { cards: 0, stored: 0, partial: 0, skipped: 0, known: 0, requests: 0, errors: [], roles: [] };
   const seen = new Map<string, Card>();
+  const stop = (e: LinkedinStop) => { res.stopped = e.message; res.stop_status = e.status; };
   try {
     outer: for (const place of plan.places) for (const term of plan.terms) for (let p = 0; p < (o.pages ?? 1); p++) {
       if (client.requests >= client.cap) break outer;
@@ -170,16 +184,23 @@ export async function searchLinkedin(ctx: Ctx, o: ClientOptions & { days?: numbe
       if (cards.length < 10) break;
     }
   } catch (e: any) {
-    if (!(e instanceof LinkedinStop)) res.errors.push(e.message); else res.stopped = e.message;
+    if (!(e instanceof LinkedinStop)) res.errors.push(e.message); else stop(e);
   }
   res.cards = seen.size;
-  let details = 0;
+  let details = 0, halted = false;
+  const known = ctx.db.prepare('select status, description from roles where url=?');
   for (const c of seen.values()) {
-    if (res.stopped) break;
-    if (ctx.db.prepare('select 1 from roles where url=?').get(canonicalJobUrl(c.id))) { res.known++; continue; }
+    // A role stored from its card alone (no description yet) is not "known": its details are read now.
+    const k = known.get(canonicalJobUrl(c.id)) as any;
+    if (k && (k.status !== 'new' || plainText(k.description ?? ''))) { res.known++; continue; }
     // The card alone often settles it (title, company, location): no detail request for what the rules drop.
     if (!prefilter({ title: c.title, company: c.company, location: c.location }, compiled).keep) { res.skipped++; continue; }
-    if (details >= (o.maxDetails ?? 40) || client.requests >= client.cap) break;
+    if (!halted && (res.stopped || details >= (o.maxDetails ?? 40) || client.requests >= client.cap)) halted = true;
+    if (halted) {
+      // Stopped, or out of requests: the card is kept as it is (it was discarded before P1b).
+      if (!k) { res.roles.push(storeLinkedinCard(ctx, c).id); res.partial++; }
+      continue;
+    }
     details++;
     try {
       const d = await fetchDetail(client, c.id);
@@ -187,7 +208,8 @@ export async function searchLinkedin(ctx: Ctx, o: ClientOptions & { days?: numbe
       res.roles.push(storeLinkedinRole(ctx, { ...d, posted_at: c.posted_at }, 'linkedin').id);
       res.stored++;
     } catch (e: any) {
-      if (e instanceof LinkedinStop) res.stopped = e.message; else { res.errors.push(e.message); break; }
+      if (e instanceof LinkedinStop) stop(e); else { res.errors.push(e.message); halted = true; }
+      if (!k) { res.roles.push(storeLinkedinCard(ctx, c).id); res.partial++; }
     }
   }
   res.requests = client.requests;

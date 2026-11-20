@@ -41,32 +41,43 @@ test('rankRoles: best first; a remembered company rule drops that company\'s rol
   assert.match(row.status_reason, /^company_rule: company rule \(m-\d+\): Every role travels weekly/);
 });
 
-test('fetchDescriptions: only the top roles without a description, through netguard; closed postings set aside; each tried once', async () => {
+test('fetchDescriptions: every rule-passing role without a full description (not only the top 50), through netguard; closed set aside; 5xx retried; once a day', async () => {
   const LD = (d: string) => `<script type="application/ld+json">${JSON.stringify({ '@type': 'JobPosting', title: 'Senior Data Analyst', hiringOrganization: { name: 'Example Co' }, description: d })}</script>`;
+  const LONG = `<p>${'We use SQL, dbt and Looker to answer questions for the whole company, every day, in Berlin. '.repeat(4)}</p>`;
   const srv = await serve(pages({
-    '/a': `<html>${LD('<p>We use SQL, dbt and Looker to answer questions for the whole company, every day, in Berlin.</p>')}</html>`,
+    '/a': `<html>${LD(LONG)}</html>`,
     '/b': '<html><body>This position has been filled.</body></html>',
     '/c': { status: 500, body: 'oops' },
+    '/e': `<html>${LD(LONG)}</html>`,
   }));
   try {
     const w = world('berlin-analyst');
     const host = 'jobs.example.test';
+    const net = { testHosts: testHosts(host) };
     const a = role(w.ctx, { company: 'A Example', title: 'Senior Data Analyst', url: `http://${host}:${srv.port}/a` });
     const b = role(w.ctx, { company: 'B Example', title: 'Senior Data Analyst', url: `http://${host}:${srv.port}/b` });
     const c = role(w.ctx, { company: 'C Example', title: 'Senior Data Analyst', url: `http://${host}:${srv.port}/c` });
     const low = role(w.ctx, { company: 'D Example', title: 'Office Helper', url: `http://${host}:${srv.port}/d` });
-    const li = role(w.ctx, { company: 'E Example', title: 'Senior Data Analyst', url: 'https://www.linkedin.com/jobs/view/1234567890' });
-    const r = await fetchDescriptions(w.ctx, { top: 4, net: { testHosts: testHosts(host) } });
-    assert.deepEqual(r, { tried: 3, found: 1, closed: 1, errors: 1 });
+    role(w.ctx, { company: 'E Example', title: 'Senior Data Analyst', url: `http://${host}:${srv.port}/e`, description: 'x '.repeat(300) });
+    role(w.ctx, { company: 'F Example', title: 'Senior Data Analyst', url: 'https://www.linkedin.com/jobs/view/1234567890' });
+    const waits: number[] = [];
+    const o = { net, sleep: async (ms: number) => { waits.push(ms); }, random: () => 0.5, backoffMs: 100, paceMs: 0 };
+    const r = await fetchDescriptions(w.ctx, o);
+    assert.deepEqual(r, { tried: 4, found: 1, closed: 2, errors: 1, retried: 2, deferred: 0, backed_off: [] });
     assert.match((w.ctx.db.prepare('select description from roles where id=?').get(a) as any).description, /SQL, dbt and Looker/);
     assert.equal((w.ctx.db.prepare('select status from roles where id=?').get(b) as any).status, 'expired');
-    assert.ok(!srv.hits.includes('/d'), 'outside the top N');
-    void c; void li;
-    // Next run: the tried roles are not fetched again; the window moves down to the next role without a description.
-    const again = await fetchDescriptions(w.ctx, { top: 4, net: { testHosts: testHosts(host) } });
-    assert.deepEqual(again, { tried: 1, found: 0, closed: 1, errors: 0 });
-    assert.equal(srv.hits.filter((h) => h === '/c').length, 1, 'a role is tried once');
-    assert.equal((w.ctx.db.prepare('select status from roles where id=?').get(low) as any).status, 'expired', '404: the posting is gone');
+    assert.equal((w.ctx.db.prepare('select status from roles where id=?').get(low) as any).status, 'expired', 'the lowest-ranked role is read too: 404, the posting is gone');
+    assert.ok(!srv.hits.includes('/e'), 'a role with a full description is not fetched');
+    assert.equal(srv.hits.filter((h) => h === '/c').length, 3, '500: two retries');
+    assert.deepEqual(waits, [150, 250], 'jittered backoff: 100 × 2^n + up to 100');
+    assert.deepEqual({ ...(w.ctx.db.prepare('select detail_status, detail_at from roles where id=?').get(c) as any) }, { detail_status: 'http_500', detail_at: '2026-11-19T10:00:00.000Z' });
+    // Later the same day: nothing is tried again. The next day the failed role is tried once more.
+    w.at('2026-11-19T20:00:00Z');
+    assert.equal((await fetchDescriptions(w.ctx, o)).tried, 0);
+    w.at('2026-11-20T10:30:00Z');
+    assert.equal((await fetchDescriptions(w.ctx, o)).tried, 1);
+    assert.equal(srv.hits.filter((h) => h === '/c').length, 6);
+    assert.equal((await fetchDescriptions(w.ctx, { ...o, top: 0 })).tried, 0, 'top/limit 0 skips the step');
   } finally { await srv.close(); }
 });
 

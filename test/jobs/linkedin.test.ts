@@ -108,6 +108,11 @@ for (const status of [429, 999, 302]) {
     const n = li.hits.length;
     assert.equal(n, 2, 'one search page, then one refused request, then nothing');
     assert.equal(r.stored, 0);
+    assert.equal(r.stop_status, status);
+    // P1b: the card found before the stop is kept as a role without a description (it was discarded before).
+    assert.equal(r.partial, 1);
+    const kept = w.ctx.db.prepare('select url, title, location, description, source, source_key, posted_at, status from roles').all().map((x: any) => ({ ...x }));
+    assert.deepEqual(kept, [{ url: canonicalJobUrl('4000000031'), title: 'Data Analyst', location: 'Berlin, Germany', description: '', source: 'linkedin', source_key: 'linkedin', posted_at: '2026-11-16T00:00:00.000Z', status: 'new' }]);
     const client = new LinkedinClient({ base: li.base, net: li.net, sleep: async () => {} });
     await client.get('seeMoreJobPostings/search?start=1').catch(() => {});
     await assert.rejects(client.get('jobPosting/4000000031'), LinkedinStop);
@@ -132,4 +137,25 @@ test('the guest client is guarded too: a base on this machine is refused', async
   t.after(() => s.close());
   await assert.rejects(new LinkedinClient({ base: `${s.base()}/api`, sleep: async () => {} }).get('jobPosting/4000000051'), /private or local/);
   assert.deepEqual(s.hits, []);
+});
+
+test('cards kept on a stop get their details on a later run; every card past the detail cap is kept too', async (t) => {
+  const cards = CARD('4000000061', 'Senior Data Analyst', 'Example One') + CARD('4000000062', 'Data Analyst', 'Example Two') + CARD('4000000063', 'BI Analyst', 'Example Three');
+  const details = { 4000000061: DETAIL({ company: 'Example One' }), 4000000062: DETAIL({ title: 'Data Analyst', company: 'Example Two' }), 4000000063: DETAIL({ title: 'BI Analyst', company: 'Example Three' }) };
+  const ok = await fakeLinkedin({ cards, details });
+  t.after(() => ok.close());
+  // The detail cap: cards past it are kept, not dropped.
+  const w2 = world('berlin-analyst', { features: { linkedin_search: true } });
+  const c = await searchLinkedin(w2.ctx, { base: ok.base, net: ok.net, sleep: async () => {}, maxDetails: 1 });
+  assert.deepEqual([c.stored, c.partial, c.stopped], [1, 2, undefined]);
+  const searches = ok.hits.filter((h) => h.includes('/seeMoreJobPostings/')).length;
+  // A stop after the searches and one detail: the two cards not yet read are kept.
+  const stopped = await fakeLinkedin({ cards, details, refuse: { after: searches + 1, status: 429 } });
+  t.after(() => stopped.close());
+  const w = world('berlin-analyst', { features: { linkedin_search: true } });
+  const a = await searchLinkedin(w.ctx, { base: stopped.base, net: stopped.net, sleep: async () => {} });
+  assert.deepEqual([a.stored, a.partial, a.roles.length, a.stop_status], [1, 2, 3, 429]);
+  const b = await searchLinkedin(w.ctx, { base: ok.base, net: ok.net, sleep: async () => {} });
+  assert.deepEqual([b.known, b.stored, b.partial], [1, 2, 0], 'the card-only roles are read now; the full one is known');
+  assert.equal((w.ctx.db.prepare("select count(*) n from roles where description = ''").get() as any).n, 0);
 });

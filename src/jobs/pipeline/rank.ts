@@ -1,19 +1,18 @@
 // Rank (design §2.4 step 2): a cheap score from the notes decides what Claude reads first, so Find spends tokens only on
 // what can still pass. No Claude here: title match, seniority, skills overlap with career.md, freshness, source quality
 // (pasted links first, then the user's sources by their position in jobs/sources.md), pay. Companies with a remembered company-wide rule are dropped
-// before ranking. The best roles that arrived without a description get their posting page read (netguard) by the
-// scheduled run, and a Find works the ranked pool in batches within a budget, stopping once the day's picks are covered.
+// before ranking. Every rule-passing role that arrived without a full description gets its posting read (netguard,
+// details.ts) by the scheduled run, and a Find works the ranked pool in batches within a budget, stopping once the day's picks are covered.
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { ensureHome } from '../../config.ts';
 import { type Ctx, notesOf, nowIso } from '../ctx.ts';
-import { addEvent, setStatus, tx } from '../db.ts';
+import { setStatus, tx } from '../db.ts';
 import type { JobNotes } from '../notes.ts';
 import { type Compiled, compileRules, prefilter, titleMatchOf } from '../rules.ts';
 import { fold } from '../places.ts';
 import { clip, plainText } from '../text.ts';
-import { hostOf, isLinkedinHost, isXHost } from '../fields.ts';
 import type { NetOptions } from '../net/netguard.ts';
 import { type Funnel, findFunnel } from '../funnel.ts';
 import { trackerCheck, trackerRules } from './tracker.ts';
@@ -84,50 +83,15 @@ export function rankRoles(ctx: Ctx): Ranked[] {
 
 export const toCandidate = (r: Ranked): Candidate => ({ id: r.id, company: r.company, title: r.title, url: r.url, location: r.location, pay: r.pay, source: r.source, rank: r.rank, description: clip(plainText(r.description ?? '')) });
 
-// ---- descriptions for the best roles (the scheduled run; netguard, no Claude) ----
+// ---- descriptions (the scheduled run; netguard, no Claude): every rule-passing role, see details.ts ----
 
-/** Read the posting page of the top-ranked roles that came without a description (each role is tried once). */
-export async function fetchDescriptions(ctx: Ctx, o: { top?: number; net?: NetOptions; concurrency?: number } = {}): Promise<{ tried: number; found: number; closed: number; errors: number }> {
-  const top = o.top ?? 50;
-  const out = { tried: 0, found: 0, closed: 0, errors: 0 };
-  if (top <= 0) return out;
-  const tried = ctx.db.prepare(`select 1 from events where role_id=? and kind='details'`);
-  const todo = rankRoles(ctx).slice(0, top).filter((r) => {
-    if (plainText(r.description ?? '').length >= 40) return false;
-    const h = hostOf(r.url);
-    return h && !isLinkedinHost(h) && !isXHost(h) && !tried.get(r.id);
-  });
-  if (!todo.length) return out;
-  const { guardedFetch } = await import('../net/netguard.ts');
-  const { readPostingPage } = await import('../link.ts');
-  let next = 0;
-  const one = async () => {
-    while (next < todo.length) {
-      const r = todo[next++];
-      out.tried++;
-      const at = nowIso(ctx);
-      try {
-        const page = await guardedFetch(r.url, { ...o.net, timeoutMs: 15_000 });
-        if (page.status === 404 || page.status === 410) {
-          setStatus(ctx.db, r.id, 'expired', `the posting page answered HTTP ${page.status}`, at); out.closed++; continue;
-        }
-        if (page.status < 200 || page.status > 299) { addEvent(ctx.db, r.id, 'details', `HTTP ${page.status}`, at); out.errors++; continue; }
-        const p = readPostingPage(page.body, ctx.clock());
-        if (p.closed) { setStatus(ctx.db, r.id, 'expired', `the posting is closed: ${p.closed_reason}`, at); out.closed++; continue; }
-        const d = (p.description ?? '').slice(0, 200_000);
-        if (plainText(d).length >= 40) {
-          ctx.db.prepare(`update roles set description=?, pay_text=coalesce(pay_text, ?), posted_at=coalesce(posted_at, ?), updated_at=? where id=?`).run(d, p.pay_text ?? null, p.posted_at ?? null, at, r.id);
-          addEvent(ctx.db, r.id, 'details', 'description read from the posting page', at);
-          out.found++;
-        } else addEvent(ctx.db, r.id, 'details', 'no description on the posting page', at);
-      } catch (e: any) {
-        addEvent(ctx.db, r.id, 'details', `not read: ${String(e.message).slice(0, 200)}`, at);
-        out.errors++;
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(o.concurrency ?? 4, 8)) }, one));
-  return out;
+/**
+ * Read the posting of every rule-passing role whose description is missing or was cut (P1b: not only the top 50, board
+ * APIs before pages, retries, once a day per role). `top` is the old name for `limit` (0 = skip).
+ */
+export async function fetchDescriptions(ctx: Ctx, o: { top?: number; net?: NetOptions; concurrency?: number } & import('./details.ts').DetailOptions = {}) {
+  const { fetchDetails } = await import('./details.ts');
+  return fetchDetails(ctx, { ...o, limit: o.limit ?? o.top });
 }
 
 // ---- Find within a budget ----

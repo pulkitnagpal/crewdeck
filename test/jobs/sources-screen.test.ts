@@ -211,6 +211,12 @@ test('the screen in Node: rows, last fetches, LinkedIn\'s row, the coverage line
     assert.equal(inRegion({ regions: ['world'] }, 'world', {}), true);
     // Last-fetch lines.
     assert.equal(lastLine({ resolving: 'x' }).kind, 'busy');
+    // P1b: LinkedIn paused after a stop says until when; a fetch says how many roles have a full description.
+    const later = new Date(Date.now() + 3_600_000).toISOString();
+    const paused = lastLine({ kind: 'linkedin', enabled: true, fetch: 'auto', last: { ok: false, at: new Date().toISOString(), why: 'x', paused_until: later } });
+    assert.equal(paused.kind, 'warn');
+    assert.match(paused.text, /^LinkedIn paused until \d{1,2}:\d\d/);
+    assert.match(lastLine({ enabled: true, fetch: 'auto', last: { ok: true, at: new Date().toISOString(), jobs: 40, new: 3, kept: 12, descriptions: { full: 10, total: 12 } } }).text, /12 match your rules · 10 of 12 with full descriptions · just now$/);
     assert.match(lastLine({ enabled: true, fetch: 'auto', last: { ok: false, at: new Date().toISOString(), why: 'needs keywords: they come from your titles; add a title' } }).text, /^needs keywords: they come from your titles; add a title · just now$/);
     assert.match(lastLine({ enabled: true, fetch: 'auto', resolved: { refused: 'need Node 25 or newer' } }).text, /Couldn't check this page here: need Node 25 or newer/);
     // The coverage line: its first sentence shown, what else works behind More.

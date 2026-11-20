@@ -3,7 +3,7 @@
 // and kind), LinkedIn's row (its switch is the user's own, through the native confirm), and the coverage line (D42).
 // Every change is the `sources` page action, the same validated writer as `crewdeck jobs sources …`.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { html, noop, cls, ago, plural, More } from '../lib.js';
+import { html, noop, cls, ago, clock, plural, More } from '../lib.js';
 import { TerminalCode } from './settings.js';
 
 const n = (x) => Number(x ?? 0).toLocaleString('en-US');
@@ -28,7 +28,10 @@ export function lastLine(r, now = Date.now()) {
   if (res?.result?.ok && (!r.last || r.last.at < res.at)) return { kind: 'ok', text: `${res.result.provider_name}: ${plural(res.result.jobs ?? 0, 'role')} on a test · fetched next run` };
   const l = r.last;
   if (!l) return { kind: 'none', text: 'Not fetched yet' };
-  if (l.ok) return { kind: 'ok', text: `${plural(l.jobs, 'role')} · ${n(l.new)} new · ${n(l.kept)} match your rules · ${ago(l.at, now)}` };
+  // LinkedIn after a stop (1 h, 4 h, 12 h, then 24 h): when it is tried again, in the viewer's clock.
+  if (l.paused_until && Date.parse(l.paused_until) > now) return { kind: 'warn', text: `LinkedIn paused until ${clock(l.paused_until)} · ${ago(l.at, now)}` };
+  const desc = l.descriptions?.total ? ` · ${n(l.descriptions.full)} of ${n(l.descriptions.total)} with full descriptions` : '';
+  if (l.ok) return { kind: 'ok', text: `${plural(l.jobs, 'role')} · ${n(l.new)} new · ${n(l.kept)} match your rules${desc} · ${ago(l.at, now)}` };
   return { kind: 'bad', text: `${l.why ?? l.error ?? 'The last fetch failed'} · ${ago(l.at, now)}` };
 }
 

@@ -148,8 +148,9 @@ const cmds: Record<string, (args: string[]) => unknown> = {
       for (const s of p.skipped) say(`  · ${s.name}: ${s.why}`);
     } else say(`boards: not run (${p?.why})`);
     const l = r.linkedin;
-    say(l?.ran ? `LinkedIn: ${l.stored} new of ${l.cards} found${l.stopped ? ` (${l.stopped})` : ''}` : `LinkedIn: not run (${l?.why})`);
-    if (r.details?.tried) say(`descriptions: ${r.details.found} read for the best-ranked roles, ${r.details.closed} closed postings set aside`);
+    say(l?.ran ? `LinkedIn: ${l.stored} new of ${l.cards} found${l.partial ? `, ${l.partial} kept from their cards (details later)` : ''}${l.stopped ? ` (${l.stopped})` : ''}` : `LinkedIn: not run (${l?.why})`);
+    const d = r.details;
+    if (d?.tried || d?.deferred) say(`descriptions: ${d.found} full descriptions read of ${d.tried} tried, ${d.closed} closed postings set aside${d.errors ? `, ${d.errors} not read` : ''}${d.deferred ? `, ${d.deferred} left for the next run${d.backed_off?.length ? ` (${d.backed_off.join(', ')} asked us to back off)` : ''}` : ''}`);
     say(`after your rules: ${r.prefilter?.kept} waiting to be judged, ${r.prefilter?.dropped} dropped`);
     if (r.error) { say(`error: ${r.error}`); process.exitCode = 1; }
   }),

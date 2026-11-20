@@ -1,8 +1,8 @@
 // `crewdeck jobs source` (design §2.4 step 1, §15): fetch new roles without spending a token. The pinned providers run in
 // the sandboxed child (provider-runner.ts), which has no network: its fetches come here over a private channel and go
 // out through netguard (E1). Every job it sends is checked here before it reaches the tracker. Then
-// LinkedIn guest search (only when the user switched it on), the rule prefilter, and descriptions for the best-ranked
-// roles that came without one. What happened is written to <jobs.home>/state/sources.json for the Jobs page.
+// LinkedIn guest search (only when the user switched it on, paused after a stop), the rule prefilter, and full
+// descriptions for every role the rules kept that came without one (pipeline/details.ts). What happened is written to <jobs.home>/state/sources.json for the Jobs page.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
@@ -18,6 +18,8 @@ import { type Manifest, loadManifest, providersDir, providersStatus, sandboxSupp
 
 export { sandboxSupport };
 import { runPrefilter } from './pipeline/prefilter.ts';
+import type { DetailOptions, DetailsResult } from './pipeline/details.ts';
+import { DESC_CAP } from './text.ts';
 import { type NetOptions, NetError, guardedFetch } from './net/netguard.ts';
 import type { FetchAnswer, FetchAsk } from './provider-runner.ts';
 
@@ -227,7 +229,7 @@ export function cleanJob(raw: any, o: { features: { linkedin_links: boolean }; a
     ok: true,
     role: {
       url, title, company, location: str(raw.location, 500),
-      description: typeof raw.description === 'string' ? raw.description.slice(0, 200_000) : '',
+      description: typeof raw.description === 'string' ? raw.description.slice(0, DESC_CAP) : '',
       pay_text: str(raw.pay_text, 200) || null,
       posted_at: isoOk(raw.posted_at, o.at) ? new Date(raw.posted_at).toISOString() : null,
       // What the provider says beyond the text (design §24.2): kept for the rules and the judge, never trusted further.
@@ -279,12 +281,20 @@ export async function runProviders(ctx: Ctx, plan: Plan, o: SpawnOptions & { dir
 // ---- the whole run ----
 
 /** One source's last fetch (design §24.2): counts, the error in plain words, or why it didn't run. */
-export type KeyState = { at: string; ok: boolean; jobs: number; new: number; kept: number; refused: number; error?: string; why?: string; ms?: number };
+export type KeyState = {
+  at: string; ok: boolean; jobs: number; new: number; kept: number; refused: number; error?: string; why?: string; ms?: number;
+  /** P1b: of this source's roles the rules kept, how many have a full description (≥ 200 characters, not cut at 4,000). */
+  descriptions?: { full: number; total: number };
+  /** LinkedIn only: paused after a stop until this instant (1 h, 4 h, 12 h, then 24 h for stops in a row). */
+  paused_until?: string;
+};
 export type SourcesState = {
   started: string; finished?: string; ok: boolean; trigger?: string;
   providers?: ProvidersResult | { ran: false; why: string };
-  linkedin?: { ran: boolean; stored?: number; cards?: number; stopped?: string; errors?: string[]; why?: string };
-  prefilter?: { kept: number; dropped: number }; details?: { tried: number; found: number; closed: number; errors: number };
+  linkedin?: { ran: boolean; stored?: number; partial?: number; cards?: number; stopped?: string; errors?: string[]; why?: string; paused_until?: string };
+  /** After a LinkedIn stop: skip it until `until`; `level` counts the stops in a row (carried over from run to run). */
+  linkedin_pause?: { until: string; level: number; reason?: string };
+  prefilter?: { kept: number; dropped: number }; details?: Partial<DetailsResult> & { tried: number; found: number; closed: number; errors: number };
   new: number; error?: string;
   /** Per source key: the last fetch, and up to five before it (newest first). Carried over from run to run. */
   by_key?: Record<string, KeyState & { history?: KeyState[] }>;
@@ -301,7 +311,14 @@ export function writeSourcesState(home: string, s: SourcesState) {
   renameSync(tmp, f);
 }
 
-export type SourceOptions = SpawnOptions & { plan?: Plan; linkedin?: Parameters<typeof import('./linkedin.ts').searchLinkedin>[1]; net?: NetOptions; details?: number; trigger?: string; /** setup's first fetch: only sources never fetched before */ onlyNew?: boolean };
+export type SourceOptions = SpawnOptions & {
+  plan?: Plan; linkedin?: Parameters<typeof import('./linkedin.ts').searchLinkedin>[1]; net?: NetOptions; trigger?: string;
+  /** How many roles' descriptions to read this run (default 1000; 0 = none), and the detail step's other options. */ details?: number; detailOptions?: DetailOptions;
+  /** setup's first fetch: only sources never fetched before */ onlyNew?: boolean;
+};
+
+/** Hours LinkedIn is paused after 1, 2, 3, 4+ stops in a row. */
+export const LINKEDIN_PAUSE_HOURS = [1, 4, 12, 24];
 
 const FETCHED_BEFORE = 'fetched before (only new sources this time)';
 
@@ -319,7 +336,7 @@ function mergeProviders(a: ProvidersResult | undefined, b: ProvidersResult): Pro
 }
 
 /**
- * Providers → LinkedIn (gated) → prefilter → descriptions for the best roles → prefilter. Sources run in the user's
+ * Providers → LinkedIn (gated, paused after a stop) → prefilter → full descriptions → prefilter. Sources run in the user's
  * order: the providers before LinkedIn's row, then LinkedIn, then the rest, sharing one request budget and one
  * deadline, so when a cap is hit it is the later sources that miss out (and their state says so).
  */
@@ -351,15 +368,31 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
     providers = mergeProviders(providers, r);
   };
 
+  // A pause from an earlier stop is carried over until it ends or a clean run clears it.
+  if (prev?.linkedin_pause) state.linkedin_pause = prev.linkedin_pause;
   const runLinkedin = async () => {
     if (!ctx.features.linkedin_search) { state.linkedin = { ran: false, why: 'LinkedIn search is off' }; return; }
     if (!liWanted) { state.linkedin = { ran: false, why: FETCHED_BEFORE }; return; }
+    const { localClock } = await import('./pipeline/details.ts');
+    const pause = state.linkedin_pause;
+    if (pause && Date.parse(pause.until) > ctx.clock().getTime()) {
+      state.linkedin = { ran: false, why: `LinkedIn paused until ${localClock(ctx, pause.until)} (it asked Crewdeck to slow down)`, paused_until: pause.until };
+      return;
+    }
     try {
       const { searchLinkedin } = await import('./linkedin.ts');
       const r = await searchLinkedin(ctx, { days: Math.min(30, Math.max(1, o.sinceDays ?? 7)), ...o.linkedin });
-      state.linkedin = { ran: true, stored: r.stored, cards: r.cards, stopped: r.stopped, errors: r.errors };
+      state.linkedin = { ran: true, stored: r.stored, partial: r.partial, cards: r.cards, stopped: r.stopped, errors: r.errors };
+      // A refusal (429, 999, a sign-in redirect, an error status), not the run's own request cap, pauses LinkedIn.
+      if (r.stopped && r.stop_status) {
+        const level = Math.min((pause?.level ?? 0) + 1, LINKEDIN_PAUSE_HOURS.length);
+        const until = new Date(ctx.clock().getTime() + LINKEDIN_PAUSE_HOURS[level - 1] * 3_600_000).toISOString();
+        state.linkedin_pause = { until, level, reason: r.stopped };
+        state.linkedin.paused_until = until;
+        state.linkedin.stopped = `${r.stopped}; LinkedIn paused until ${localClock(ctx, until)}`;
+      } else delete state.linkedin_pause;
       (state as any)._liRoles = r.roles;
-      state.new += r.stored;
+      state.new += r.stored + r.partial;
     } catch (e: any) { state.linkedin = { ran: false, why: String(e.message).slice(0, 300) }; }
   };
 
@@ -377,9 +410,11 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
   }
 
   const p1 = runPrefilter(ctx);
-  const { fetchDescriptions } = await import('./pipeline/rank.ts');
-  state.details = await fetchDescriptions(ctx, { top: o.details ?? 50, net: o.net });
-  const p2 = state.details.found || state.details.closed ? runPrefilter(ctx) : { kept: p1.kept, dropped: 0 };
+  // Every rule-passing role without a full description, not only the best-ranked (P1b).
+  const { fetchDetails } = await import('./pipeline/details.ts');
+  state.details = await fetchDetails(ctx, { net: o.net, ...o.detailOptions, limit: o.details ?? o.detailOptions?.limit ?? 1000 });
+  // Any text read (even one too short to count as full) can decide a rule: the prefilter runs again.
+  const p2 = state.details.tried ? runPrefilter(ctx) : { kept: p1.kept, dropped: 0 };
   state.prefilter = { kept: p2.kept, dropped: p1.dropped + p2.dropped };
   state.finished = nowIso(ctx);
   state.by_key = keyStates(ctx, state, plan, prev, (state as any)._liRoles ?? [], liKey);
@@ -395,18 +430,22 @@ function keyStates(ctx: Ctx, state: SourcesState, plan: Plan, prev: SourcesState
   const at = state.finished ?? state.started;
   const q = ctx.db.prepare(`select count(*) n from roles where id in (select value from json_each(?)) and status not in ('prefiltered_out','expired')`);
   const kept = (ids: string[]) => (ids.length ? Number((q.get(JSON.stringify(ids)) as any).n) : 0);
+  const cov = ctx.db.prepare(`select count(*) total, coalesce(sum(case when length(description) >= 200 and length(description) != 4000 then 1 else 0 end), 0) n_full from roles
+      where source_key=? and status not in ('prefiltered_out','expired')`);
   const put = (key: string, s: KeyState) => {
     const old = out[key];
     const history = old ? [{ ...old, history: undefined }, ...(old.history ?? [])].map(({ history: _, ...h }) => h).slice(0, 5) : [];
-    out[key] = { ...s, history };
+    const c = cov.get(key === liKey ? 'linkedin' : key) as any;
+    out[key] = { ...s, descriptions: { full: Number(c?.n_full ?? 0), total: Number(c?.total ?? 0) }, history };
   };
   const ran = state.providers && 'entries' in state.providers ? state.providers.entries : [];
   for (const e of ran) put(e.key, { at, ok: e.ok, jobs: e.jobs, new: e.new, kept: kept(e.roles ?? []), refused: e.refused, ...(e.error ? { error: e.error } : {}), ...(e.ms !== undefined ? { ms: e.ms } : {}) });
   const why = !state.providers || !('entries' in state.providers) ? (state.providers as any)?.why : undefined;
   if (why) for (const e of plan.entries) put(e.key, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why });
   for (const s of plan.skipped) if (s.key) put(s.key, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why: s.why });
-  if (state.linkedin?.ran) put(liKey, { at, ok: !state.linkedin.errors?.length, jobs: state.linkedin.cards ?? 0, new: state.linkedin.stored ?? 0, kept: kept(liRoles), refused: 0, ...(state.linkedin.stopped ? { error: state.linkedin.stopped } : {}) });
-  else if (ctx.features.linkedin_search && state.linkedin?.why && state.linkedin.why !== FETCHED_BEFORE) put(liKey, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why: state.linkedin.why });
+  const paused = state.linkedin?.paused_until ? { paused_until: state.linkedin.paused_until } : {};
+  if (state.linkedin?.ran) put(liKey, { at, ok: !state.linkedin.errors?.length && !state.linkedin.paused_until, jobs: state.linkedin.cards ?? 0, new: (state.linkedin.stored ?? 0) + (state.linkedin.partial ?? 0), kept: kept(liRoles), refused: 0, ...(state.linkedin.stopped ? { error: state.linkedin.stopped } : {}), ...paused });
+  else if (ctx.features.linkedin_search && state.linkedin?.why && state.linkedin.why !== FETCHED_BEFORE) put(liKey, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why: state.linkedin.why, ...paused });
   return out;
 }
 

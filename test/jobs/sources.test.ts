@@ -339,6 +339,52 @@ test('jobs source: LinkedIn guest search runs after the boards only when the use
   } finally { await li.close(); }
 });
 
+test('jobs source: after a LinkedIn stop, LinkedIn is paused 1 h, 4 h, 12 h, then 24 h (stops in a row), shown in its status; a clean run clears it; description coverage per source', async () => {
+  let refuse = true, n = 0;
+  const li = await serve((req, res) => {
+    n++;
+    if (refuse) { res.writeHead(429).end(); return; }
+    const u = new URL(req.url ?? '', 'http://x');
+    if (u.pathname.endsWith('/seeMoreJobPostings/search')) { res.writeHead(200, { 'content-type': 'text/html' }).end(u.searchParams.get('start') === '0' ? CARD('4000000081', 'Senior Data Analyst', 'Example Co') : ''); return; }
+    if (u.pathname.endsWith('/jobPosting/4000000081')) { res.writeHead(200, { 'content-type': 'text/html' }).end(DETAIL({ company: 'Example Co' })); return; }
+    res.writeHead(404).end();
+  });
+  try {
+    const linkedin = { base: `${li.base('li.example.test')}/jobs-guest/jobs/api`, net: { testHosts: testHosts('li.example.test') }, sleep: async () => {} };
+    const w = world('berlin-analyst', { features: { linkedin_search: true } });
+    const run = () => runSources(w.ctx, { details: 0, linkedin });
+    const hhmm = /LinkedIn paused until \d\d:\d\d/;
+    const a = await run();
+    assert.match(a.linkedin?.stopped ?? '', /HTTP 429.*LinkedIn paused until \d\d:\d\d$/);
+    assert.deepEqual([a.linkedin_pause?.level, a.linkedin_pause?.until], [1, '2026-11-19T11:00:00.000Z']);
+    assert.equal(a.by_key?.linkedin?.paused_until, '2026-11-19T11:00:00.000Z');
+    // Within the hour: not run, nothing sent, and the source's status says until when.
+    const sent = n;
+    const b = await run();
+    assert.equal(b.linkedin?.ran, false);
+    assert.match(b.linkedin?.why ?? '', hhmm);
+    assert.match(b.by_key?.linkedin?.why ?? '', hhmm);
+    assert.equal(n, sent);
+    // Each stop in a row pauses longer: 4 h, 12 h, 24 h, 24 h.
+    const hours: number[] = [];
+    for (const at of ['2026-11-19T11:01:00Z', '2026-11-19T15:02:00Z', '2026-11-20T03:03:00Z', '2026-11-21T03:04:00Z']) {
+      w.at(at);
+      const r = await run();
+      hours.push(Math.round((Date.parse(r.linkedin_pause!.until) - Date.parse(at)) / 3_600_000));
+    }
+    assert.deepEqual(hours, [4, 12, 24, 24]);
+    // A clean run clears the pause; the role is counted in LinkedIn's description coverage (the fixture's text is short).
+    refuse = false;
+    w.at('2026-11-22T04:00:00Z');
+    const c = await run();
+    assert.equal(c.linkedin?.ran, true);
+    assert.equal(c.linkedin_pause, undefined);
+    assert.equal(c.by_key?.linkedin?.paused_until, undefined);
+    assert.deepEqual(c.by_key?.linkedin?.descriptions, { full: 0, total: 1 });
+    assert.equal(readSourcesState(w.ctx.home)?.linkedin_pause, undefined);
+  } finally { await li.close(); }
+});
+
 test('CLI: jobs source without providers prints what ran and what did not', () => {
   const w = world('berlin-analyst');
   w.ctx.db.close();

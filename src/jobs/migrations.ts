@@ -96,8 +96,20 @@ alter table roles add column form_lang text;
 PRAGMA user_version = 4;
 `;
 
+// v5 (jobs v2 P1b): what a posting's detail page says beyond its text (schema.org JobPosting or a board's own API):
+// remote/hybrid/onsite, the countries a remote role hires from (a JSON list), and the closing date. `detail_status` and
+// `detail_at` record the last detail fetch, so a role is tried at most once a day.
+const V5 = `
+alter table roles add column workplace text;
+alter table roles add column remote_countries text;
+alter table roles add column valid_through text;
+alter table roles add column detail_status text;
+alter table roles add column detail_at text;
+PRAGMA user_version = 5;
+`;
+
 /** Every schema step, in order; step N leaves user_version = N. */
-export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }, { version: 2, sql: V2 }, { version: 3, sql: V3 }, { version: 4, sql: V4 }];
+export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }, { version: 2, sql: V2 }, { version: 3, sql: V3 }, { version: 4, sql: V4 }, { version: 5, sql: V5 }];
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
 const version = (db: DatabaseSync) => Number((db.prepare('PRAGMA user_version').get() as any).user_version);
