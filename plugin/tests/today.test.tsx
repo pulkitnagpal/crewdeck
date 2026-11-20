@@ -90,10 +90,7 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
   on('process.run', async (_, e) => ({ value: await run(e.argv, e.init) }))
 
   const pane: string[] = []
-  on('mcp.call', (_, e) => {
-    if (e.server === 'Claude_Browser' && e.tool === 'preview_start') { pane.push(String((e.args as any)?.url)); return { value: { content: [], isError: false } } }
-    return { deny: 'no such server' }
-  })
+  on('prompt.submit', (_, e) => { pane.push(String(e.text)); return { drop: 'test' } })
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const out = await $.command.run(typed('crewdeck'))
   expect(out.text).toBe('Crewdeck is open beside the chat.')
@@ -121,8 +118,8 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
   await ui.press({ key: 'notes' })
   await ui.press({ key: 'open-jobs' })
   await ui.press({ key: 'jobs-session' })
-  // Pages open in Claude desktop's browser pane; the session link goes to Claude desktop itself.
-  expect(pane).toEqual(['http://crewdeck.localhost:4848/#notes/journal/2026-11-20', 'http://crewdeck.localhost:4848/#jobs'])
+  // On desktop, pages are opened by Claude in its browser pane (asked in the chat); the session link goes to Claude desktop.
+  expect(pane).toEqual(['Open http://crewdeck.localhost:4848/#notes/journal/2026-11-20 in the browser pane.', 'Open http://crewdeck.localhost:4848/#jobs in the browser pane.'])
   expect(s.opened).toEqual([`claude://code/new?folder=%2Ffake%2Fjobs&q=${encodeURIComponent('Hello! This is my Crewdeck Jobs session.')}`])
   await ui.unmount()
 })

@@ -326,16 +326,22 @@ function isJobsSessionLink(url: string): boolean {
   try { return decodeURIComponent(m[1] ?? '').startsWith('/') } catch { return false }
 }
 
+/**
+ * A Crewdeck page, from a button: in Claude desktop it opens in Claude's own browser pane, which only Claude can drive
+ * (its browser tools aren't open to plugins), so the button asks Claude in the chat; elsewhere the default browser.
+ */
+async function openPage($: Dollar, url: string, surface?: string): Promise<void> {
+  if (surface === 'desktop' && /^http:\/\/[a-z0-9.\-]+(:\d+)?\//.test(url)) {
+    void $.prompt.submit({ text: `Open ${url} in the browser pane.` })
+    return
+  }
+  await openUrl($, url)
+}
+
 /** Open an address of Crewdeck in the person's default browser, or a new Claude Code session (claude://code/new…). */
 async function openUrl($: Dollar, url: string): Promise<void> {
   const page = /^http:\/\/[a-z0-9.\-]+(:\d+)?\//.test(url)
   if (!page && !isJobsSessionLink(url)) return
-  // A Crewdeck page opens in Claude desktop's own browser pane when the session has one (its Claude_Browser tools);
-  // anywhere else (a terminal, an older app) in the default browser.
-  if (page) {
-    const pane = await $.mcp.call('Claude_Browser', 'preview_start', { url }).catch(() => null)
-    if (pane && !pane.isError) return
-  }
   const r = await $.process.run(['open', url], { timeoutMs: 5000 }).catch(() => null)
   if (!r || r.exitCode !== 0) await $.process.run(['xdg-open', url], { timeoutMs: 5000 }).catch(() => null)
 }
@@ -469,7 +475,7 @@ export const register: Register = (on, options) => {
             )}
             {j.queue.map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
             <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
-              <Button key="open-jobs" label="Open Jobs" onPress={() => openUrl($, `${t.url}/#jobs`)} />
+              <Button key="open-jobs" label="Open Jobs" onPress={(e) => openPage($, `${t.url}/#jobs`, e.surface)} />
               {!j.connected && j.session_link ? <Button key="jobs-session" label={j.setup_needed ? 'Set up my job search' : 'Start the Jobs session'} variant={j.setup_needed ? 'primary' : undefined} onPress={() => openUrl($, j.session_link)} /> : null}
             </Box>
           </Box>
@@ -490,14 +496,14 @@ export const register: Register = (on, options) => {
             {t.tickets.map((k) => <Text key={`t-${k.project}-${k.id}`}>{k.id} {k.title} · {k.status}{t.projects.length > 1 ? ` (${k.project})` : ''}</Text>)}
             {t.more > 0 && <Text dimColor>+{t.more} more</Text>}
             <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
-              {t.projects.map((p) => <Button key={`board-${p.name}`} label={`${p.label === 'Board' ? p.name : p.label} board`} onPress={() => openUrl($, `${t.url}/#board:${p.name}`)} />)}
+              {t.projects.map((p) => <Button key={`board-${p.name}`} label={`${p.label === 'Board' ? p.name : p.label} board`} onPress={(e) => openPage($, `${t.url}/#board:${p.name}`, e.surface)} />)}
             </Box>
           </Box>
         )}
 
         <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
-          <Button key="open" label="Open Crewdeck" variant="primary" onPress={() => openUrl($, `${t.url}/`)} />
-          <Button key="notes" label="Today's notes" onPress={() => openUrl($, `${t.url}/#notes/${t.notes_page}`)} />
+          <Button key="open" label="Open Crewdeck" variant="primary" onPress={(e) => openPage($, `${t.url}/`, e.surface)} />
+          <Button key="notes" label="Today's notes" onPress={(e) => openPage($, `${t.url}/#notes/${t.notes_page}`, e.surface)} />
           <Button key="refresh" label="Refresh" onPress={() => refreshToday($, port)} />
         </Box>
       </Box>

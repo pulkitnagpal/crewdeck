@@ -3,6 +3,13 @@
 What changed for people using Crewdeck. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Crewdeck is not released yet: versions below name the `crewdeck` plugin's version and the state of `main`.
 
+## [Plugin 0.7.2]
+
+- **Open Crewdeck**, **Open Jobs**, **Today's notes** and the board buttons in Claude desktop now ask Claude to open the
+  page in its browser pane (a short message in the chat): Claude desktop doesn't let plugin code drive its browser, and
+  0.7.1 fell back to the default browser after a wait. Elsewhere they still open the default browser.
+- The plugin's version and the Crewdeck it installs are separate: a plugin-only fix needs no new release.
+
 ## [0.7.1] — Boards, the browser pane, small windows
 
 ### Added
