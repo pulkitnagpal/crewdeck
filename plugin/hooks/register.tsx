@@ -294,7 +294,14 @@ function isJobsSessionLink(url: string): boolean {
 
 /** Open an address of Crewdeck in the person's default browser, or a new Claude Code session (claude://code/new…). */
 async function openUrl($: Dollar, url: string): Promise<void> {
-  if (!/^http:\/\/[a-z0-9.\-]+(:\d+)?\//.test(url) && !isJobsSessionLink(url)) return
+  const page = /^http:\/\/[a-z0-9.\-]+(:\d+)?\//.test(url)
+  if (!page && !isJobsSessionLink(url)) return
+  // A Crewdeck page opens in Claude desktop's own browser pane when the session has one (its Claude_Browser tools);
+  // anywhere else (a terminal, an older app) in the default browser.
+  if (page) {
+    const pane = await $.mcp.call('Claude_Browser', 'preview_start', { url }).catch(() => null)
+    if (pane && !pane.isError) return
+  }
   const r = await $.process.run(['open', url], { timeoutMs: 5000 }).catch(() => null)
   if (!r || r.exitCode !== 0) await $.process.run(['xdg-open', url], { timeoutMs: 5000 }).catch(() => null)
 }
@@ -341,7 +348,7 @@ export const register: Register = (on, options) => {
       const t = await read($, todayAtom)
       const url = `${t?.url ?? `http://crewdeck.localhost:${port}`}/${arg === 'open' ? '' : `#${arg}`}`
       await openUrl($, url)
-      return { text: `Opened ${url} in your browser.` }
+      return { text: `Opened ${url}.` }
     }
     return { text: await openToday($, port) }
   })

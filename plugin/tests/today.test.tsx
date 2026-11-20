@@ -86,6 +86,11 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
   on('fs.read', () => ({ value: `${TOKEN}\n` }))
   on('process.run', async (_, e) => ({ value: await run(e.argv, e.init) }))
 
+  const pane: string[] = []
+  on('mcp.call', (_, e) => {
+    if (e.server === 'Claude_Browser' && e.tool === 'preview_start') { pane.push(String((e.args as any)?.url)); return { value: { content: [], isError: false } } }
+    return { deny: 'no such server' }
+  })
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const out = await $.command.run(typed('crewdeck'))
   expect(out.text).toBe('Crewdeck is open beside the chat.')
@@ -113,7 +118,9 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
   await ui.press({ key: 'notes' })
   await ui.press({ key: 'open-jobs' })
   await ui.press({ key: 'jobs-session' })
-  expect(s.opened).toEqual(['http://crewdeck.localhost:4848/#notes/journal/2026-11-20', 'http://crewdeck.localhost:4848/#jobs', `claude://code/new?folder=%2Ffake%2Fjobs&q=${encodeURIComponent('Hello! This is my Crewdeck Jobs session.')}`])
+  // Pages open in Claude desktop's browser pane; the session link goes to Claude desktop itself.
+  expect(pane).toEqual(['http://crewdeck.localhost:4848/#notes/journal/2026-11-20', 'http://crewdeck.localhost:4848/#jobs'])
+  expect(s.opened).toEqual([`claude://code/new?folder=%2Ffake%2Fjobs&q=${encodeURIComponent('Hello! This is my Crewdeck Jobs session.')}`])
   await ui.unmount()
 })
 
@@ -129,7 +136,7 @@ test('/crewdeck starts Crewdeck when it is not running; /crewdeck jobs opens the
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const out = await $.command.run(typed('crewdeck', 'jobs'))
   expect(s.started).toBe(1)
-  expect(out.text).toBe('Opened http://crewdeck.localhost:4848/#jobs in your browser.')
+  expect(out.text).toBe('Opened http://crewdeck.localhost:4848/#jobs.')
   expect(s.opened).toEqual(['http://crewdeck.localhost:4848/#jobs'])
 })
 
