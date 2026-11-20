@@ -549,3 +549,22 @@ test('E11: Open in Claude opens the jobs folder\'s session link, built from the 
     assert.equal((await win.action('openSession', {})).status, 404);
   } finally { await win.close(); }
 });
+
+test('E14: Find with sources out of date waits for a fresh fetch; the panel sees what the Jobs chat is doing; no chat opens in tests', async () => {
+  const opened: string[] = [];
+  let finish: () => void = () => {};
+  const s = await jobsServer('example', { api: { platform: 'darwin', fetchBeforeFind: true, openLink: async (l) => { opened.push(l); }, sources: { run: () => new Promise((ok) => { finish = () => ok({ code: 0 }); }), firstDelayMs: 3_600_000, everyMs: 3_600_000, ready: () => true } as any } });
+  const activity = async () => (await s.call('POST', '/api/today', s.agent(), {})).json.jobs.activity;
+  try {
+    const f = await s.action('find', { count: 3 });
+    assert.equal(f.status, 200, f.body);
+    assert.equal(f.json.fetching, true, "the example person's sources were never fetched");
+    assert.deepEqual((await s.claim()).json.requests, [], 'held while the fetch runs');
+    assert.deepEqual(await activity(), { state: 'fetching', label: 'Find jobs', detail: '' });
+    finish();
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal((await s.claim()).json.requests.length, 1, 'released once the fetch ends');
+    assert.equal((await activity()).state, 'working');
+    assert.deepEqual(opened, [], 'auto-open is for the real server only');
+  } finally { await s.close(); }
+});

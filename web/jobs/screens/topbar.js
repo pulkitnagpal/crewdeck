@@ -14,6 +14,8 @@ export function agentLine(agent) {
   // clicked while Claude applies must still show that it was queued.
   if (working) return { dot: 'busy', head: waiting.length ? `Claude is working (${waiting.length} waiting):` : 'Claude is working:', text: `${what(working)}${working.last ? ` · ${working.last.text}` : ''}` };
   if (waiting.length && !agent.connected) return { dot: 'off', head: 'No Claude session:', text: `${plural(waiting.length, 'request')} waiting` };
+  // Find waits for a fresh fetch (hold: 'fetching') before Claude reads anything: say so rather than "waiting".
+  if (waiting.length && waiting[0].hold === 'fetching') return { dot: 'busy', head: 'Fetching new postings first…', text: `${what(waiting[0])}${waiting.length > 1 ? ` (+${waiting.length - 1})` : ''}` };
   if (waiting.length) return { dot: 'wait', head: 'Waiting for Claude:', text: `${what(waiting[0])}${waiting.length > 1 ? ` (+${waiting.length - 1})` : ''}` };
   if (!agent.connected) return { dot: 'off', head: 'No Claude session', text: '' };
   const last = agent.recent?.[0];

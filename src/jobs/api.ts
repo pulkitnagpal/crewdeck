@@ -55,6 +55,8 @@ export type JobsApi = {
   close(): void;
 };
 export type JobsGlance = {
+  /** What the Jobs chat is doing now, or just did (30 min): for the panel in any chat. */
+  activity: { state: 'working' | 'waiting' | 'fetching' | 'done' | 'failed'; label: string; detail: string; id?: number } | null;
   setup_needed: boolean; connected: boolean;
   /** Opens a Claude Code session in the jobs folder (claude://code/new…). */
   session_link: string;
@@ -67,6 +69,10 @@ export type JobsApiOptions = {
   reveal?: (file: string) => Promise<void>;
   /** Open a claude://code/new link with the system's handler (tests replace it). */
   openLink?: (link: string) => Promise<void>;
+  /** Open a Jobs chat by itself when work is queued and none is connected (the real server only: `crewdeck up`). */
+  autoOpenChat?: boolean;
+  /** Find waits for a fresh fetch when sources are stale (the real server only: `crewdeck up`). */
+  fetchBeforeFind?: boolean;
   browser?: () => { name: string; path: string } | null;
   /** The sourcing timer (tests replace the child run and the delays). */
   sources?: Partial<Pick<SchedulerOptions, 'run' | 'firstDelayMs' | 'everyMs' | 'ready'>>;
@@ -374,7 +380,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       const x = db.prepare('select r.title, c.name company from roles r join companies c on c.id=r.company_id where r.id=?').get(r.ref) as any;
       return x ? { company: x.company, title: x.title } : null;
     };
-    const item = (r: Request) => ({ id: r.id, kind: r.kind, label: r.kind ? LABEL[r.kind] : r.text, ref: r.ref ?? null, role: roleOf(r), status: r.status, result: r.result ?? null, updated: r.updated, last: r.progress?.at(-1) ?? null });
+    const item = (r: Request) => ({ id: r.id, kind: r.kind, label: r.kind ? LABEL[r.kind] : r.text, ref: r.ref ?? null, role: roleOf(r), status: r.status, result: r.result ?? null, updated: r.updated, last: r.progress?.at(-1) ?? null, ...(r.hold ? { hold: r.hold } : {}) });
     const recent = all.filter((r) => !isOpen(r) && Date.now() - Date.parse(r.updated) < 3_600_000).slice(0, 5);
     const lines = all.flatMap((r) => (r.progress ?? []).map((l) => ({ ...l, request: r.id }))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
     return {
@@ -505,9 +511,34 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   };
   const queue = (kind: JobKind, ref: string | undefined, payload: Record<string, unknown>) => {
     const r = requests.add(LANE, LABEL[kind], { kind, ref, payload });
-    return { ok: true, request: r.id, status: r.status };
+    const opened = openJobsChatIfNone();
+    return { ok: true, request: r.id, status: r.status, ...(opened ? { opened_chat: true } : {}) };
   };
+  /**
+   * Work for Jobs with no Jobs chat connected: Crewdeck opens one in Claude desktop (docs/everywhere.md E14), at most
+   * once every 10 minutes so a closed dialog isn't reopened at every click. Claude desktop asks to confirm the folder.
+   */
+  let lastAutoOpen = 0;
+  function openJobsChatIfNone(): boolean {
+    if (!o.autoOpenChat || requests.presence(LANE).connected || (platform !== 'darwin' && platform !== 'linux')) return false;
+    if (Date.now() - lastAutoOpen < 10 * 60_000) return false;
+    lastAutoOpen = Date.now();
+    const link = sessionLink(c.jobs.workspace, setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT);
+    const cmd = platform === 'darwin' ? 'open' : 'xdg-open';
+    void (o.openLink ?? ((l: string) => new Promise<void>((ok) => execFile(cmd, [l], () => ok()))))(link).catch(() => {});
+    return true;
+  }
   const queueApply = (role: string) => queue('apply', role, { role });
+  /** A source the user switched on was never fetched, or none was fetched in the last 6 hours. */
+  function sourcesStale(at = Date.now()): boolean {
+    const state = readSourcesState(c.jobs.home);
+    const items = notesOf(ctx).sources.data.items.filter((it) => (it.linkedin ? ctx.features.linkedin_search : it.enabled && it.fetch !== 'none'));
+    if (!items.length) return false;
+    return items.some((it) => {
+      const last = state?.by_key?.[it.linkedin ? 'linkedin' : it.key];
+      return !last || at - Date.parse(last.at) > 6 * 3_600_000;
+    });
+  }
   /** After the user answers on the page: an apply that stopped for them goes on (design §2.3a step 4). */
   const afterAnswer = (role: string) => {
     const last = requests.latest(LANE, 'apply', role);
@@ -522,7 +553,22 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       const r = scheduler.refresh();
       return { ok: true, ...r };
     },
-    find: (b) => queue('find', undefined, { count: intIn(b.count ?? (notesOf(ctx).search.data.schedule.daily_picks || 5), 1, 20, 'count') }),
+    find: (b) => {
+      const out = queue('find', undefined, { count: intIn(b.count ?? (notesOf(ctx).search.data.schedule.daily_picks || 5), 1, 20, 'count') });
+      // Find fetches first when a source you switched on was never fetched or is older than 6 h: the request waits for
+      // the fetch (Claude judges fresh postings, LinkedIn's included), at most 15 minutes.
+      if (o.fetchBeforeFind && sourcesStale()) {
+        const r = scheduler.refresh();
+        if (r.started || r.already) {
+          requests.setHold(out.request, 'fetching');
+          const release = () => { requests.setHold(out.request, undefined); emit('queue'); };
+          const cap = setTimeout(release, 15 * 60_000);
+          void scheduler.idle().then(() => { clearTimeout(cap); release(); });
+          return { ...out, fetching: true };
+        }
+      }
+      return out;
+    },
     addLink: (b) => queue('link', undefined, { url: checkLink(b.url, ctx.features), ...(b.force === true ? { force: true } : {}) }),
     approve: (b) => {
       const r = roleArg(b.role);
@@ -809,10 +855,21 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   }
 
   function glance(): JobsGlance {
+    const all = requests.ofLane(LANE);
+    const label = (r: Request) => (r.kind ? LABEL[r.kind] : 'Request');
+    const working = all.find((r) => r.status === 'picked');
+    const waiting = all.filter((r) => r.status === 'new');
+    const done = all.find((r) => (r.status === 'done' || r.status === 'failed') && Date.now() - Date.parse(r.updated) < 30 * 60_000);
+    const activity = working
+      ? { state: 'working' as const, label: label(working), detail: working.progress?.at(-1)?.text ?? '' }
+      : waiting[0]
+        ? { state: (waiting[0].hold ? 'fetching' : 'waiting') as 'fetching' | 'waiting', label: label(waiting[0]), detail: waiting.length > 1 ? `+${waiting.length - 1} more` : '' }
+        : done ? { state: (done.status === 'done' ? 'done' : 'failed') as 'done' | 'failed', label: label(done), detail: String(done.result ?? '').slice(0, 160), id: done.id } : null;
     const v = today();
     const kinds = v.queue.map((q: any) => q.chip?.kind as string);
     const count = (k: string) => kinds.filter((x) => x === k).length;
     return {
+      activity,
       setup_needed: setupView(notesOf(ctx)).needed,
       connected: requests.presence(LANE).connected,
       session_link: sessionLink(c.jobs.workspace, setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT),

@@ -9,7 +9,7 @@
 // Test hooks (the person's own environment only): CREWDECK_HOME, CREWDECK_VAULT, CREWDECK_PORT, CREWDECK_NO_SERVICE=1, and
 // CREWDECK_NODE_URL / CREWDECK_NODE_SHA256 / CREWDECK_APP_URL / CREWDECK_APP_SHA256 to install from local copies.
 
-export const CREWDECK_VERSION = '0.7.1'
+export const CREWDECK_VERSION = '0.7.2'
 export const NODE_VERSION = '25.9.0'
 
 /** nodejs.org/dist/v25.9.0/SHASUMS256.txt */
@@ -21,7 +21,7 @@ export const NODE_SHA256: Record<string, string> = {
 }
 
 /** The release asset crewdeck-<VERSION>.tar.gz (scripts/release.sh prints it). */
-export const APP_SHA256 = '9683a7dc6110df6f85a2d1a601efbe0f215595d865016b1d9e1fa979e09ee8ad'
+export const APP_SHA256 = 'PENDING_RELEASE_BUILD'
 
 export const APP_URL = `https://github.com/pulkitnagpal/crewdeck/releases/download/v${CREWDECK_VERSION}/crewdeck-${CREWDECK_VERSION}.tar.gz`
 

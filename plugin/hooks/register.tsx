@@ -50,6 +50,8 @@ const todayNote = atom({ plugin: 'crewdeck', key: 'todayNote' } as const, '', { 
 const paneOpen = atom({ plugin: 'crewdeck', key: 'paneOpen' } as const, false, { shape: 'paneOpen-1' })
 // This session's folder, when it is a git project that isn't a Crewdeck board yet: the panel offers to add it.
 const hereAtom = atom({ plugin: 'crewdeck', key: 'here' } as const, '', { shape: 'here-1' })
+// The last finished Jobs request this session has told the person about (a toast once per request).
+const lastDone = atom({ plugin: 'crewdeck', key: 'lastDone' } as const, 0, { shape: 'lastDone-1' })
 // The one-click setup (docs/everywhere.md E13): where it is, for the panel.
 const installAtom = atom({ plugin: 'crewdeck', key: 'install' } as const, { phase: 'none', step: '', done: 0, lines: [] } as Install, { shape: 'install-1' })
 
@@ -280,8 +282,16 @@ async function refreshToday($: Dollar, port: number, body: Record<string, unknow
     return
   }
   if (got.error) { await update($, todayNote, () => String(got.error)); return }
+  const before = await read($, todayAtom)
   await update($, todayAtom, () => got)
   await update($, todayNote, () => '')
+  // Work the Jobs chat finished while you were here: say so in this chat, once.
+  const act = got.jobs && 'activity' in got.jobs ? got.jobs.activity : null
+  if (act && (act.state === 'done' || act.state === 'failed') && act.id && act.id !== (await read($, lastDone))) {
+    const first = !before
+    await update($, lastDone, () => act.id ?? 0)
+    if (!first) $.ui.toast(`Crewdeck · ${act.label}: ${act.state === 'done' ? (act.detail || 'done') : 'stopped'}`)
+  }
   const root = await projectRoot($)
   await update($, hereAtom, () => (root && !got.projects.some((p) => p.path === root) ? root : ''))
 }
@@ -470,6 +480,7 @@ export const register: Register = (on, options) => {
         {j && 'counts' in j ? (
           <Box flexDirection="column">
             <Text bold>Jobs</Text>
+            {j.activity ? <Text key="act" color={j.activity.state === 'failed' ? 'warning' : undefined} dimColor={j.activity.state === 'done'}>{({ working: '⟳ ', fetching: '⟳ ', waiting: '… ', done: '✓ ', failed: '✗ ' } as Record<string, string>)[j.activity.state]}{j.activity.state === 'fetching' ? `${j.activity.label}: fetching new postings first` : `${j.activity.label}${j.activity.detail ? ` · ${j.activity.detail}` : ''}`}{j.activity.state === 'working' || j.activity.state === 'waiting' ? (j.connected ? ' · in your Jobs chat' : ' · waiting for the Jobs chat') : ''}</Text> : null}
             {j.setup_needed ? <Text dimColor>Not set up yet · about 20 minutes</Text> : (
               <Text>{[j.counts.needs_you ? `${j.counts.needs_you} need you` : '', j.counts.ready ? `${j.counts.ready} ready to submit` : '', j.counts.in_progress ? `${j.counts.in_progress} in progress` : '', j.counts.applied_today ? `${j.counts.applied_today} applied today` : ''].filter(Boolean).join(' · ') || 'Nothing waiting'}</Text>
             )}

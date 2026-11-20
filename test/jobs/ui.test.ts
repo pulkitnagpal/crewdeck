@@ -190,6 +190,8 @@ test('first run, banners and the top bar', async () => {
   // P8 (visual check): a link pasted while Claude applies was queued but the strip showed only the work in hand.
   assert.equal(agentLine({ connected: true, working: [{ label: 'Apply to a role', role: { company: 'Example Labs' } }], waiting: [{ label: 'Add a link' }, { label: 'Find jobs' }] }).head, 'Claude is working (2 waiting):');
   assert.equal(agentLine({ connected: true, working: [], waiting: [{ label: 'Find jobs', role: null }] }).dot, 'wait');
+  // Find waits for a fresh fetch first: the status says so, not "waiting".
+  assert.equal(agentLine({ connected: true, working: [], waiting: [{ label: 'Find jobs', role: null, hold: 'fetching' }] }).head, 'Fetching new postings first…');
 });
 
 test('posting text is escaped, and a javascript: link never becomes an href', async () => {

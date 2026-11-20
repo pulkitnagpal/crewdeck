@@ -3,6 +3,16 @@
 What changed for people using Crewdeck. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Crewdeck is not released yet: versions below name the `crewdeck` plugin's version and the state of `main`.
 
+## [0.7.2] (plugin 0.7.3) — Seamless Jobs, a calmer Today
+
+- **Find fetches first** when a source you switched on was never fetched or is over 6 hours old: the request waits for
+  fresh postings (LinkedIn's included), so one click is enough.
+- **The Jobs chat opens by itself** when you click Find, Prepare or Apply and none is open (Claude desktop asks you to
+  confirm the folder once).
+- **The `/crewdeck` panel shows what the Jobs chat is doing**, in whichever chat you're in ("Find jobs · reviewing 10 of
+  14 · in your Jobs chat", "fetching new postings first", "✓ Find jobs: 2 picked"), and a toast when it finishes.
+- **Today, redesigned** for Claude's browser pane: a compact "Why so few?", a two-row header, and the apply panel scrolls.
+
 ## [Plugin 0.7.2]
 
 - **Open Crewdeck**, **Open Jobs**, **Today's notes** and the board buttons in Claude desktop now ask Claude to open the

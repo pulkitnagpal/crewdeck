@@ -18,6 +18,8 @@ export type Request = {
   kind?: JobKind; ref?: string; payload?: Record<string, unknown>; progress?: Progress[];
   /** When Claude took it up (read it with `request show` or posted progress): from then on it is that session's work. */
   taken?: string;
+  /** Held back from claims until Crewdeck finishes something first (`fetching`: a Find waits for fresh postings). */
+  hold?: string;
 };
 export type Typed = { kind: JobKind; ref?: string; payload?: Record<string, unknown> };
 
@@ -132,10 +134,17 @@ export class Requests {
     this.markSeen(lane, by);
     this.expire();
     for (const r of this.items) if (r.lane === lane && r.status === 'picked' && r.by === by) this.heard.set(r.id, Date.now());
-    const out = take ? this.items.filter((r) => r.lane === lane && r.status === 'new') : [];
+    const out = take ? this.items.filter((r) => r.lane === lane && r.status === 'new' && !r.hold) : [];
     for (const r of out) { r.status = 'picked'; r.by = by; r.updated = now(); r.taken = undefined; this.heard.set(r.id, Date.now()); }
     if (out.length) this.save();
     return out;
+  }
+  /** Hold a new request back from claims (Crewdeck does something first), or let it go (`undefined`). */
+  setHold(id: number, hold: string | undefined) {
+    const r = this.items.find((x) => x.id === id);
+    if (!r || r.status !== 'new' || r.hold === hold) return;
+    r.hold = hold; r.updated = now();
+    this.save();
   }
   /**
    * Leases: a picked request whose session hasn't been heard from (claim, progress) for 15 min goes back to the queue

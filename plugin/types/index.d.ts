@@ -15,6 +15,7 @@ export type Today = {
     | null
     | { error: string }
     | {
+        activity?: { state: 'working' | 'waiting' | 'fetching' | 'done' | 'failed'; label: string; detail: string; id?: number } | null
         setup_needed: boolean
         connected: boolean
         session_link: string
@@ -38,6 +39,7 @@ declare module 'claude-code' {
       paneOpen: Shaped<boolean>
       install: Shaped<Install>
       here: Shaped<string>
+      lastDone: Shaped<number>
     }
   }
 }

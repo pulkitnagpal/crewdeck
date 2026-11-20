@@ -315,7 +315,7 @@ async function up() {
     createProxy({ target: { host: '127.0.0.1', port: internal }, injectHead: boardHead(c.appearance, theme) })
       .listen(p.boardPort!, '127.0.0.1');
   }
-  createShell(c, undefined, { token }).listen(c.port, '127.0.0.1', () => say(`Crewdeck on ${pageUrl(c)}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));
+  createShell(c, undefined, { token, jobs: { autoOpenChat: true, fetchBeforeFind: true } }).listen(c.port, '127.0.0.1', () => say(`Crewdeck on ${pageUrl(c)}  (notes: ${c.vault}; projects: ${c.projects.map((p) => p.name).join(', ') || 'none yet'})`));
 }
 
 const api = agentCall;

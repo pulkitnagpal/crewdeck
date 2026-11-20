@@ -15,7 +15,8 @@ export const TOKEN = 'c'.repeat(64);
 export type Res = { status: number; headers: Record<string, any>; body: string; json: any };
 
 export async function jobsServer(person: keyof typeof PEOPLE = 'example', o: { features?: Partial<JobsFeatures>; api?: JobsApiOptions; enabled?: boolean } = {}) {
-  const w = world(person, { features: o.features });
+  // The server reads the real clock (Find's 24-hour window): the world's clock starts now, not on a fixed day that expires.
+  const w = world(person, { features: o.features, now: new Date().toISOString() });
   const workspace = join(w.root, 'jobs-workspace');
   mkdirSync(workspace);
   const c: Config = {

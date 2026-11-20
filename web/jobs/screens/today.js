@@ -1,5 +1,5 @@
-// Today: the roles waiting for the user, one role's application (first-time questions on top, every answer with its
-// source), and its apply panel.
+// Today: the roles waiting for the user (the queue), then one role: its head, its apply panel (under the head, or beside
+// the answers in a wide window), and its application (first-time questions on top, every answer with its source).
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { html, noop, cls, safeHref, Icon, More } from '../lib.js';
 import { ApplyPanel } from './apply.js';
@@ -88,7 +88,7 @@ function NotInterested({ d, exclude = [], onSave, onCancel, onDryRun = null }) {
   </div>`;
 }
 
-function Detail({ d, asking, actions, exclude = [] }) {
+function Detail({ d, asking, actions, exclude = [], panel = null }) {
   const [tab, setTab] = useState('form');
   const [skipping, setSkipping] = useState(false);
   const posting = safeHref(d.url);
@@ -106,6 +106,7 @@ function Detail({ d, asking, actions, exclude = [] }) {
       </div>
     </div>
     ${skipping ? html`<${NotInterested} d=${d} exclude=${exclude} onDryRun=${actions.onDryRun} onCancel=${() => setSkipping(false)} onSave=${(reason, words) => { actions.onSkip(d.id, reason, words); setSkipping(false); }} />` : null}
+    ${panel}
     <div class="tabs" role="tablist">
       ${[['form', 'Application form', d.rows.length], ['resume', 'Resume'], ['outreach', 'Outreach', d.outreach.length || undefined]].map(([k, label, n]) =>
         html`<button type="button" role="tab" aria-selected=${tab === k} onClick=${() => setTab(k)}>${label}${n ? html`<span class="n">${n}</span>` : null}</button>`)}
@@ -136,24 +137,25 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onSour
   const rulesCause = f.rules.reduce((x, r) => x + r.n, 0) > f.passed_rules;
   const judgeCause = f.passed_rules >= f.need && f.fits < f.need && f.no > 0;
   const fixes = (preview?.suggestions ?? []).filter((s) => s.more > 0).slice(0, 2);
-  return html`<section class="card why" aria-labelledby="why-title">
-    <div class="stack">
-      <h2 id="why-title">Why so few? <span class="soft">Find ${f.need} jobs: ${f.picked} picked</span></h2>
-      <p class="funnel">${f.line}</p>
-      ${f.sources?.empty ? html`<p class="soft">${f.sources.empty} of ${f.sources.total} sources returned nothing. <button type="button" class="linkbtn" onClick=${onSources}>Open sources</button></p>` : null}
-      ${(rulesCause && f.rules_line) || (judgeCause && f.judge_reasons.length) || f.coverage || f.sources?.why?.length ? html`<${More} summary="Why?">
-        ${rulesCause && f.rules_line ? html`<p>${f.rules_line}</p>` : null}
-        ${judgeCause && f.judge_reasons.length ? html`<div><span>The judge's most common reasons:</span><ul class="reasons">${f.judge_reasons.map((r, i) => html`<li key=${i}>${r.text}${r.n > 1 ? ` (${n(r.n)})` : ''}</li>`)}</ul></div>` : null}
-        ${f.sources?.empty && f.sources.why.length ? html`<p>Empty sources: ${f.sources.why.join('; ')}</p>` : null}
-        ${f.coverage ? html`<p>${f.coverage}</p>` : null}
-      </${More}>` : null}
+  // One quiet line (progressive disclosure): the count and the funnel; the reasons and the fixes open under it.
+  return html`<details class="why">
+    <summary>
+      <span class="whyhead"><b>Why so few?</b> <span class="count">Find ${f.need} jobs: ${f.picked} picked</span> <span class="soft funnel">· ${f.line}</span></span>
+      <span class="whymore" aria-hidden="true">Details</span>
+    </summary>
+    <div class="whybody">
+      ${f.sources?.empty ? html`<p>${f.sources.empty} of ${f.sources.total} sources returned nothing. <button type="button" class="linkbtn" onClick=${onSources}>Open sources</button></p>` : null}
+      ${rulesCause && f.rules_line ? html`<p>${f.rules_line}</p>` : null}
+      ${judgeCause && f.judge_reasons.length ? html`<div><span>The judge's most common reasons:</span><ul class="reasons">${f.judge_reasons.map((r, i) => html`<li key=${i}>${r.text}${r.n > 1 ? ` (${n(r.n)})` : ''}</li>`)}</ul></div>` : null}
+      ${f.sources?.empty && f.sources.why.length ? html`<p>Empty sources: ${f.sources.why.join('; ')}</p>` : null}
+      ${f.coverage ? html`<p>${f.coverage}</p>` : null}
       <div class="row-flex">
         ${fixes.map((s, i) => html`<button type="button" key=${i} class=${`btn small${i === 0 ? ' primary' : ''}`} title=${s.text} onClick=${() => onFix(s)}>${s.label}</button>`)}
         ${preview ? null : html`<span class="small soft" role="status">Checking what one change would bring back…</span>`}
         <button type="button" class="btn small quiet" onClick=${onPreview}>See the preview</button>
       </div>
     </div>
-  </section>`;
+  </details>`;
 }
 
 export function Today({ data, state, preview = null, actions = {} }) {
@@ -183,10 +185,8 @@ export function Today({ data, state, preview = null, actions = {} }) {
       <span class="label">Today · ${data.queue.length}</span>
       ${data.queue.map((q) => html`<${QueueItem} key=${q.id} item=${q} active=${q.id === data.selected} onSelect=${a.onSelect} />`)}
     </nav>
-    ${data.detail ? html`<div class="work">
-      <${Detail} d=${data.detail} asking=${data.asking ?? []} exclude=${data.exclude_title_words ?? []} actions=${a} />
-      <${ApplyPanel} d=${data.detail} panel=${data.panel} reveal=${!!state?.reveal} workspace=${state?.agent?.workspace ?? ''} openSession=${!!state?.agent?.open_session} onOpenSession=${a.onOpenSession}
-        onApply=${a.onApply} onCancel=${a.onCancel} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />
-    </div>` : null}
+    ${data.detail ? html`<${Detail} d=${data.detail} asking=${data.asking ?? []} exclude=${data.exclude_title_words ?? []} actions=${a}
+      panel=${html`<${ApplyPanel} d=${data.detail} panel=${data.panel} reveal=${!!state?.reveal} workspace=${state?.agent?.workspace ?? ''} openSession=${!!state?.agent?.open_session} onOpenSession=${a.onOpenSession}
+        onApply=${a.onApply} onCancel=${a.onCancel} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />`} />` : null}
   </div></div>`;
 }
