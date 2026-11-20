@@ -165,12 +165,13 @@ function CatalogRow({ c, reasons, onAdd }) {
     <div class="body">
       <div class="head"><h3>${c.name}</h3><span class="chips"><span class="chip">${c.kind_label}</span>${c.region_names.length ? html`<span class="chip">${c.region_names.join(', ')}</span>` : null}
         ${c.verified ? null : html`<span class="chip warn">not verified</span>`}</span></div>
-      <p class="small soft clamp">${c.coverage}</p>
-      ${reasons || c.note || (c.families.length && !c.families.includes('any')) ? html`<${More} summary=${reasons ? 'Why suggested' : 'Details'}>
-        ${reasons ? html`<span>Suggested: ${reasons.join('; ')}</span>` : null}
-        ${c.note ? html`<span>${c.note}</span>` : null}
+      ${reasons ? html`<p class="small soft">Suggested: ${reasons[0]}</p>` : null}
+      <${More} summary="Details">
         ${c.families.length && !c.families.includes('any') ? html`<span>For ${c.families.slice(0, 4).map(FAMILY).join(', ')}</span>` : null}
-      </${More}>` : null}
+        ${reasons && reasons.length > 1 ? html`<span>Also: ${reasons.slice(1).join('; ')}</span>` : null}
+        ${c.coverage ? html`<span>${c.coverage}</span>` : null}
+        ${c.note ? html`<span>${c.note}</span>` : null}
+      </${More}>
     </div>
     <div class="ctl">${c.added ? html`<span class="chip ok">In your list</span>`
       : careers ? html`<span class="small soft">Use Add a company</span>`
