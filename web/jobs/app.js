@@ -105,6 +105,16 @@ function App() {
     onPreview: () => { setPending({ changes: {}, from: 'find' }); nav('preferences'); },
     onSources: () => nav('sources'),
     onDryRun: (changes) => preview({ search: changes }),
+    // Tell Crewdeck (P3): queued for a Jobs chat; proposals are approved or rejected item by item.
+    onTell: async (text) => !!(await run('tell', { text }, (r) => (r.opened_chat ? 'Sent: a Jobs chat is opening for it' : 'Sent to Claude'))),
+    onApproveProposal: (id, item) => run('approveProposal', { id, item }, (r) => (r.failed?.length ? null : 'Approved')).then((r) => { if (r?.failed?.length) say(r.failed[0], true); }),
+    onRejectProposal: (id, item) => run('rejectProposal', { id, item }, 'Rejected'),
+    onApproveAllProposals: async (ids) => {
+      let failed = [];
+      for (const id of ids) { const r = await run('approveProposal', { id }); failed = failed.concat(r?.failed ?? []); }
+      say(failed.length ? failed[0] : 'All approved', !!failed.length);
+    },
+    onUndoProposal: (id, item) => run('undoProposal', { id, item }, 'Undone'),
   };
   const onFeature = (name, value) => run('feature', { name, value }, (r) => (r.ok ? `${name.replace(/_/g, ' ')}: ${value === true ? 'on' : value === false ? 'off' : value}` : null));
   const onLink = async (url) => {

@@ -1,6 +1,6 @@
 ---
 name: jobs-workspace
-description: Work the requests the user makes on Crewdeck's Jobs page (setup, find, link, apply, improve, source). Use when a message starts "[Crewdeck → lane jobs]" or names a Jobs request id, and whenever a session in the jobs workspace is asked to add a job link, prepare a role, apply to a role, improve an answer or find an employer's jobs page.
+description: Work the requests the user makes on Crewdeck's Jobs page (setup, find, link, apply, improve, source, tell). Use when a message starts "[Crewdeck → lane jobs]" or names a Jobs request id, and whenever a session in the jobs workspace is asked to add a job link, prepare a role, apply to a role, improve an answer or find an employer's jobs page.
 ---
 
 # Jobs requests (lane `jobs`)
@@ -199,6 +199,11 @@ reason). The user wants this employer's open jobs read automatically.
    page isn't readable by Crewdeck: paste its postings when you see them". No jobs list found (a walk-in-only shop, a
    page that needs an account) → close `done` with that, in plain words; the source stays on the list as "paste its
    postings". Resolving needs Node 25+: on older Node say so after `set-url`.
+
+## tell: "Tell Crewdeck" (the Tell box, the panel, or a prompt "Crewdeck: handle tell request <id>")
+Payload `{ text }`: what the person typed (a sentence, a link, a pasted post). Run the **jobs-intake** skill: it reads the
+text, asks at most two short questions, writes one proposal (`crewdeck jobs propose --file <T>/proposal.json`) and closes
+the request. Never change the notes directly for a tell request: the proposal is the only write.
 
 ## Also in this session
 - "Not interested" said in chat about a role: write the user's words to a file and run

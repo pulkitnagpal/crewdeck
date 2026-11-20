@@ -95,9 +95,17 @@ export function createShell(c: Config, requests = new Requests(), opts: ShellOpt
       }
       // Agent endpoints.
       const m = /^\/api\/requests\/(\d+)\/(done|fail|show|progress)$/.exec(path);
-      if (path !== '/api/claim' && path !== '/api/requeue' && path !== '/api/today' && path !== '/api/today/todo' && !m) throw new HttpError(404, 'not found');
+      const tellOrProposals = path === '/api/tell' || path === '/api/proposals';
+      if (path !== '/api/claim' && path !== '/api/requeue' && path !== '/api/today' && path !== '/api/today/todo' && !tellOrProposals && !m) throw new HttpError(404, 'not found');
       if (!fromAgent(req, opts.token)) throw new HttpError(401, 'missing or wrong token');
       const b = await readJson(req);
+      // Tell Crewdeck (P3): the panel or `crewdeck jobs tell` queues a tell request; the panel and `crewdeck jobs
+      // propose|proposals` list, write and decide proposals. A proposal answering a tell request comes from the jobs lane.
+      if (tellOrProposals) {
+        if (!jobsOn()) throw new HttpError(404, 'not found');
+        if (path === '/api/proposals' && b.op === 'propose' && b.proposal?.request !== undefined && laneFor(c, String(b.cwd ?? '')) !== 'jobs') throw new HttpError(403, 'a proposal for a tell request is written from the jobs workspace');
+        return json(res, 200, (await jobsApi()).agent(path, b));
+      }
       // The Today panel (docs/everywhere.md E7): today's to-dos, a look at Jobs, open tickets, and where to open them.
       if (path === '/api/today') return json(res, 200, await todayGlance(b.date));
       if (path === '/api/today/todo') {

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { html, noop, cls, safeHref, Icon, More } from '../lib.js';
 import { ApplyPanel } from './apply.js';
 import { SetupCard } from './setup.js';
+import { TellArea } from './tell.js';
 
 function QueueItem({ item, active, onSelect }) {
   return html`<button type="button" class="qitem" aria-current=${active ? 'true' : undefined} onClick=${() => onSelect(item.id)}>
@@ -162,9 +163,10 @@ export function Today({ data, state, preview = null, actions = {} }) {
   const a = { onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onCancel: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onDryRun: null, ...actions };
   const setup = state?.setup?.needed;
   if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onOpenSession=${a.onOpenSession} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} onCancel=${a.onCancel} /></div>`;
+  const tell = html`<${TellArea} proposals=${data.proposals} actions=${a} />`;
   const why = data.find ? html`<${WhySoFew} find=${data.find} preview=${preview} onFix=${a.onFix} onPreview=${a.onPreview} onSources=${a.onSources} />` : null;
   if (!data.queue.length) {
-    return html`<div class="page">${why}<div class="empty">
+    return html`<div class="page">${tell}${why}<div class="empty">
       <span class="ico"><${Icon} name="briefcase" size=${22} /></span>
       <h2>Nothing to review</h2>
       ${(() => {
@@ -180,7 +182,7 @@ export function Today({ data, state, preview = null, actions = {} }) {
       })()}
     </div></div>`;
   }
-  return html`<div class="todaycol">${why}<div class="today">
+  return html`<div class="todaycol">${tell}${why}<div class="today">
     <nav class="queue" aria-label="Today's roles">
       <span class="label">Today · ${data.queue.length}</span>
       ${data.queue.map((q) => html`<${QueueItem} key=${q.id} item=${q} active=${q.id === data.selected} onSelect=${a.onSelect} />`)}

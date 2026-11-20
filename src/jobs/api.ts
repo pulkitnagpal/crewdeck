@@ -42,6 +42,7 @@ import { type SourceOp, changeSources, isKey, listSources, refreshSourcesList } 
 import { type SchedulerOptions, createSourceScheduler } from './schedule.ts';
 import { type ResolveState, sourcesScreen } from './sources-view.ts';
 import type { ResolveResult } from './resolve.ts';
+import { type ApplyEnv, ProposalError, addProposal, approve as approveProposal, checkProposal, listProposals, pendingCount, proposalView, reject as rejectProposal, undo as undoProposal } from './proposals.ts';
 
 export type JobsApi = {
   handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void>;
@@ -52,6 +53,11 @@ export type JobsApi = {
   scheduler: import('./schedule.ts').SourceScheduler;
   /** Today panel's look at Jobs (docs/everywhere.md E7): what waits on the person, never any payload or posting text. */
   glance(): JobsGlance;
+  /**
+   * The agent endpoints Tell Crewdeck adds (token checked by the server): `/api/tell` { text } queues a tell request;
+   * `/api/proposals` { op: list | propose | approve | reject | undo, … } (the panel and `crewdeck jobs propose|proposals`).
+   */
+  agent(path: '/api/tell' | '/api/proposals', body: any): unknown;
   close(): void;
 };
 export type JobsGlance = {
@@ -61,6 +67,8 @@ export type JobsGlance = {
   /** Opens a Claude Code session in the jobs folder (claude://code/new…). */
   session_link: string;
   counts: { needs_you: number; ready: number; in_progress: number; applied_today: number };
+  /** Proposal items waiting for the person's Approve or Reject (P3): the panel lists them with POST /api/proposals. */
+  proposals: number;
   queue: { company: string; title: string; chip: string; kind: string }[];
 };
 export type JobsApiOptions = {
@@ -92,9 +100,14 @@ export type JobsApiOptions = {
 const LANE = 'jobs';
 /** Careers pages checked at once from the Sources screen (each is a sandboxed child of ≤ 35 s). */
 const MAX_RESOLVING = 2;
-const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page' };
+const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page', tell: 'Tell Crewdeck' };
 const MAX_CLIENTS = 20;
 const SET_ON_PAGE = '(set on the Jobs page)';
+
+/** The longest text the Tell box takes (a request payload is at most 4000 characters as JSON). */
+export const MAX_TELL = 3000;
+/** The prompt of the Jobs chat opened for a tell request (ADR-0004: work runs in a Jobs chat in front of the person). */
+export const tellPrompt = (id: number) => `Crewdeck: handle tell request ${id}`;
 
 /** jobs/search.md fields the Preferences form edits, and the shape of each value. */
 export const PREF_FIELDS: Record<string, 'list' | 'num' | 'optnum' | 'str' | 'bool' | 'langs' | 'targets' | 'licences'> = {
@@ -454,9 +467,10 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       return chip ? { ...q, chip } : q;
     });
     const find = findCard();
+    const proposals = proposalsView();
     // The Not interested dialog previews what skipping more title words drops (§24.6): it adds to these.
     const exclude_title_words = notesOf(ctx).search.data.roles.exclude_title_words;
-    if (!v.detail) return { ...v, queue, panel: null, asking: [], find, exclude_title_words };
+    if (!v.detail) return { ...v, queue, panel: null, asking: [], find, exclude_title_words, proposals };
     const d = v.detail;
     const notes = notesOf(ctx);
     const pdf = d.resume ? resumePath(ctx, d.id, notes) : null;
@@ -465,7 +479,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       ...v, queue,
       detail: { ...d, resume: pdf ? { file: basename(pdf), url: `/api/jobs/resume/${d.id}`, note: d.resume!.note } : null, copy: d.apply.mode !== 'fill' ? copyModel(db, d.id).answers : null },
-      panel, asking, find, exclude_title_words,
+      panel, asking, find, exclude_title_words, proposals,
     };
   }
 
@@ -519,16 +533,80 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
    * once every 10 minutes so a closed dialog isn't reopened at every click. Claude desktop asks to confirm the folder.
    */
   let lastAutoOpen = 0;
-  function openJobsChatIfNone(): boolean {
+  function openJobsChatIfNone(prompt?: string): boolean {
     if (!o.autoOpenChat || requests.presence(LANE).connected || (platform !== 'darwin' && platform !== 'linux')) return false;
     if (Date.now() - lastAutoOpen < 10 * 60_000) return false;
     lastAutoOpen = Date.now();
-    const link = sessionLink(c.jobs.workspace, setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT);
+    const link = sessionLink(c.jobs.workspace, prompt ?? (setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT));
     const cmd = platform === 'darwin' ? 'open' : 'xdg-open';
     void (o.openLink ?? ((l: string) => new Promise<void>((ok) => execFile(cmd, [l], () => ok()))))(link).catch(() => {});
     return true;
   }
   const queueApply = (role: string) => queue('apply', role, { role });
+
+  // ---- Tell Crewdeck and proposals (P3) ----
+  /**
+   * Queue what the person told Crewdeck as a tell request. With no Jobs chat connected, the auto-open rule (above) opens
+   * one whose prompt names the request; `link` is that chat's claude://code/new link for a caller that opens it itself.
+   */
+  function tell(raw: unknown) {
+    const text = str(raw, MAX_TELL, 'what you tell Crewdeck');
+    if (!text) throw new HttpError(400, 'Tell Crewdeck something first');
+    const r = requests.add(LANE, LABEL.tell, { kind: 'tell', payload: { text } });
+    const opened = openJobsChatIfNone(tellPrompt(r.id));
+    return { ok: true, request: r.id, status: r.status, link: sessionLink(c.jobs.workspace, tellPrompt(r.id)), ...(opened ? { opened_chat: true } : {}) };
+  }
+  const applyEnv: ApplyEnv = {
+    ctx,
+    queueLink: (url) => requests.add(LANE, LABEL.link, { kind: 'link', payload: { url: checkLink(url, ctx.features) } }).id,
+    cancelLink: (id) => { const r = requests.get(id); if (!r || r.lane !== LANE || r.kind !== 'link' || !isOpen(r)) return false; requests.cancel(id, LANE); return true; },
+  };
+  const proposalId = (v: unknown) => { const n = Number(v); if (!Number.isInteger(n) || n < 1) throw new HttpError(400, 'unknown proposal'); return n; };
+  const itemNo = (v: unknown) => (v === undefined || v === null ? undefined : intIn(v, 1, 100, 'item'));
+  /** A proposal's change, then the refresh: notes and sources changed under the page. */
+  const changed = <T>(fn: () => T): T => {
+    try { return fn(); }
+    catch (e: any) { if (e instanceof ProposalError) throw new HttpError(400, e.message); throw e; }
+    finally { emit('proposals'); }
+  };
+  function proposalsView() {
+    const list = listProposals(db).map(proposalView);
+    return { pending: list.filter((p) => p.status === 'pending'), recent: list.filter((p) => p.status === 'done').slice(0, 10), count: pendingCount(db) };
+  }
+  /** The text of an open tell request (what the person typed): auto-apply checks the person's words against it. */
+  function toldText(id: number | undefined): string | undefined {
+    if (!id) return undefined;
+    const r = requests.get(id);
+    if (!r || r.lane !== LANE || r.kind !== 'tell' || !isOpen(r)) throw new HttpError(400, `request ${id} is not an open tell request`);
+    return typeof r.payload?.text === 'string' ? r.payload.text : undefined;
+  }
+  function agent(path: string, b: any): unknown {
+    try { return agentOp(path, b); }
+    catch (e: any) {
+      if (e instanceof HttpError) throw e;
+      if (isBusy(e)) throw new HttpError(503, 'busy, retry');
+      if (e instanceof RequestError || e instanceof ProposalError) throw new HttpError(400, e.message);
+      throw e;
+    }
+  }
+  function agentOp(path: string, b: any): unknown {
+    refreshFeatures();
+    if (path === '/api/tell') { const out = tell(b?.text); emit('server'); return out; }
+    const op = String(b?.op ?? 'list');
+    if (op === 'list') return proposalsView();
+    if (op === 'propose') {
+      let input;
+      try { input = checkProposal(b.proposal); } catch (e: any) { throw new HttpError(400, e.message); }
+      const told = toldText(input.request);
+      return changed(() => proposalView(addProposal(applyEnv, input, { told })));
+    }
+    // The person's own words for the Changes line: the CLI asks for them; the panel says where it was approved.
+    const quote = b.quote === undefined ? undefined : str(b.quote, 1000, 'quote');
+    if (op === 'approve') return changed(() => { const r = approveProposal(applyEnv, proposalId(b.id), itemNo(b.item), { quote, where: quote ? 'in the chat' : 'in the panel' }); return { ...proposalView(r.proposal), applied: r.applied, failed: r.failed }; });
+    if (op === 'reject') return changed(() => proposalView(rejectProposal(applyEnv, proposalId(b.id), itemNo(b.item))));
+    if (op === 'undo') return changed(() => proposalView(undoProposal(applyEnv, proposalId(b.id), itemNo(b.item) ?? 0)));
+    throw new HttpError(400, 'op is list, propose, approve, reject or undo');
+  }
   /** A source the user switched on was never fetched, or none was fetched in the last 6 hours. */
   function sourcesStale(at = Date.now()): boolean {
     const state = readSourcesState(c.jobs.home);
@@ -570,6 +648,10 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       return out;
     },
     addLink: (b) => queue('link', undefined, { url: checkLink(b.url, ctx.features), ...(b.force === true ? { force: true } : {}) }),
+    tell: (b) => tell(b.text),
+    approveProposal: (b) => changed(() => { const r = approveProposal(applyEnv, proposalId(b.id), itemNo(b.item), { where: 'on the Jobs page' }); return { ok: true, applied: r.applied, failed: r.failed }; }),
+    rejectProposal: (b) => changed(() => { rejectProposal(applyEnv, proposalId(b.id), itemNo(b.item)); return { ok: true }; }),
+    undoProposal: (b) => changed(() => { undoProposal(applyEnv, proposalId(b.id), itemNo(b.item) ?? 0); return { ok: true }; }),
     approve: (b) => {
       const r = roleArg(b.role);
       if (r.status === 'applied') throw new HttpError(400, 'already applied');
@@ -814,6 +896,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
         const k = knowledgeView(ctx, tab);
         return json(res, 200, { ...k, page: notesPage(k.note), pages: Object.fromEntries(Object.entries(k.notes).map(([t, f]) => [t, notesPage(f)])) });
       }
+      if (path === '/api/jobs/proposals') return json(res, 200, proposalsView());
       if (path === '/api/jobs/preferences') return json(res, 200, preferences());
       if (path === '/api/jobs/settings') return json(res, 200, settings());
       if (path === '/api/jobs/sources') return json(res, 200, sourcesScreen(ctx, { resolving, results: recentResolves(), notesPage: (f) => notesPage(f)! }));
@@ -874,12 +957,13 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       connected: requests.presence(LANE).connected,
       session_link: sessionLink(c.jobs.workspace, setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT),
       counts: { needs_you: count('first') + count('warn'), ready: count('ready'), in_progress: kinds.filter((k) => !['first', 'warn', 'ready', 'applied'].includes(k)).length, applied_today: count('applied') },
+      proposals: pendingCount(db),
       queue: v.queue.filter((q: any) => q.chip?.kind !== 'applied').slice(0, 6).map((q: any) => ({ company: String(q.company), title: String(q.title), chip: String(q.chip?.text ?? ''), kind: String(q.chip?.kind ?? '') })),
     };
   }
 
   return {
-    handle, contextFor, emit, scheduler, glance,
+    handle, contextFor, emit, scheduler, glance, agent,
     close() {
       scheduler.stop();
       for (const ch of children) { try { ch.kill('SIGKILL'); } catch {} }

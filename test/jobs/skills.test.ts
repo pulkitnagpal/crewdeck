@@ -54,8 +54,8 @@ test('presets (deprecated alias, D39): each one is a valid search.md; sources co
 
 const skillNames = () => readdirSync(SKILLS).filter((d) => existsSync(join(SKILLS, d, 'SKILL.md')));
 
-test('skills: the five playbooks, each with a name that matches its folder and a description that says when to use it', () => {
-  assert.deepEqual(skillNames().sort(), ['crewdeck-memory', 'crewdeck-open', 'jobs-daily-run', 'jobs-setup', 'jobs-workspace']);
+test('skills: the six playbooks, each with a name that matches its folder and a description that says when to use it', () => {
+  assert.deepEqual(skillNames().sort(), ['crewdeck-memory', 'crewdeck-open', 'jobs-daily-run', 'jobs-intake', 'jobs-setup', 'jobs-workspace']);
   for (const name of skillNames()) {
     const text = read('plugin', 'skills', name, 'SKILL.md');
     const fm = parse(splitNote(text).front!);
@@ -66,7 +66,7 @@ test('skills: the five playbooks, each with a name that matches its folder and a
     assert.doesNotMatch(text, /\/Users\/|\/home\//, `${name}: no home paths`);
   }
   const ws = read('plugin', 'skills', 'jobs-workspace', 'SKILL.md');
-  for (const kind of ['setup', 'find', 'link', 'apply', 'improve', 'source']) assert.match(ws, new RegExp(`^## ${kind}\\b`, 'm'), `jobs-workspace works ${kind}`);
+  for (const kind of ['setup', 'find', 'link', 'apply', 'improve', 'source', 'tell']) assert.match(ws, new RegExp(`^## ${kind}\\b`, 'm'), `jobs-workspace works ${kind}`);
   assert.match(ws, /never click/i);
   assert.match(ws, /needs you: /);
   assert.match(ws, /submitted: /);
@@ -105,10 +105,10 @@ test('skills: the five playbooks, each with a name that matches its folder and a
 // ---- the command lint ----
 
 const SRC_TOP = read('src', 'cli.ts');
-const SRC_JOBS = read('src', 'jobs', 'cli.ts') + read('src', 'jobs', 'commands.ts') + read('src', 'jobs', 'sources-cmd.ts');
+const SRC_JOBS = read('src', 'jobs', 'cli.ts') + read('src', 'jobs', 'commands.ts') + read('src', 'jobs', 'sources-cmd.ts') + read('src', 'jobs', 'proposals-cmd.ts');
 const TOP = ['setup', 'init', 'up', 'open', 'service', 'address', 'add-project', 'doctor', 'requests', 'request', 'progress', 'jobs'];
 /** Commands whose next word is a verb. */
-const VERBS = new Set(['me', 'pref', 'request', 'event', 'question', 'linkedin', 'contact', 'message', 'followup', 'view', 'sources']);
+const VERBS = new Set(['me', 'pref', 'request', 'event', 'question', 'linkedin', 'contact', 'message', 'followup', 'view', 'sources', 'proposals']);
 const literal = (src: string, w: string) => src.includes(`'${w}'`) || src.includes(`"${w}"`);
 
 /** Every `crewdeck …` command line in a Markdown text: inline code spans and fenced code lines. */
