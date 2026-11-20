@@ -315,6 +315,7 @@ export type SourceOptions = SpawnOptions & {
   plan?: Plan; linkedin?: Parameters<typeof import('./linkedin.ts').searchLinkedin>[1]; net?: NetOptions; trigger?: string;
   /** How many roles' descriptions to read this run (default 1000; 0 = none), and the detail step's other options. */ details?: number; detailOptions?: DetailOptions;
   /** setup's first fetch: only sources never fetched before */ onlyNew?: boolean;
+  /** Jobs v2: also fetch the person's planned sources (official APIs, company job feeds). The CLI turns it on; tests opt in. */ planned?: boolean;
 };
 
 /** Hours LinkedIn is paused after 1, 2, 3, 4+ stops in a row. */
@@ -409,6 +410,15 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
     if (providers.error) { state.ok = false; state.error = providers.error; }
   }
 
+  // Jobs v2: the person's planned sources (official APIs, company job feeds), plain code, before the rules run.
+  if (o.planned) {
+    try {
+      const { runPlanned } = await import('./planned-run.ts');
+      const r = await runPlanned(ctx, { net: o.net });
+      (state as any).planned = r;
+      state.new += r.stored;
+    } catch (e: any) { (state as any).planned = { error: String(e?.message ?? e).slice(0, 300) }; }
+  }
   const p1 = runPrefilter(ctx);
   // Every rule-passing role without a full description, not only the best-ranked (P1b).
   const { fetchDetails } = await import('./pipeline/details.ts');

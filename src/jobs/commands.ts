@@ -139,7 +139,7 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     const since = intArg(flag(args, 'since'), 'since', 14);
     if (since < 1 || since > 90) throw new Error('--since must be from 1 to 90 days');
     const { runSources } = await import('./sources.ts');
-    const r = await runSources(ctx, { sinceDays: since, trigger: args.includes('--scheduled') ? 'scheduled' : 'command', onlyNew: args.includes('--only-new-sources') });
+    const r = await runSources(ctx, { sinceDays: since, trigger: args.includes('--scheduled') ? 'scheduled' : 'command', onlyNew: args.includes('--only-new-sources'), planned: !args.includes('--no-planned') });
     if (args.includes('--json')) return json(r);
     const p = r.providers as any;
     if (p?.ran) {
