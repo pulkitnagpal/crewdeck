@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 import { render } from 'preact-render-to-string';
 import { html } from '../../web/jobs/lib.js';
-import { Sources, filterCatalog, inRegion, lastLine, poss } from '../../web/jobs/screens/sources.js';
+import { Sources, filterCatalog, inRegion, lastLine, poss, splitLine } from '../../web/jobs/screens/sources.js';
 import { dropLine } from '../../web/jobs/screens/today.js';
 import { jobsServer, wait } from './api-helpers.ts';
 import { notesOf } from '../../src/jobs/ctx.ts';
@@ -165,8 +165,8 @@ test('add a company → checked in the sandbox → "Workday · 20 open roles", a
     assert.deepEqual([no.fetch, no.resolved.result.ok], ['none', false]);
     // What the screen says for each.
     const t = text(render(html`<${Sources} data=${v} />`));
-    assert.match(t, /Example Health Employer Workday .*Workday: 20 roles on a one-page test/);
-    assert.match(t, /Not fetched: no provider reads this page: paste its postings, or ask Claude to find its jobs page .* Ask Claude to find the jobs page/);
+    assert.match(t, /Example Health Employer .*Workday: 20 roles on a test · fetched next run.*Details Runs on Workday/);
+    assert.match(t, /Not fetched: no provider reads this page: paste its postings, or ask Claude to find its jobs page Ask Claude to find the jobs page/);
     assert.equal((await s.action('findJobsPage', { key: bad.json.key })).status, 200);
   } finally { await s.close(); await srv.close(); }
 });
@@ -180,23 +180,23 @@ test('the screen in Node: rows, last fetches, LinkedIn\'s row, the coverage line
     const v = (await s.get('sources')).json;
     const out = render(html`<${Sources} data=${v} />`);
     const t = text(out);
-    assert.match(t, /Sources Where Jobs looks, in the order it looks/);
+    assert.match(t, /Sources Where Jobs looks, top first\..*How it works The first source is fetched first/);
     assert.match(t, /What's covered/);
     assert.match(t, /Yours · 4 sources/);
-    assert.match(t, /LinkedIn LinkedIn .*Off: LinkedIn search runs only after you switch it on\. Pasted LinkedIn links: off · Easy Apply: off .*Switch on…/);
-    assert.match(t, /Arbeitnow Job board .*34 roles, 3 new, 12 kept by your rules · 2 h ago/);
-    assert.match(t, /Berlin Startup Jobs .*Off: not fetched until you switch it on/);
+    assert.match(t, /LinkedIn LinkedIn .*Off · only you can switch it on Switch on… LinkedIn details .*Pasted LinkedIn links: off · Easy Apply: off/);
+    assert.match(t, /Arbeitnow Job board .*34 roles · 3 new · 12 match your rules · 2 h ago/);
+    assert.match(t, /Berlin Startup Jobs .*Off · not fetched/);
     assert.match(out, /data-move="linkedin:up" disabled aria-label="Move LinkedIn up"/, 'the first row can\'t move up');
     assert.match(out, /data-move="example-gmbh:down" disabled aria-label="Move Example GmbH down"/);
     assert.match(out, /role="switch" aria-checked="false" aria-label="Fetch Berlin Startup Jobs"/);
     assert.doesNotMatch(out, /aria-label="Fetch LinkedIn"/, 'LinkedIn\'s switch is not a note flag');
-    assert.match(t, /Where this lives Your list In your notes, in jobs\/sources\.md.*What each fetch found In Crewdeck's own state/);
+    assert.match(t, /Where this lives Your list is a note you can edit\. Details Your list In your notes, in jobs\/sources\.md.*What each fetch found In Crewdeck's own state/);
     assert.match(out, /<ol class="slist" aria-label="Your sources, in priority order">/);
     assert.match(out, /role="status" aria-live="polite"/);
     // Nothing fits (D42): the line is the heading's subject, with what still works.
     const bare = { ...v, rows: [], linkedin: { ...v.linkedin, in_list: false }, coverage: { ...v.coverage, fits: 0, line: 'Crewdeck has no job board that fits Columbus for healthcare. Paste any posting you find.' } };
     const b = text(render(html`<${Sources} data=${bare} />`));
-    assert.match(b, /No job board covers you yet Crewdeck has no job board that fits Columbus for healthcare\. .*Add a company .*Place LinkedIn in your list .*Paste a job link/);
+    assert.match(b, /No job board covers you yet Crewdeck has no job board that fits Columbus for healthcare\. What else works Paste any posting you find\. .*Add a company .*Place LinkedIn in your list .*Paste a job link/);
     // Filters: region (covers or inside), field, kind, and careers-page entries off by default.
     const all = filterCatalog(v.catalog, { region: '', family: '', kind: '', careers: true }, v.filters.within);
     assert.equal(all.length, v.catalog.length);
@@ -213,6 +213,10 @@ test('the screen in Node: rows, last fetches, LinkedIn\'s row, the coverage line
     assert.equal(lastLine({ resolving: 'x' }).kind, 'busy');
     assert.match(lastLine({ enabled: true, fetch: 'auto', last: { ok: false, at: new Date().toISOString(), why: 'needs keywords: they come from your titles; add a title' } }).text, /^needs keywords: they come from your titles; add a title · just now$/);
     assert.match(lastLine({ enabled: true, fetch: 'auto', resolved: { refused: 'need Node 25 or newer' } }).text, /Couldn't check this page here: need Node 25 or newer/);
+    // The coverage line: its first sentence shown, what else works behind More.
+    assert.deepEqual(splitLine('2 job boards fit Berlin (no job board for nursing in Germany). Employers\' careers pages work; paste any posting you find.'),
+      ['2 job boards fit Berlin (no job board for nursing in Germany).', 'Employers\' careers pages work; paste any posting you find.']);
+    assert.deepEqual(splitLine('One sentence only.'), ['One sentence only.', '']);
     assert.equal(poss('Example Stores'), 'Example Stores\'');
     assert.equal(poss('Example Health'), 'Example Health\'s');
   } finally { await s.close(); }

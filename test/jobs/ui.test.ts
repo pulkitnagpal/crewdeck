@@ -96,7 +96,7 @@ test('apply panel: every state, as design §2.3a describes it', async () => {
 
 test('settings: no system dialog → the terminal command and the one-time code, shown only here', async () => {
   const st = (await s.get('settings')).json;
-  assert.match(text(render(html`<${Settings} data=${st} />`)), /confirm in your computer's own dialog/);
+  assert.match(text(render(html`<${Settings} data=${st} />`)), /Riskier features\. Off until you switch them on\..*a yes in your computer's own dialog/);
   const { TerminalCode } = await import('../../web/jobs/screens/settings.js');
   const box = text(render(html`<${TerminalCode} t=${{ command: 'crewdeck jobs features easy_apply on', code: 'ABCD-EFGH' }} />`));
   assert.match(box, /Confirm in your own terminal.*not in a Claude chat.*crewdeck jobs features easy_apply on.*ABCD-EFGH/);
@@ -159,7 +159,7 @@ test('applications, what Claude knows, preferences, settings', async () => {
   const st = (await s.get('settings')).json;
   const set = render(html`<${Settings} data=${st} />`);
   assert.equal((set.match(/role="switch"/g) ?? []).length, 5);
-  assert.match(text(set), /LinkedIn guest search.*terms forbid automated access/);
+  assert.match(text(set), /LinkedIn guest search Against LinkedIn's terms: your IP may be limited or blocked\. Why\? .*terms forbid automated access/);
   assert.match(set, /aria-checked="false"/);
 });
 

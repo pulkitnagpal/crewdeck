@@ -1,0 +1,26 @@
+/* ---- UX pass, part B: Sources, Preferences, Settings, What Claude knows, Applications. Short lines up front, the rest
+   behind a More (.more, in jobs.css). Nothing under 14 px; secondary text in --soft (AA in both themes). ---- */
+
+/* A More right under a page head or a section's lead sits close to it, not a full gap away. */
+.page-head + .more { margin-top: -6px; }
+.section > header .more { margin-top: 2px; }
+.more-body .addr, .more-body code { overflow-wrap: anywhere; }
+.more-body .kv { margin: 0; }
+
+/* Sources: compact rows. The fetch line is one short muted line (errors keep their colour). */
+.srcs .srow .last { line-height: 1.4; }
+.srcs .srow .body { gap: 0.25rem; }
+.srcs .srow .moves .btn { min-width: 2.25rem; padding-left: 0.5rem; padding-right: 0.5rem; font-size: 1rem; line-height: 1.2; }
+.srcs .crow .body { gap: 0.25rem; }
+/* A catalog entry's coverage: two lines at most; the full text stays in the page for screen readers. */
+.srcs .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.srcs .addform .more { margin-top: -0.25rem; }
+
+/* Settings: the full risk is one More away; keep the switch row tight. */
+.switchrow .body .more { margin-top: 0; }
+
+/* What Claude knows: the tab's line and its More sit together. */
+.row-flex + .more { margin-top: -4px; }
+
+/* Preferences: a field's More sits right under its helper line. */
+.prefs .f > .more { margin-top: -0.375rem; }
