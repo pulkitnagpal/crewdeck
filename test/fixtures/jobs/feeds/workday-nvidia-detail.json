@@ -1,0 +1,41 @@
+{
+ "jobPostingInfo": {
+  "id": "f8f0856be0a010425764855e2a150000",
+  "title": "Technical Product Manager - AI Infra Resilience",
+  "jobDescription": "<p>GPU clusters fail. Workloads crash at 3am, AI teams file tickets pointing at hardware, hardware teams point back at software, and the actual cause stays unknown until someone with deep enough context digs through DCGM metrics, XID history, and NCCL traces. That forensics work shouldn&#39;t fall to a human on-call every time. We&#39;re building the platform that automates it, and we need a PM who has been that on-call engineer.</p><br /><p>We&#39;re hiring a Senior Product Manager to own workload failure attribution: how a GPU cluster figures out whether a failed job was caused by hardware, system software, or application code, and how that verdict gets surfaced to operators, schedulers, and the open source developer surface built on top of it. You will own the roadmap and work directly with the engineering and operations communities who deploy and extend this platform. This role is part of NVIDIA&#39;s DSX Platform, NVIDIA&#39;s open, modular infrastructure software for designing, operating, and optimizing AI factories at scale. No prior product management title required. If you are a deeply technical product manager, architect, SRE, or infra engineer who has lived the GPU cluster failure-triage problem, we want to hear from you.</p><br /><p><b>What You&#39;ll Be Doing:</b></p><ul><li>Drive the product vision, roadmap, and delivery for workload failure attribution, in close collaboration with engineering on architecture and prioritization.</li><li>Identify gaps in how customers and partners triage GPU cluster failures at scale and define new attribution capabilities to close them, including how an NCCL timeout gets attributed to hardware, system software, or application, and which signals belong in a public API vs. an entitled runtime extension.</li><li>Work directly with cloud partners and cluster operators to translate their operational triage requirements into platform capabilities.</li><li>Drive community engagement strategy for the open source attribution project, including contribution models, ecosystem partnerships, and developer adoption.</li></ul><br /><p><b>What We Need To See:</b></p><ul><li>12&#43; years total experience.</li><li>5&#43; years in product management, solutions architecture, software engineering, or site reliability engineering on technical infrastructure products. Technical depth on GPU or AI infra is required.</li><li>Familiarity with GPU failure modes: XID codes, ECC correctable and uncorrectable errors, DCGM metrics, NVLink and PCIe health signals.</li><li>Technical understanding of why AI workloads fail: GPU hardware failure modes, distributed training failure patterns (NCCL timeouts, framework errors, hardware vs. system software vs. application fault distinction), and the telemetry systems (DCGM, sysfs, dmesg) that surface these signals.</li><li>Demonstrated ability to work with senior technical customers and translate operational requirements into product decisions.</li><li>Strong written and verbal communication across technical and non-technical audiences.</li><li>Bachelor&#39;s degree in Computer Science or equivalent experience.</li></ul><br /><p><b>Ways To Stand Out From The Crowd:</b></p><ul><li>Former SRE or infra engineer on GPU clusters. You have triaged job failures, parsed XID logs, and understand the cross-team deep dives that happen when a multi-thousand-GPU training run fails.</li><li>Deep familiarity with GPU scheduling, topology-aware placement, or multi-tenant GPU cluster management: Slurm prolog/epilog, Kueue, or Kubernetes-native scheduler environments.</li><li>Experience building products that produce structured diagnostics or attribution output: health verdict schemas, log analysis pipelines, rules-engine systems, or observability APIs at data center scale.</li><li>Practical experience delivering or contributing to an open-source infrastructure project, including managing contributor engagement on GitHub.</li></ul><br /><p>NVIDIA is widely considered one of the technology world’s most desirable employers. We have some of the world&#39;s most forward-thinking and hardworking people on our team. If you&#39;re creative and autonomous, we want to hear from you!</p><br /><p>#LI-Hybrid</p><p style=\"text-align:inherit\"></p><p style=\"text-align:inherit\"></p>Your base salary will be determined based on your location, experience, and other objective job-related factors. The expected base salary ranges for this position are:<br>195,000 USD – 377,000 USD for Level 5; and 232,500 USD – 442,000 USD for Level 6.<div><div><div><div><div><div><div><p></p><p><span>You will also be eligible for equity and <a href=\"https://www.nvidia.com/en-us/benefits/\" target=\"_blank\">benefits</a>.</span></p><p></p></div></div></div></div></div></div></div>Applications for this job will be accepted at least until November 24, 2026.<p></p><p>This posting is for an existing vacancy. </p><p>NVIDIA uses AI tools in its recruiting processes.</p><p></p>NVIDIA is committed to fostering an inclusive work environment and proud to be an equal opportunity employer. As we highly value diversity in our current and future employees, we do not discriminate (including in our hiring and promotion practices) on the basis of race, religion, color, national origin, gender, gender expression, sexual orientation, age, marital status, veteran status, disability status or any other characteristic protected by law.<p style=\"text-align:inherit\"></p><p style=\"text-align:inherit\"></p>",
+  "location": "US, CA, Santa Clara",
+  "additionalLocations": [
+   "US, NY, New York",
+   "US, WA, Seattle"
+  ],
+  "postedOn": "Posted Today",
+  "startDate": "2026-11-20",
+  "timeType": "Full time",
+  "jobReqId": "JR2030157",
+  "jobPostingId": "Technical-Product-Manager---AI-Infra-Resilience_JR2030157",
+  "jobPostingSiteId": "NVIDIAExternalCareerSite",
+  "country": {
+   "descriptor": "United States of America",
+   "id": "bc33aa3152ec42d4995f4791a106ed09"
+  },
+  "canApply": true,
+  "posted": true,
+  "includeResumeParsing": true,
+  "jobRequisitionLocation": {
+   "descriptor": "US, CA, Santa Clara",
+   "country": {
+    "descriptor": "United States of America",
+    "id": "bc33aa3152ec42d4995f4791a106ed09",
+    "alpha2Code": "US"
+   }
+  },
+  "externalUrl": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Technical-Product-Manager---AI-Infra-Resilience_JR2030157",
+  "questionnaireId": "2f2764b3a82910064296831695150000"
+ },
+ "hiringOrganization": {
+  "name": "2100 NVIDIA USA",
+  "url": ""
+ },
+ "similarJobs": [],
+ "userAuthenticated": false
+}

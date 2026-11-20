@@ -1,0 +1,229 @@
+{
+ "jobs": [
+  {
+   "absolute_url": "https://careers.airbnb.com/positions/8394382?gh_jid=8394382",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 3623070,
+   "location": {
+    "name": "Remote - USA"
+   },
+   "metadata": [
+    {
+     "id": 9245691,
+     "name": "Is this job part of ACC?",
+     "value": false,
+     "value_type": "yes_no"
+    },
+    {
+     "id": 10216612,
+     "name": "Workplace Type",
+     "value": "Remote",
+     "value_type": "single_select"
+    }
+   ],
+   "id": 8394382,
+   "updated_at": "2026-11-16T19:53:52-05:00",
+   "requisition_id": "ONE",
+   "title": "Engineering Manager, External Search & AI Optimization",
+   "company_name": "Airbnb",
+   "first_published": "2026-11-16T19:52:32-05:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;&lt;span style=&quot;font-family: helvetica, arial, sans-serif; font-size: 12pt;&quot;&gt;Airbnb was born in 2007 when two hosts welcomed three guests to their San Francisco home, and has since grown to over 5 million hosts who have welcomed over 2 billion guest arrivals in almost every country across the globe. Every day, hosts offer unique stays and experiences that make it possible for guests to connect with communities in a more authentic way.&lt;/span&gt;&lt;/p&gt;&lt;/div&gt;&lt;p&gt;&lt;strong&gt;The Community You Will Join:&lt;/strong&gt;&lt;/p&gt;\n&lt;p&gt;The Growth Platform (Marketing Technology) team’s vision is to drive long term sustainable growth for the Airbnb community. Our mission is to build best-in-class agentic systems, and capabilities to support the growth of all Airbnb products, current and future.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;The External Search &amp;amp; AI Optimization team&#39;s mission is to make Airbnb the most visible and trusted destination wherever people search for travel, from traditional search engines to AI answer engines and assistants. We build landing pages, structured content, and platform that help travelers discover stays, experiences, and services across hundreds of thousands of destinations and a broad range of languages and locales. As a product, infrastructure, and growth team within Marketing Technology, we own our stack end to end: CDN, frontend, backend, data pipelines, and AI agents. We partner closely with Product, Design, Marketing, and Data Science, as well as engineering teams across the company, to grow Airbnb&#39;s visibility, organic traffic, and bookings.&lt;/p&gt;\n&lt;h2&gt;&lt;strong&gt;The Difference You Will Make:&lt;/strong&gt;&lt;/h2&gt;\n&lt;p&gt;As the Engineering Manager for External Search &amp;amp; AI Optimization, you will lead a team of engineers, from early-career to staff, working across frontend, backend, and data. You will own the engineering strategy and roadmap as travel discovery expands from search results to AI-generated answers, balancing continued growth in traditional search with new investment in making Airbnb easy for AI products to read, cite, and recommend. In your first year, success means measurable growth in Airbnb&#39;s visibility, traffic, and bookings from search and AI, a single roadmap shared across functions, and a healthy team whose engineers are growing.&lt;/p&gt;\n&lt;h2&gt;&lt;strong&gt;A Typical Day:&lt;/strong&gt;&lt;/h2&gt;\n&lt;ul&gt;\n&lt;li&gt;Lead, coach, and grow a team of full stack and data engineers, and create an environment where they own initiatives end to end.&lt;/li&gt;\n&lt;li&gt;Set technical strategy and roadmap with Product, Design, Marketing, and Data Science, and keep many concurrent cross-functional projects prioritized and moving.&lt;/li&gt;\n&lt;li&gt;Guide the team in building fast, reliable landing pages, content systems, and data pipelines that serve travelers, search crawlers, and AI agents across many languages and locales.&lt;/li&gt;\n&lt;li&gt;Drive responsible use of LLMs to generate, translate, and improve content at scale, with strong evaluation and quality practices.&lt;/li&gt;\n&lt;li&gt;Build the measurement and experimentation needed to show how search and AI referrals drive bookings, and communicate progress and impact to senior leadership.&lt;/li&gt;\n&lt;li&gt;Stay close to the work through design reviews and technical deep dives, and uphold a high bar for engineering quality and reliability.&lt;/li&gt;\n&lt;/ul&gt;\n&lt;h2&gt;&lt;strong&gt;Your Expertise:&lt;/strong&gt;&lt;/h2&gt;\n&lt;ul&gt;\n&lt;li&gt;9+ years of relevant software engineering industry experience, including 5+ years of engineering management experience leading teams that own large-scale, user-facing systems.&lt;/li&gt;\n&lt;li&gt;Track record of hiring, growing, and retaining a diverse, high-performing team, including staff-level engineers.&lt;/li&gt;\n&lt;li&gt;Technical breadth across web frontend, backend services, and data pipelines, with the judgment to guide architecture decisions.&lt;/li&gt;\n&lt;li&gt;Experience applying machine learning or LLMs in production, and using experimentation to measure impact.&lt;/li&gt;\n&lt;li&gt;Experience driving growth for a consumer product; search engine optimization, AI answer engine optimization, or other organic growth experience is a plus.&lt;/li&gt;\n&lt;li&gt;Strong communication and influence with technical and non-technical partners, including Product, Marketing, Data, Finance, and Legal.&lt;/li&gt;\n&lt;li&gt;Comfort leading through ambiguity, balancing short-term business outcomes with long-term technical and team health.&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&lt;strong&gt;Preferred Qualifications:&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;Experience with technical SEO and search engineering, including crawling, indexing, rendering, structured data, sitemaps, internal linking, and search performance optimisation.&lt;/li&gt;\n&lt;li&gt;Understanding of how SEO and SEM work together, and how engineering can drive automation and optimisation at scale.&lt;/li&gt;\n&lt;li&gt;GEO/AEO and optimisation for AI-powered search experiences.&lt;/li&gt;\n&lt;li&gt;Agile Practice for AI Production: Experience with the entire AI product development lifecycle from incubation to production at scale, following agile practices in the Applied AI/ML domain.&lt;/li&gt;\n&lt;li&gt;Infrastructure Acumen: Experience building robust testing frameworks for agent behavior validation and continuous improvement, and driving architectural requirements on agentic systems&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&amp;nbsp;&lt;/p&gt;&lt;div class=&quot;content-pay-transparency&quot;&gt;&lt;div class=&quot;pay-input&quot;&gt;&lt;div class=&quot;description&quot;&gt;&lt;p&gt;&lt;span style=&quot;font-size: 16px;&quot;&gt;&lt;strong&gt;&lt;span style=&quot;font-family: arial, helvetica, sans-serif; color: rgb(0, 0, 0);&quot;&gt;How We&#39;ll Take Care of You:&lt;/span&gt;&lt;/strong&gt;&lt;/span&gt;&lt;/p&gt;\n&lt;p class=&quot;p1&quot;&gt;&lt;span style=&quot;font-size: 16px;&quot;&gt;Our job titles may span more than one career level. The actual base pay is dependent upon many factors, such as: training, transferable skills, work experience, business needs and market demands. The base pay range is subject to change and may be modified in the future. This role may also be eligible for bonus, equity, benefits, and Employee Travel Credits. &amp;nbsp;&lt;/span&gt;&lt;/p&gt;&lt;/div&gt;&lt;div class=&quot;title&quot;&gt;Pay Range&lt;/div&gt;&lt;div class=&quot;pay-range&quot;&gt;&lt;span&gt;$212,000&lt;/span&gt;&lt;span class=&quot;divider&quot;&gt;&amp;mdash;&lt;/span&gt;&lt;span&gt;$265,000 USD&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;content-conclusion&quot;&gt;&lt;p&gt;&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-family: helvetica, arial, sans-serif; font-size: 12pt;&quot;&gt;&lt;strong&gt;Reasonable Accommodations:&lt;/strong&gt; We are committed to providing reasonable accommodations throughout the recruitment process for applicants with disabilities. If you need assistance, or an accommodation, please let your recruiter know once you are contacted about a role.&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-family: helvetica, arial, sans-serif; font-size: 12pt;&quot;&gt;&lt;strong&gt;A Note on Recruiting Scams:&lt;/strong&gt; Scammers sometimes pose as Airbnb recruiters to get money or personal information from candidates. A few things that will always be true for Airbnb’s hiring process: our open roles are posted on Airbnb’s Career’s Page at careers.airbnb.com, and our recruiters correspond only from @&lt;a href=&quot;http://airbnb.com&quot;&gt;airbnb.com&lt;/a&gt; or @&lt;a href=&quot;http://ext.airbnb.com&quot;&gt;ext.airbnb.com&lt;/a&gt; email addresses. Our recruiters will never ask for your Social Security number, bank account details, passport, or payment app information while you are interviewing.&amp;nbsp; We’ll also never ask you to pay a fee, send money, deposit or cash a check, or purchase work-related equipment (such as a company laptop) during the interview process. We encourage candidates to remain vigilant of these recruiting scams and not share sensitive information if you do not believe an individual is actually affiliated with Airbnb.&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&amp;nbsp;&lt;/p&gt;&lt;/div&gt;",
+   "departments": [
+    {
+     "id": 77,
+     "name": "Software Engineering",
+     "child_ids": [],
+     "parent_id": 73703
+    }
+   ],
+   "offices": [
+    {
+     "id": 63868,
+     "name": "United States",
+     "location": null,
+     "child_ids": [
+      246412,
+      258081,
+      258082,
+      258083,
+      87306,
+      87309,
+      211524,
+      87312,
+      87316,
+      87315,
+      104152,
+      88158,
+      85791,
+      87313,
+      88161,
+      87308,
+      87311,
+      87307,
+      80804,
+      109320,
+      87314,
+      88160,
+      78632,
+      87310,
+      88159,
+      241531,
+      108489,
+      62810,
+      62444,
+      85003,
+      104153,
+      12964,
+      11235,
+      55,
+      4447,
+      5924,
+      1316,
+      162,
+      5925,
+      1086,
+      1355
+     ],
+     "parent_id": 17515
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": null,
+   "ai_opt_out_request_url": null
+  },
+  {
+   "absolute_url": "https://careers.airbnb.com/positions/8023118?gh_jid=8023118",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 3478251,
+   "location": {
+    "name": "Bengaluru, India"
+   },
+   "metadata": [
+    {
+     "id": 9245691,
+     "name": "Is this job part of ACC?",
+     "value": true,
+     "value_type": "yes_no"
+    },
+    {
+     "id": 10216612,
+     "name": "Workplace Type",
+     "value": "Hybrid",
+     "value_type": "single_select"
+    }
+   ],
+   "id": 8023118,
+   "updated_at": "2026-11-10T17:52:22-05:00",
+   "requisition_id": "ONE",
+   "title": "Lead Advanced Analytics, Community Support",
+   "company_name": "Airbnb",
+   "first_published": "2026-06-23T05:55:55-04:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;&lt;span style=&quot;font-family: helvetica, arial, sans-serif; font-size: 12pt;&quot;&gt;Airbnb was born in 2007 when two hosts welcomed three guests to their San Francisco home, and has since grown to over 5 million hosts who have welcomed over 2 billion guest arrivals in almost every country across the globe. Every day, hosts offer unique stays and experiences that make it possible for guests to connect with communities in a more authentic way.&lt;/span&gt;&lt;/p&gt;&lt;/div&gt;&lt;p&gt;&lt;strong&gt;The Community You Will Join&lt;/strong&gt;&lt;/p&gt;\n&lt;p&gt;The Analytics Centre of Excellence (ACOE) at Airbnb, based in India, is a hub of knowledge and expertise that aims to provide data-driven decision-making, enabling Airbnb&#39;s business goals. The ACOE&#39;s vision is to build a world-class analytics organization that provides scalable analytics. We work with various business functions such as payments, trust, digital, customer support, hosting, sales,social, compliance, risk, platforms and partnership &amp;amp; economics.&lt;/p&gt;\n&lt;p&gt;The ACOE&#39;s delivery framework is designed to provide relevant and contextual insights for data-driven decisions. This includes a one-stop solution for metrics, dashboards driving actionable insights, optimization of performance, experimentation, measuring pre/post feature impact, sizing the ROI of opportunities, prioritization of opportunities, anomaly-driven alerting mechanisms, root cause analysis of metric deviation, and exploratory hypothesis testing.&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;The Difference You Will Make&lt;/strong&gt;&lt;/p&gt;\n&lt;p&gt;ACOE is seeking a Lead, Advanced Analytics, Community Support to help Airbnb enable travel for millions of guests and hosts on our platform. This individual will play a pivotal role in supporting strategic business and product initiatives through detailed data analysis, metrics creation, statistical modeling, and the development of reporting tools and metrics. The individual will be instrumental in driving business and product decisions across topic areas across the company.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;A Typical Day&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;Design and build metrics / dimensions to monitor product and business performance.&amp;nbsp;&lt;/li&gt;\n&lt;li&gt;Build sophisticated reporting, analytical tools, and dashboards that empower stakeholders to make data-driven decisions.&lt;/li&gt;\n&lt;li&gt;Work cross-functionally with Strategic Finance, Data and Analytical Engineering,and Data Science teams to ensure alignment and leverage synergies.&lt;/li&gt;\n&lt;li&gt;Conduct advanced data analysis and statistical modeling to extract actionable insights that inform strategic decisions.&lt;/li&gt;\n&lt;li&gt;Contribute towards advancing the Analytics and Data Science disciplines at Airbnb, including driving data best practices such as improving and automating analytical processes, building new data tools and data sets, data education around the company and mentoring and developing others.&lt;/li&gt;\n&lt;li&gt;Actively build and scale AI-first analytics capabilities by integrating LLMs, agent-based workflows, and automation into day-to-day analytical processes&lt;/li&gt;\n&lt;li&gt;Drive adoption of AI tools across teams by embedding them into business workflows, enabling self-serve analytics and decision support&lt;/li&gt;\n&lt;li&gt;Stay at the forefront of applied AI developments and continuously evaluate their relevance for solving business problems&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&lt;strong&gt;Your Expertise&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;8+ years in industry experience and a degree (Masters or&amp;nbsp; PhD is a plus) in a quantitative field (e.g., Statistics, Econometrics, Computer Science, Engineering, Mathematics, Data Science, Operations Research).&lt;/li&gt;\n&lt;li&gt;Prior experience in data science, product analytics within the community support/customer support domain.&lt;/li&gt;\n&lt;li&gt;Deep expertise in measurement frameworks, metric design, and metric creation.&lt;/li&gt;\n&lt;li&gt;Advanced level proficiency in SQL/NoSQL, programming languages such as Python, R, SAS and Intermediate level knowledge of data foundations and databases like Presto, Hive, Teradata, Spark.&lt;/li&gt;\n&lt;li&gt;Expert with BI tools like Tableau or superset to develop reports and dashboards.&lt;/li&gt;\n&lt;li&gt;Experience leveraging AI to build dashboards, automate repetitive tasks, and empower stakeholders.&lt;/li&gt;\n&lt;li&gt;Familiar with experimentation, causal inference, and LLMs&lt;/li&gt;\n&lt;li&gt;Robust business acumen, strategic thinking skills, and the ability to make informed judgments.&lt;/li&gt;\n&lt;li&gt;Outstanding communication skills, capable of engaging with a variety of stakeholders and conveying complex concepts in an accessible manner.&lt;/li&gt;\n&lt;li&gt;Exceptional stakeholder management skills, with a proven ability to collaborate and influence across functions.&lt;/li&gt;\n&lt;li&gt;An agile, growth-minded approach, demonstrated through a history of driving projects from ideation to impact.&lt;/li&gt;\n&lt;/ul&gt;&lt;div class=&quot;content-pay-transparency&quot;&gt;&lt;div class=&quot;pay-input&quot;&gt;&lt;div class=&quot;description&quot;&gt;&lt;p&gt;&lt;span style=&quot;font-size: 16px;&quot;&gt;&lt;strong&gt;&lt;span style=&quot;font-family: arial, helvetica, sans-serif; color: rgb(0, 0, 0);&quot;&gt;How We&#39;ll Take Care of You:&lt;/span&gt;&lt;/strong&gt;&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;Our job titles may span more than one career level. The actual base pay is dependent upon many factors, such as: training, transferable skills, work experience, business needs and market demands. The base pay range shown below is annualized, is inclusive of allowances and is subject to change and may be modified in the future. This role may also be eligible for bonus or incentives, one or more equity programs, benefits, and Employee Travel Credits.&amp;nbsp;&amp;nbsp;&lt;/p&gt;&lt;/div&gt;&lt;div class=&quot;title&quot;&gt;India Annual Pay Range&lt;/div&gt;&lt;div class=&quot;pay-range&quot;&gt;&lt;span&gt;₹3,080,000&lt;/span&gt;&lt;span class=&quot;divider&quot;&gt;&amp;mdash;&lt;/span&gt;&lt;span&gt;₹4,400,000 INR&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;content-conclusion&quot;&gt;&lt;p&gt;&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-family: helvetica, arial, sans-serif; font-size: 12pt;&quot;&gt;&lt;strong&gt;Reasonable Accommodations:&lt;/strong&gt; We are committed to providing reasonable accommodations throughout the recruitment process for applicants with disabilities. If you need assistance, or an accommodation, please let your recruiter know once you are contacted about a role.&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-family: helvetica, arial, sans-serif; font-size: 12pt;&quot;&gt;&lt;strong&gt;A Note on Recruiting Scams:&lt;/strong&gt; Scammers sometimes pose as Airbnb recruiters to get money or personal information from candidates. A few things that will always be true for Airbnb’s hiring process: our open roles are posted on Airbnb’s Career’s Page at careers.airbnb.com, and our recruiters correspond only from @&lt;a href=&quot;http://airbnb.com&quot;&gt;airbnb.com&lt;/a&gt; or @&lt;a href=&quot;http://ext.airbnb.com&quot;&gt;ext.airbnb.com&lt;/a&gt; email addresses. Our recruiters will never ask for your Social Security number, bank account details, passport, or payment app information while you are interviewing.&amp;nbsp; We’ll also never ask you to pay a fee, send money, deposit or cash a check, or purchase work-related equipment (such as a company laptop) during the interview process. We encourage candidates to remain vigilant of these recruiting scams and not share sensitive information if you do not believe an individual is actually affiliated with Airbnb.&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&amp;nbsp;&lt;/p&gt;&lt;/div&gt;",
+   "departments": [
+    {
+     "id": 85346,
+     "name": "Analytics",
+     "child_ids": [],
+     "parent_id": 60666
+    }
+   ],
+   "offices": [
+    {
+     "id": 75876,
+     "name": "Bangalore, India",
+     "location": null,
+     "child_ids": [],
+     "parent_id": 64272
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": null,
+   "ai_opt_out_request_url": null
+  },
+  {
+   "absolute_url": "https://careers.airbnb.com/positions/8365363?gh_jid=8365363",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 3614972,
+   "location": {
+    "name": "Barcelona, Spain"
+   },
+   "metadata": [
+    {
+     "id": 9245691,
+     "name": "Is this job part of ACC?",
+     "value": false,
+     "value_type": "yes_no"
+    },
+    {
+     "id": 10216612,
+     "name": "Workplace Type",
+     "value": "Hybrid",
+     "value_type": "single_select"
+    }
+   ],
+   "id": 8365363,
+   "updated_at": "2026-11-11T07:32:56-05:00",
+   "requisition_id": "ONE",
+   "title": "Account Executive (Hotels)",
+   "company_name": "Airbnb",
+   "first_published": "2026-11-10T04:49:33-05:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;&lt;span style=&quot;font-family: helvetica, arial, sans-serif; font-size: 12pt;&quot;&gt;Airbnb was born in 2007 when two hosts welcomed three guests to their San Francisco home, and has since grown to over 5 million hosts who have welcomed over 2 billion guest arrivals in almost every country across the globe. Every day, hosts offer unique stays and experiences that make it possible for guests to connect with communities in a more authentic way.&lt;/span&gt;&lt;/p&gt;&lt;/div&gt;&lt;p&gt;&lt;strong&gt;The Community You Will Join:&lt;/strong&gt;&lt;/p&gt;\n&lt;p&gt;The Airbnb Hotels team is a fun, fast-growing group leading Airbnb’s expansion into the hotel sector. Operating with an entrepreneurial spirit, this team combines the simplicity, product excellence, and guest-centered ethos that define Airbnb. This team’s mission is to deliver the smoothest, most intuitive hotel booking experience for guests, while helping independent, boutique hotels easily drive incremental bookings so they can focus on delivering the best hospitality. The ultimate aim is to help more people discover high-quality hotels, creating value for guests and our hotel partners.&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;The Difference You Will Make&lt;/strong&gt;&lt;/p&gt;\n&lt;p&gt;As an Account Executive, you will be responsible for converting leads into net‑new supply to support new-market launches and at pace to hit quarterly goals. Working the full sales funnel, you will proactively turn cold leads into warm sales opportunities helping to build the Hotels category’s market presence in the process through collaboration with other teams. This includes partnering, strategizing, and running daily operations directly with independent, boutique hotels, and ensuring that Airbnb sources&amp;nbsp; the best hotel inventory available to our guests.&lt;/p&gt;\n&lt;p&gt;This role is based in Barcelona (hybrid, 2 days a week in the office).&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;A Typical Day&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;Meet and exceed KPIs by owning the performance and success of assigned region&lt;/li&gt;\n&lt;li&gt;Prospect new potential hotels through external research, networking, and use of Airbnb tools&lt;/li&gt;\n&lt;li&gt;Securing new hotels involves targeted sales strategies and negotiating and closing the deals&lt;/li&gt;\n&lt;li&gt;Develops acquisition strategies and scalable, localised supply strategies for established and emerging markets&lt;/li&gt;\n&lt;li&gt;Expertly position and communicate Airbnb’s value proposition to new partners via phone, email, and in-person&lt;/li&gt;\n&lt;li&gt;Add net new hotels by qualifying and moving leads through the funnel as quickly as possible, achieving defined quarterly goals&lt;/li&gt;\n&lt;li&gt;Find supply in and launch new markets: Own market launches including supporting lead generation and coordinating cross functionally&lt;/li&gt;\n&lt;li&gt;Support hotel onboarding as needed from won sales opportunities&lt;/li&gt;\n&lt;li&gt;Effectively promote and build strong relationships with hotels by demonstrating comprehensive knowledge of our platforms and confidently pitching their value&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&lt;strong&gt;Your Expertise&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;6+ years of professional experience, preferably in a fast growing startup tech or hospitality company working in sales and/or account management&lt;/li&gt;\n&lt;li&gt;Previous hospitality experience is a plus&lt;/li&gt;\n&lt;li&gt;Proficiency in both English and Spanish is a must! Portuguese is a plus.&amp;nbsp;&lt;/li&gt;\n&lt;li&gt;CRM required; Proficiency in Salesforce, Gong and other scalable AI Sales prospecting tools is a plus.&lt;/li&gt;\n&lt;li&gt;The ability to get things done with constantly changing priorities, projects and deadlines&lt;/li&gt;\n&lt;li&gt;Excellent communication, organizational, and analytical skills, detail-oriented but moves fast&lt;/li&gt;\n&lt;li&gt;Ability to establish strong relationships with and influence partners&amp;nbsp;&lt;/li&gt;\n&lt;li&gt;Capacity to balance day-to-day responsibilities with longer-term strategic execution&lt;/li&gt;\n&lt;li&gt;You’re a quick learner and you’re fearless about doing whatever it takes to get the job done, even if it means making mistakes along the way&lt;/li&gt;\n&lt;li&gt;Able to travel up to 25-30% of the time&lt;/li&gt;\n&lt;li&gt;Passion for Airbnb and travel&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&lt;strong&gt;How We’ll Take Care of You:&lt;/strong&gt;&lt;/p&gt;\n&lt;p&gt;Our job titles may span more than one career level. The actual base pay is dependent upon many factors, such as: training, transferable skills, work experience, business needs and market demands. The base pay range is subject to change and may be modified in the future. This role may also be eligible for variable incentive pay, equity, benefits, and Employee Travel Credits.&lt;/p&gt;\n&lt;p&gt;The On-Target Earnings (“OTE”) range for this role is €63,000 to €73,000 gross per year, which includes a split of 80% (base pay) / 20% (variable incentive). Of this OTE amount, the annual gross base salary range is €50,400 to €58,400.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;The OTE reflected on this job posting is the target cash compensation a candidate could earn in a year if they achieve 100% of their performance or sales goals. The variable incentive is not guaranteed and is governed by the terms of Airbnb’s Hotels Variable Compensation Plan (the “Plan”). The actual payouts depend on performance against targets set under the “Plan” and may be higher or lower than the range listed on this job posting.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-family: arial, helvetica, sans-serif; color: #000000;&quot;&gt;&lt;strong&gt;Our Commitment To Inclusion &amp;amp; Belonging:&lt;/strong&gt;&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-family: arial, helvetica, sans-serif; color: #000000;&quot;&gt;Airbnb is committed to working with the broadest talent pool possible. We believe diverse ideas foster innovation and engagement, and allow us to attract creatively-led people, and to develop the best products, services and solutions. All qualified individuals are encouraged to apply.&lt;/span&gt;&lt;/p&gt;&lt;div class=&quot;content-conclusion&quot;&gt;&lt;p&gt;&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-family: helvetica, arial, sans-serif; font-size: 12pt;&quot;&gt;&lt;strong&gt;Reasonable Accommodations:&lt;/strong&gt; We are committed to providing reasonable accommodations throughout the recruitment process for applicants with disabilities. If you need assistance, or an accommodation, please let your recruiter know once you are contacted about a role.&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-family: helvetica, arial, sans-serif; font-size: 12pt;&quot;&gt;&lt;strong&gt;A Note on Recruiting Scams:&lt;/strong&gt; Scammers sometimes pose as Airbnb recruiters to get money or personal information from candidates. A few things that will always be true for Airbnb’s hiring process: our open roles are posted on Airbnb’s Career’s Page at careers.airbnb.com, and our recruiters correspond only from @&lt;a href=&quot;http://airbnb.com&quot;&gt;airbnb.com&lt;/a&gt; or @&lt;a href=&quot;http://ext.airbnb.com&quot;&gt;ext.airbnb.com&lt;/a&gt; email addresses. Our recruiters will never ask for your Social Security number, bank account details, passport, or payment app information while you are interviewing.&amp;nbsp; We’ll also never ask you to pay a fee, send money, deposit or cash a check, or purchase work-related equipment (such as a company laptop) during the interview process. We encourage candidates to remain vigilant of these recruiting scams and not share sensitive information if you do not believe an individual is actually affiliated with Airbnb.&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&amp;nbsp;&lt;/p&gt;&lt;/div&gt;",
+   "departments": [
+    {
+     "id": 57796,
+     "name": "Sales",
+     "child_ids": [],
+     "parent_id": 73691
+    }
+   ],
+   "offices": [
+    {
+     "id": 155,
+     "name": "Barcelona, Spain",
+     "location": "Barcelona, Spain",
+     "child_ids": [],
+     "parent_id": 64284
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": null,
+   "ai_opt_out_request_url": null
+  }
+ ],
+ "meta": {
+  "total": 3
+ }
+}
