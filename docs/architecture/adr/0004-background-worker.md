@@ -1,4 +1,4 @@
-# ADR-0004: Run intake, the daily run and Prepare as a headless Claude worker; supersede v1 D17
+# ADR-0004: Run Jobs work on demand in a Jobs chat opened in front of the person; a scheduled daily run later
 
 | Field | Value |
 | --- | --- |
@@ -13,29 +13,19 @@
 
 v1 routed all work to a dedicated Jobs chat polled every 2 s; the owner clicked Find from another chat and couldn't find where the work happened. The architecture review called this structural. v1 D17 had removed a headless drafter.
 
-## Decision drivers
-
-- G4: no chat to hunt for
-- Same sandbox and least privilege as the jobs workspace
-- Uses the user's own Claude plan
-
-## Options considered
-
-### Option 1 — Headless `claude -p` launched by the server in ~/Crewdeck/jobs with the jobs sandbox and an allowlist
-- Good, because invisible work becomes visible status; no idle-session dependency
-- Bad, because can't talk to it mid-run; plan usage
-
-### Option 2 — Keep the Jobs chat, improve surfacing
-- Good, because no new mechanism
-- Bad, because still depends on an open, idle chat
-
-### Option 3 — Direct API calls with a key
-- Good, because full control
-- Bad, because needs a paid API key; not the user's plan
-
 ## Decision
 
-The server runs `claude -p` (non-interactive) for intake, the daily run and Prepare, in the jobs workspace (its .claude/settings.json sandbox), with `--tools <allowlist>` (hard restriction), `--strict-mcp-config` (no MCP servers), `--setting-sources project` (no user settings, plugins or hooks), no bypass mode, Read/Grep deny rules outside the jobs workspace; progress via `crewdeck progress`; results on the page and panel. The Jobs chat stays as a fallback and for the setup interview's back-and-forth.
+**Revised 2026-11-20 after the P0 spike and the owner's call.** A headless `claude -p` started by Crewdeck's server is not
+signed in (Claude desktop passes its login only to the chats it runs; unattended runs would need `claude setup-token`),
+so there is no server-started worker. Instead:
+
+- **On demand (now):** Find, "check this post/page" (intake) and Apply each open a **Jobs chat in front of the person**
+  (`claude://code/new`, folder `~/Crewdeck/jobs`, a prompt naming the task). It runs with the desktop app's login, under
+  the jobs-folder sandbox, and is visible. Progress also shows in the `/crewdeck` panel and on the Jobs page.
+- **Later, opt-in:** a Claude desktop **Scheduled task** in `~/Crewdeck/jobs` for the daily run (desktop login, visible
+  under Scheduled, catches up on next launch), once the owner trusts results and token use.
+- Hardening for any non-interactive run in that folder: only the exact `crewdeck` commands allowed
+  (`autoAllowBashIfSandboxed: false`, `dontAsk`), no Read/Grep/Glob/WebFetch tools, no user MCP servers.
 
 ## Consequences
 

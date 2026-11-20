@@ -413,11 +413,11 @@ only on demand (saves ~0.12 M), smaller judge batch with cached verdicts, triage
 
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |
-| **P0 Spike (≈1 day)** | headless `claude -p` from Claude desktop's install: auth, the hardened flags (§11), plan-limit behaviour, a full judge run on fixtures | worker runs sandboxed, can't read `~/.ssh` in a test; decision recorded in ADR-0004 |
+| **P0 Spike (done 2026-11-20)** | headless `claude -p`: not signed in outside Claude desktop's chats → no server-started worker; work runs on demand in a Jobs chat opened in front (ADR-0004, revised); a scheduled daily run later | decision recorded |
 | **P1 Quick wins (≈3 days)** | occupation synonyms + auto-migrate v1 `roles.titles`; eligibility-only hard rules, title as score; full descriptions for every rule-passing posting (no 4,000-char cut, retry, board-specific fetchers); keep LinkedIn cards; funnel counts by company; "up to 10, never padded" + coverage score | maintainer's same pool: ≥ 3× eligible relevant postings; tests green |
 | **P2 Sources for every field (≈6 days)** | curated **field × country → sources table**; official APIs: USAJobs, NHS Jobs, DfE Teaching Vacancies, BA Jobsuche, Reed, Adzuna, Jooble (optional per-user keys, setup asks); company feeds: Greenhouse, Lever, Ashby, Workable, Recruitee, Personio, Teamtailor, Breezy, **Darwinbox, Keka, Zoho Recruit** (India), Workday **daily for watchlisted** employers, weekly otherwise; company directory (pinned seed + quarantine); hospital/school/enterprise company sets | each persona on **one week of live data, labelled by a real person in that field**: ≥ 10/day where coverage exists, or a truthful coverage score |
 | **P3 Tell Crewdeck (≈3 days)** | `/api/tell` + panel/page box + `jobs-intake` skill with proposals; LinkedIn post/page import via a Jobs chat; watchlist by company name; re-plan on intent | F1–F4 end-to-end on the maintainer's machine |
-| **P4 Background daily run + Apply in front (≈4 days)** | worker daily run (fetch → triage → judge → pick); **prepare the top 3 ahead, the rest when opened**; panel "N jobs ready"; Apply opens a fresh Jobs chat per role | no chat to hunt for (G4); 7 daily runs in a row |
+| **P4 On-demand runs in front + Apply (≈3 days)** | Find / intake / Apply open a Jobs chat in front; prepare when a pick is opened; panel and page show progress and results; the scheduled daily run is a later opt-in | no chat to hunt for (G4) |
 | **P5 Learning loop (≈2 days)** | yields nudge the planner; skip reasons → suggested rules; precision tracking | precision ≥ 70% over 2 weeks |
 
 Rollout: behind `jobs.v2` flags per phase on the maintainer's machine first; v1 paths stay until P4 passes; notes
