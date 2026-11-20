@@ -120,11 +120,10 @@ Fixed:
 Open (not in scope, or for the owner to decide):
 - The shell around Jobs (rail labels 10.5 px, breadcrumb and "Open alone" 11–12 px, `--muted`) is outside the Jobs
   page's D41 pass.
-- Notes' home page links "About me · Preferences" (`me/preferences.md`), which is not Jobs' Preferences; a new user may
-  look for their job preferences there.
-- The coverage line names fields by catalog id ("engineering-it", "creative-media").
-- The banner "No Claude session is working Jobs" and the setup card both say to open a session; on Today they show
-  together once setup is done.
+- Fixed after P9i: Notes' home now names `me/preferences.md` "Other things Claude should remember" and links the job
+  search notes; the coverage line names fields in plain words ("software and IT"), with a test; the no-session banner
+  says to start a Code session in that folder and that `crewdeck setup` installs the plugin. (The banner and the setup
+  card don't show together: the banner is hidden while setup is needed.)
 - The other screenshots in `docs/img/` predate P9i's type sizes (only the setup card and Sources were retaken).
 - The doctor check above was found because a `doctor` run on a second rehearsal home, still on the default port,
   read the owner's running Crewdeck on 4848 once (`GET /api/jobs/state`, read-only, nothing sent or changed). That
@@ -141,5 +140,5 @@ scratchpad, and the D41 shots from `CREWDECK_SHOTS=<dir> node --test test/jobs/a
 markets (only through career-ops and the reviewed re-pin); a resume photo; reading repeated form blocks headlessly;
 full-date employment fields; an `authorized_in` rule from structured visa fields and a rule for a posting's own hours;
 rule words beyond seven languages; gathering the page's strings in `web/jobs/strings.js` for later translations
-(§24.13; the UI stays English); drag to reorder; the Not interested dialog's drop count; the shell's own D41 pass;
+(§24.13; the UI stays English); drag to reorder; the shell's own D41 pass;
 retaking the older screenshots.

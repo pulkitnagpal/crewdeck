@@ -118,10 +118,8 @@ Preferences, D41 on every screen) run with the machine's own Chromium-based brow
   them for now); full-date fields in employment history (the user picks the day).
 - An `authorized_in` hard rule from a provider's structured visa field, and a rule for a posting's own hours: the
   judge reads both.
-- Rule words beyond the seven catalog languages; drag to reorder on Sources (buttons only); the Not interested
-  dialog's drop count.
-- The shell's rail and breadcrumb (outside the Jobs page) still use 10.5–12 px type; the catalog's coverage text names
-  fields by their ids ("engineering-it").
+- Rule words beyond the seven catalog languages; drag to reorder on Sources (buttons only).
+- The shell's rail and breadcrumb (outside the Jobs page) still use 10.5–12 px type.
 - The persona journeys paste postings or store them as a fetch would; a real sandboxed fetch with fixture providers is
   tested separately (`sources-v2`, `resolve`, Node 25).
 

@@ -177,7 +177,7 @@ test('first run, banners and the top bar', async () => {
   } finally { await fresh.close(); }
   const st = (await s.get('state')).json;
   const b = text(render(html`<${Banners} state=${{ ...st, banners: [{ kind: 'note', text: 'jobs/search.md: pay.floor must be a number', fix: 'Until then Jobs uses the last valid version.', page: 'jobs/search' }] }} />`));
-  assert.match(b, /No Claude session is working Jobs\. Open one in/);
+  assert.match(b, /No Claude session is working Jobs\. In Claude desktop, start a new Code session in this folder/);
   assert.match(b, /pay\.floor must be a number.*last valid version.*Open in Notes/);
   assert.equal(render(html`<${Banners} state=${{ ...st, agent: { ...st.agent, connected: true }, banners: [] }} />`), '');
   const bar = text(render(html`<${TopBar} screen="today" agent=${st.agent} quota=${3} />`));

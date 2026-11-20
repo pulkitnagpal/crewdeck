@@ -472,7 +472,7 @@ export function runJourney(spec: Spec) {
     const state = await read('state');
     assert.equal(state.setup.needed, false, 'set up: no setup card');
     assert.equal(state.agent.connected, false);
-    assert.match(text(render(html`<${Banners} state=${state} />`)), /No Claude session is working Jobs\. Open one in/);
+    assert.match(text(render(html`<${Banners} state=${state} />`)), /No Claude session is working Jobs\. In Claude desktop, start a new Code session in this folder/);
     assert.equal(state.agent.workspace, c.jobs.workspace);
     const r = await click('refreshSources');
     assert.equal(r.status, 400, 'nothing to fetch before the providers are installed');

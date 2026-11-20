@@ -32,7 +32,7 @@ test('E: backend engineer in India, remote, from a resume: targets checked on po
   // 5: where to look, from the catalog; LinkedIn placed first (switching it on stays the user's).
   const sg = JSON.parse(ok(p, ['sources', 'suggest', '--json']));
   assert.ok(sg.sources.some((s: any) => s.id === 'remotive'));
-  assert.match(sg.coverage.line, /remote work from India for engineering-it/);
+  assert.match(sg.coverage.line, /remote work from India for software and IT/);
   ok(p, ['sources', 'add', '--provider', 'remotive']);
   ok(p, ['sources', 'add', '--provider', 'weworkremotely']);
   ok(p, ['sources', 'add', '--linkedin', '--at', '1']);
@@ -149,7 +149,7 @@ test('W: warehouse and delivery work in Texas without a resume: facts from his a
   pref(p, 'work_pattern.hours_per_week', '{ min: 20, max: 24 }', 'about 24 hours');
   pref(p, 'work_pattern.shifts', '[day, evening, weekend]', 'weekends ok');
   const sg = JSON.parse(ok(p, ['sources', 'suggest', '--json']));
-  assert.match(sg.coverage.line, /^Crewdeck has no job board that fits .*for logistics-transport\./);
+  assert.match(sg.coverage.line, /^Crewdeck has no job board that fits .*for warehouse, driving and transport\./);
   fetchOnce(p);
   for (const x of [
     { title: 'Warehouse Associate - Weekend Shift', company: 'Example Distribution', location: 'Houston, TX', pay_text: '$18/hour' },

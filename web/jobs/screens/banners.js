@@ -9,8 +9,8 @@ export function Banners({ state, onNotes = noop, onToast = noop }) {
   if (!a.connected && !state.setup?.needed) {
     list.push(html`<div class=${`banner ${waiting ? 'warn' : ''}`} key="session">
       <div class="body">
-        <span><b>No Claude session is working Jobs.</b> Open one in <code>${a.workspace}</code>${waiting ? html` · ${plural(waiting, 'request')} waiting` : ''}</span>
-        <span class="fix">Requests wait until a session in that folder picks them up (the crewdeck plugin must be installed).</span>
+        <span><b>No Claude session is working Jobs.</b> In Claude desktop, start a new Code session in this folder: <code>${a.workspace}</code>${waiting ? html` · ${plural(waiting, 'request')} waiting` : ''}</span>
+        <span class="fix">Your requests wait here until that session picks them up. It needs the crewdeck plugin, which <code>crewdeck setup</code> installs.</span>
       </div>
       <div class="row-flex"><${CopyButton} text=${a.workspace} label="Copy folder" onCopied=${onToast} /></div>
     </div>`);

@@ -94,6 +94,6 @@ Preferences with "1 change not saved yet · 202 pass (now 16)", the Preview pane
   every note and Jobs' state files.
 
 **Deferred**
-- The Not interested dialog's drop count (§24.6 "where it shows"): the dialog still saves without a preview.
+- The Not interested dialog's drop count (§24.6 "where it shows"): deferred here, added in P9e.
 - The Sources screen (the card's "Open your sources" opens `jobs/sources` in Notes until P9e) and setup's preview loop
   (P9f).

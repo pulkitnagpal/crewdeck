@@ -3,8 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalise } from '../../src/jobs/schema.ts';
-import { PRESET_QUERIES, langCode, proposable, suggestSources } from '../../src/jobs/suggest.ts';
-import { catalogEntry } from '../../src/jobs/catalog.ts';
+import { PRESET_QUERIES, familyWords, langCode, proposable, suggestSources } from '../../src/jobs/suggest.ts';
+import { FAMILIES, catalogEntry } from "../../src/jobs/catalog.ts";
 
 const notes = (search: Record<string, unknown>, country: string) => ({ search: { data: normalise.search(search), raw: search } as any, profile: { data: normalise.profile({ identity: { country } }) } as any });
 const target = (titles: string[], families: string[]) => ({ targets: [{ titles, families }] });
@@ -25,7 +25,7 @@ test('E, engineer in India, remote: remote tech boards; a warning that most remo
   const got = ids('E');
   for (const id of ['remotive', 'weworkremotely', 'himalayas', 'remoteok', 'hackernews']) assert.ok(got.includes(id), id);
   for (const id of ['builtin', 'germantechjobs', 'itviec', 'arbeitsagentur', 'themuse', 'remote-com', 'workday']) assert.ok(!got.includes(id), `${id}: another country's board, blocked, one company, or an ATS`);
-  assert.match(line('E'), /^\d+ job boards fit remote work from India for engineering-it, data \(most of their remote jobs are limited to the US or Europe\)\. Employers' careers pages work when they use .*Darwinbox/);
+  assert.match(line('E'), /^\d+ job boards fit remote work from India for software and IT or data and analytics \(most of their remote jobs are limited to the US or Europe\)\. Employers' careers pages work when they use .*Darwinbox/);
   assert.match(line('E'), /LinkedIn search is available if you switch it on in Jobs → Settings/);
 });
 
@@ -42,7 +42,7 @@ test('A, accountant in Berlin: Arbeitsagentur (keywords from the titles), WTTJ a
   const a = suggestSources(PERSONAS.A).sources.find((s) => s.id === 'arbeitsagentur')!;
   assert.deepEqual(a.fill, ['arbeitsagentur.keywords']);
   assert.match(a.reasons.join(' '), /covers Germany/);
-  assert.match(line('A'), /^\d job boards fit Germany for finance-accounting/);
+  assert.match(line('A'), /^\d job boards fit Germany for finance and accounting/);
   assert.match(line('A'), /Personio/);
 });
 
@@ -60,7 +60,7 @@ test('G, graduate in Manila: only boards that read the Philippines (never JobStr
 
 test('W, warehouse in Texas: no logistics board; employers\' systems and LinkedIn named honestly', () => {
   assert.deepEqual(ids('W'), []);
-  assert.match(line('W'), /^Crewdeck has no job board that fits United States for logistics-transport\./);
+  assert.match(line('W'), /^Crewdeck has no job board that fits United States for warehouse, driving and transport\./);
   assert.doesNotMatch(line('W'), /AppliTrack|Red Rover|SchoolSpring/, 'school systems aren\'t proposed for warehouse work');
 });
 
@@ -68,7 +68,7 @@ test('F, translator in Spain, remote: European boards; never a US-only one', () 
   const got = ids('F');
   assert.ok(got.includes('wttj'));
   for (const id of got) assert.ok(!catalogEntry(id)!.regions.every((r) => r === 'us'), id);
-  assert.match(line('F'), /fit remote work from Spain for creative-media/);
+  assert.match(line('F'), /fit remote work from Spain for writing, content and media/);
 });
 
 test('nothing proposable is an ATS, an employer, retired, blocked or unrunnable; the line never names a missing source', () => {
@@ -84,4 +84,9 @@ test('nothing proposable is an ATS, an employer, retired, blocked or unrunnable;
 test('the LinkedIn sentence follows the switch; no places: the line asks where', () => {
   assert.match(suggestSources(PERSONAS.N, {}, { linkedinOn: true }).coverage.line, /LinkedIn search is on/);
   assert.match(suggestSources(notes({}, ''), PRESET_QUERIES['onsite-city']).coverage.line, /^Tell me where you can work/);
+});
+
+test('the coverage line names every catalog field in plain words, never by its id', () => {
+  for (const id of FAMILIES()) assert.ok(familyWords(id) !== id || !id.includes('-'), `no plain words for ${id}`);
+  for (const k of ['E', 'N', 'A', 'R', 'W'] as const) assert.doesNotMatch(suggestSources(PERSONAS[k]).coverage.line, /\b[a-z]+-[a-z]+\b(?! only)/);
 });

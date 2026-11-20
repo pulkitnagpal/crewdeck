@@ -143,7 +143,7 @@ journey({
     pref(p, 'languages', '[{ name: English, level: fluent }, { name: Hindi, level: native }]', 'English and Hindi');
     pref(p, 'schedule.timezone', 'Asia/Kolkata', 'India time');
   },
-  coverage: /job boards fit remote work from India for engineering-it \(most of their remote jobs are limited to the US or Europe\)/,
+  coverage: /job boards fit remote work from India for software and IT \(most of their remote jobs are limited to the US or Europe\)/,
   where: (p, sg) => {
     for (const id of ['remotive', 'weworkremotely']) { assert.ok(sg.sources.some((x: any) => x.id === id), id); ok(p, ['sources', 'add', '--provider', id]); }
     ok(p, ['sources', 'add', '--linkedin', '--at', '1']);
@@ -257,7 +257,7 @@ journey({
     pref(p, 'pay', '{ currency: EUR, floor: 50000, period: year, rule: top_of_range, unlisted: keep, locale: de-DE }', '50.000 im Jahr');
     pref(p, 'schedule.timezone', 'Europe/Berlin', 'Berlin');
   },
-  coverage: /^\d job boards fit Germany for finance-accounting/,
+  coverage: /^\d job boards fit Germany for finance and accounting/,
   where: (p, sg) => {
     const a = sg.sources.find((x: any) => x.id === 'arbeitsagentur');
     assert.deepEqual(a.fill, ['arbeitsagentur.keywords']);
@@ -394,7 +394,7 @@ journey({
     pref(p, 'pay', '{ currency: USD, floor: 15, period: hour, rule: bottom_of_range, unlisted: keep }', 'fifteen an hour');
     pref(p, 'schedule.timezone', 'America/Chicago', 'Texas time');
   },
-  coverage: /^Crewdeck has no job board that fits United States for logistics-transport\./,
+  coverage: /^Crewdeck has no job board that fits United States for warehouse, driving and transport\./,
   where: (p, sg) => {
     assert.deepEqual(sg.sources, []);
     ok(p, ['sources', 'add', '--careers-url-file', file(p, 'https://example-distribution.wd5.myworkdayjobs.example.test/Careers'), '--name-file', file(p, 'Example Distribution'), '--employer']);
@@ -441,7 +441,7 @@ journey({
     pref(p, 'pay', '{ currency: EUR, floor: 200, period: day, hours_per_week: 40, days_per_week: 5, per_unit: "€0.08 a word at least", rule: top_of_range, unlisted: keep }', '200 a day, or 8 cents a word');
     pref(p, 'schedule.timezone', 'Europe/Madrid', 'Spain');
   },
-  coverage: /fit remote work from Spain for creative-media/,
+  coverage: /fit remote work from Spain for writing, content and media/,
   where: (p, sg) => {
     assert.ok(sg.sources.some((x: any) => x.id === 'wttj'));
     ok(p, ['sources', 'add', '--provider', 'wttj']);

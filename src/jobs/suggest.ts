@@ -113,7 +113,7 @@ export function coverageOf(p: Profile, sources: Suggestion[], linkedinOn: boolea
     // A field with only general (any-field) boards is still named as not covered by a board of its own.
     const specific = family === 'any' ? hits : sources.filter((s) => { const c = cat.byId.get(s.id)!; return where(c) && c.families.includes(family); }).map((s) => s.name);
     covered.push({ country, family, sources: hits });
-    if (!specific.length) missing.push(family === 'any' ? `no job board for ${placeName(country)}` : `no job board for ${family} in ${placeName(country)}`);
+    if (!specific.length) missing.push(family === 'any' ? `no job board for ${placeName(country)}` : `no job board for ${familyWords(family)} in ${placeName(country)}`);
   }
   // What still works: employers' careers pages on systems common there (named from the catalog), public-sector
   // portals, LinkedIn if switched on, pasted links.
@@ -128,7 +128,7 @@ export function coverageOf(p: Profile, sources: Suggestion[], linkedinOn: boolea
   const names = places.map((x) => (x === 'world' ? 'anywhere' : placeName(x))).join(', ');
   const where = p.workplace.length === 1 && p.workplace[0] === 'remote' ? `remote work from ${names}` : names;
   const forFam = p.families.filter((f) => f !== 'any');
-  const fam = forFam.length ? ` for ${forFam.join(', ')}` : '';
+  const fam = forFam.length ? ` for ${join(forFam.map(familyWords))}` : '';
   const thin = sources.length > 0 && sources.every((x) => x.reasons.some((r) => r.startsWith('remote jobs from many countries')));
   const has = sources.length ? `${sources.length} job board${sources.length > 1 ? "s fit" : " fits"} ${where}${fam}${thin ? ' (most of their remote jobs are limited to the US or Europe)' : ''}` : `Crewdeck has no job board that fits ${where}${fam}`;
   const line = !p.countries.length && !p.remote.length
@@ -138,6 +138,19 @@ export function coverageOf(p: Profile, sources: Suggestion[], linkedinOn: boolea
 }
 
 const shortName = (n: string) => n.replace(/\s*\(.*\)\s*$/, '');
+
+/** Field ids in plain words for the coverage line (the ids stay in notes and the catalog). */
+const FAMILY_WORDS: Record<string, string> = {
+  'engineering-it': 'software and IT', data: 'data and analytics', 'product-project': 'product and project management',
+  design: 'design', 'creative-media': 'writing, content and media', marketing: 'marketing', sales: 'sales',
+  'customer-service': 'customer service', 'finance-accounting': 'finance and accounting', legal: 'legal and compliance',
+  'people-hr': 'HR and recruiting', 'office-admin': 'office and admin work', operations: 'operations', healthcare: 'healthcare',
+  'care-social': 'care and social work', education: 'education', 'science-research': 'science and research',
+  'engineering-physical': 'mechanical, civil and electrical engineering', 'trades-construction': 'trades and construction',
+  'manufacturing-production': 'manufacturing', 'logistics-transport': 'warehouse, driving and transport', retail: 'retail',
+  'hospitality-food': 'hospitality and food', 'public-sector': 'public-sector jobs',
+};
+export const familyWords = (id: string) => FAMILY_WORDS[id] ?? id;
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The four retired presets as catalog queries (D39), with the search.md defaults they still seed. */

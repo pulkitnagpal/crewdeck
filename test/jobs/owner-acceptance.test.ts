@@ -33,7 +33,7 @@ test('owner acceptance: from zero to ≥ 100 passing with the right place drops,
   pref(p, 'schedule', '{ timezone: Asia/Kolkata, daily_picks: 5, cooldown_days: 60 }', 'five a day');
   // Where to look: the catalog proposes the remote boards he used; LinkedIn placed first, its switch stays off.
   const sg = json(p, ['sources', 'suggest', '--json']);
-  assert.match(sg.coverage.line, /job boards fit remote work from India for engineering-it, data \(most of their remote jobs are limited to the US or Europe\)/);
+  assert.match(sg.coverage.line, /job boards fit remote work from India for software and IT or data and analytics \(most of their remote jobs are limited to the US or Europe\)/);
   for (const [key] of SOURCES.slice(1)) {
     assert.ok(sg.sources.some((s: any) => s.id === key), `${key} is proposed`);
     ok(p, ['sources', 'add', '--provider', key]);
