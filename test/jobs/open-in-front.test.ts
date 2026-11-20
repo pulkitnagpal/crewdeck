@@ -139,3 +139,17 @@ test('no chat opens off macOS/Linux or without autoOpenChat (tests and the CLI);
     assert.equal(prompts().at(-1), `Crewdeck: run Find request ${fd.json.done.request}`);
   } finally { await s.close(); }
 });
+
+test('Tell (P3) opens a Jobs chat in front naming the tell request, once; its link is the same task prompt', async () => {
+  const { s, prompts } = await server();
+  try {
+    const t = await s.call('POST', '/api/tell', s.agent(), { text: 'now PM roles' });
+    assert.equal(t.status, 200, t.body);
+    assert.equal(t.json.opened, true);
+    assert.deepEqual(prompts(), [`Crewdeck: handle tell request ${t.json.request}`]);
+    assert.ok(isJobsTaskLink(t.json.link));
+    const again = await s.call('POST', '/api/tell', s.agent(), { text: 'now PM roles' });
+    assert.equal(again.json.request, t.json.request);
+    assert.equal(prompts().length, 1);
+  } finally { await s.close(); }
+});

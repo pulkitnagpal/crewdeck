@@ -20,7 +20,7 @@
 //   requests this session holds keep their lease; on start, put back what a previous load of this session held.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Dollar, Register } from 'claude-code'
-import type { Install, Today } from '../types'
+import type { Install, Proposal, Today } from '../types'
 import { CREWDECK_VERSION, INSTALL_SH } from './install-script'
 
 // A request is either text the person typed (Ask box) or a typed request from a page's own button (kind, ref and the
@@ -54,6 +54,8 @@ const hereAtom = atom({ plugin: 'crewdeck', key: 'here' } as const, '', { shape:
 const lastDone = atom({ plugin: 'crewdeck', key: 'lastDone' } as const, 0, { shape: 'lastDone-1' })
 // This session's first prompt has been seen (a Jobs chat opened for a task names its request there: claimed first).
 const firstPrompt = atom({ plugin: 'crewdeck', key: 'firstPrompt' } as const, false, { shape: 'firstPrompt-1' })
+// Proposals (P3) the person opened with Review: pending ones, and recent ones that can still be undone. Null: closed.
+const proposalsAtom = atom({ plugin: 'crewdeck', key: 'proposals' } as const, null as { pending: Proposal[]; recent: Proposal[] } | null, { shape: 'proposals-1' })
 // The one-click setup (docs/everywhere.md E13): where it is, for the panel.
 const installAtom = atom({ plugin: 'crewdeck', key: 'install' } as const, { phase: 'none', step: '', done: 0, lines: [] } as Install, { shape: 'install-1' })
 
@@ -326,6 +328,31 @@ async function refreshToday($: Dollar, port: number, body: Record<string, unknow
   await update($, hereAtom, () => (root && !got.projects.some((p) => p.path === root) ? root : ''))
 }
 
+/** Proposals (P3): list them, or approve, reject or undo one item, then the fresh list and Today. */
+async function proposalsOp($: Dollar, port: number, body: { op: 'list' } | { op: 'approve' | 'reject' | 'undo'; id: number; item?: number }): Promise<void> {
+  if (body.op !== 'list') {
+    const r = (await post($, port, '/api/proposals', body)) as { error?: string; failed?: unknown[] } | null
+    if (!r || r.error) { await update($, todayNote, () => (r?.error ? String(r.error) : 'That did not reach Crewdeck: is it running?')); return }
+    $.ui.toast(body.op === 'approve' ? (r.failed?.length ? 'Approved, but some of it did not apply: see Jobs' : 'Approved') : body.op === 'reject' ? 'Rejected' : 'Undone')
+  }
+  const got = (await post($, port, '/api/proposals', { op: 'list' })) as { pending?: Proposal[]; recent?: Proposal[]; error?: string } | null
+  if (!got || got.error || !Array.isArray(got.pending)) { await update($, todayNote, () => (got?.error ? String(got.error) : 'Proposals are not on this Crewdeck yet: update it')); return }
+  await update($, proposalsAtom, () => ({ pending: got.pending ?? [], recent: Array.isArray(got.recent) ? got.recent : [] }))
+  if (body.op !== 'list') await refreshToday($, port)
+}
+
+/** Tell Crewdeck from the panel: queued as a tell request; Crewdeck opens a Jobs chat in front for it (or uses the free one). */
+async function tellCrewdeck($: Dollar, port: number, text: string): Promise<void> {
+  const r = (await post($, port, '/api/tell', { text })) as { error?: string; request?: number; link?: string; opened?: boolean } | null
+  if (!r || r.error) { await update($, todayNote, () => (r?.error ? String(r.error) : 'That did not reach Crewdeck: is it running?')); return }
+  const t = await read($, todayAtom)
+  const j = t?.jobs && 'counts' in t.jobs ? t.jobs : null
+  // No chat was opened and none is connected (an older Crewdeck, or the 10-minute throttle): open the request's own chat.
+  if (!r.opened && !j?.connected && r.link) await openUrl($, r.link)
+  $.ui.toast(r.opened || (!j?.connected && r.link) ? 'A Jobs chat is opening in front of you: confirm the folder, then press Enter' : 'Sent to your Jobs chat')
+  await refreshToday($, port)
+}
+
 /** The panel's Jobs buttons: Crewdeck queues the work and opens a Jobs chat in front for it (never the panel itself). */
 async function jobsAct($: Dollar, port: number, body: { op: 'find' } | { op: 'apply'; role: string }): Promise<void> {
   const got = (await post($, port, '/api/today/jobs', body)) as (Today & { error?: string; done?: { opened?: boolean; preparing?: boolean; mode?: string } }) | null
@@ -493,6 +520,7 @@ export const register: Register = (on, options) => {
     const j = t.jobs
     const here = await read($, hereAtom)
     // Proposals waiting for the person's Approve or Reject (P3's glance count; an older Crewdeck has none).
+    const props = await read($, proposalsAtom)
     const proposals = j && 'counts' in j && typeof j.proposals === 'number' && j.proposals > 0 ? Math.floor(j.proposals) : 0
     if (glance) {
       return (
@@ -546,11 +574,29 @@ export const register: Register = (on, options) => {
             ))}
             {j.queue.filter((q) => !(j.picks ?? []).some((p) => p.id === q.id)).map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
             {proposals ? <Text key="proposals">{proposals} proposal{proposals === 1 ? '' : 's'} to review</Text> : null}
+            {props ? props.pending.flatMap((p) => [
+              <Text key={`pr-${p.id}`} bold>{p.summary}</Text>,
+              ...p.items.filter((it) => it.status === 'pending').map((it) => (
+                <Box key={`pi-${p.id}-${it.n}`} flexDirection="row" columnGap={1}>
+                  <Text>{it.line}</Text>
+                  <Button key={`approve-${p.id}-${it.n}`} label="Approve" onPress={() => proposalsOp($, port, { op: 'approve', id: p.id, item: it.n })} />
+                  <Button key={`reject-${p.id}-${it.n}`} label="Reject" plain onPress={() => proposalsOp($, port, { op: 'reject', id: p.id, item: it.n })} />
+                </Box>
+              )),
+            ]) : null}
+            {props ? props.recent.flatMap((p) => p.items.filter((it) => it.can_undo).map((it) => (
+              <Box key={`pu-${p.id}-${it.n}`} flexDirection="row" columnGap={1}>
+                <Text dimColor>✓ {it.line}</Text>
+                <Button key={`undo-${p.id}-${it.n}`} label="Undo" plain onPress={() => proposalsOp($, port, { op: 'undo', id: p.id, item: it.n })} />
+              </Box>
+            ))) : null}
+            {!j.setup_needed ? <Input key="tell" placeholder="Tell Crewdeck: a link, a company, “now PM roles”" submitLabel="tell" onSubmit={async (v) => { if (v.trim()) await tellCrewdeck($, port, v.trim()) }} /> : null}
             <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
               {j.setup_needed && j.session_link ? <Button key="jobs-session" label="Set up my job search" variant="primary" onPress={() => openUrl($, j.session_link)} /> : null}
               {!j.setup_needed ? <Button key="find-now" label="Find now" variant="primary" onPress={() => jobsAct($, port, { op: 'find' })} /> : null}
               <Button key="open-jobs" label="Open Jobs" onPress={(e) => openPage($, `${t.url}/#jobs`, e.surface)} />
-              {proposals ? <Button key="review" label="Review" onPress={(e) => openPage($, `${t.url}/#jobs`, e.surface)} /> : null}
+              {proposals && !props ? <Button key="review" label="Review" onPress={() => proposalsOp($, port, { op: 'list' })} /> : null}
+              {props ? <Button key="review-close" label="Done" plain onPress={() => update($, proposalsAtom, () => null)} /> : null}
             </Box>
           </Box>
         ) : j && 'error' in j ? <Text color="warning">Jobs: {String(j.error)}</Text> : null}

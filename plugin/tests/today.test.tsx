@@ -33,6 +33,8 @@ function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: 
     running: o.running,
     setupNeeded: !!o.setupNeeded,
     proposals: o.proposals,
+    decided: [] as string[],
+    told: [] as string[],
     todos: [{ line: 4, done: false, text: 'Tweet for the day' }] as Todo[],
     calls: [] as { path: string; body: any; token: boolean }[],
     opened: [] as string[],
@@ -69,6 +71,14 @@ function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: 
         if (body.op === 'set') s.todos = s.todos.map((t) => (t.line === body.line && t.text === body.text ? { ...t, done: body.done } : t))
         return ok(JSON.stringify(today()))
       }
+      if (path === '/api/proposals') {
+        if (s.proposals === undefined) return ok(JSON.stringify({ error: 'not found' }))
+        if (body.op !== 'list') { s.decided.push(`${body.op} ${body.id}/${body.item}`); if (body.op !== 'undo') s.proposals = Math.max(0, s.proposals - 1) }
+        const items = [{ n: 1, line: 'Watch Globex', reason: 'you named it', status: 'pending', can_undo: false }, { n: 2, line: 'Add title "Product Manager"', reason: 'now PM roles', status: 'pending', can_undo: false }]
+        return ok(JSON.stringify({ count: s.proposals, pending: [{ id: 5, summary: 'From your note', status: 'pending', items }],
+          recent: [{ id: 4, summary: 'Earlier', status: 'done', items: [{ n: 1, line: 'Skip Initech', status: 'approved', can_undo: true }] }] }))
+      }
+      if (path === '/api/tell') { s.told.push(body.text); return ok(JSON.stringify({ ok: true, request: 21, opened: true, link: `claude://code/new?folder=%2Ffake%2Fjobs&q=${encodeURIComponent('Crewdeck: handle tell request 21')}` })) }
       if (path === '/api/today/jobs') return ok(JSON.stringify({ ...today(), done: { ok: true, request: 9, opened: true } }))
       if (path === '/api/claim') return ok(JSON.stringify({ lane: 'cockpit', cli: 'crewdeck', proof: await sha256Hex(`crewdeck-proof:${TOKEN}:${body.nonce}:4848`), requests: [] }))
       return ok('{}')
@@ -310,8 +320,8 @@ test('a new chat whose first prompt is not a task claims nothing by name', async
   expect(s.calls.filter((c) => c.body?.want)).toEqual([])
 })
 
-test('proposals waiting (when this Crewdeck has them): a count and Review, which opens the Jobs page', async ($, on) => {
-  const { run } = fakeCrewdeck({ running: true, proposals: 2 })
+test('proposals waiting: a count, Review lists them in the panel with Approve, Reject and Undo; the Tell box queues a tell', async ($, on) => {
+  const { s, run } = fakeCrewdeck({ running: true, proposals: 2 })
   mock.clock(on)
   on('session.cwd', () => ({ value: '/work' }))
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
@@ -319,14 +329,26 @@ test('proposals waiting (when this Crewdeck has them): a count and Review, which
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('fs.read', () => ({ value: `${TOKEN}\n` }))
   on('process.run', async (_, e) => ({ value: await run(e.argv, e.init) }))
-  const pane: string[] = []
-  on('prompt.submit', (_, e) => { pane.push(String(e.text)); return { drop: 'test' } })
+  const toasts: string[] = []
+  on('ui.toast', (_, e) => { toasts.push(String(e.text)); return { value: undefined } })
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   await $.command.run(typed('crewdeck'))
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /^2 proposals to review$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /2 proposals to review/ })).toBeDefined()
   await ui.press({ key: 'review' })
-  expect(pane).toEqual(['Open http://crewdeck.localhost:4848/#jobs in the browser pane.'])
+  expect(await ui.find({ type: 'Text', text: /Watch Globex/ })).toBeDefined()
+  await ui.press({ key: 'approve-5-1' })
+  await ui.press({ key: 'reject-5-2' })
+  await ui.press({ key: 'undo-4-1' })
+  expect(s.decided).toEqual(['approve 5/1', 'reject 5/2', 'undo 4/1'])
+  expect(toasts).toEqual(['Approved', 'Rejected', 'Undone'])
+  await ui.press({ key: 'review-close' })
+  expect(await ui.find({ key: 'approve-5-1' })).toBeUndefined()
+  // Tell: Crewdeck opened the Jobs chat in front itself, so the panel opens nothing.
+  await ui.input({ key: 'tell', text: '  now PM roles  ' })
+  expect(s.told).toEqual(['now PM roles'])
+  expect(toasts.at(-1)).toMatch(/A Jobs chat is opening in front of you/)
+  expect(s.opened).toEqual([])
   await ui.unmount()
 })
 

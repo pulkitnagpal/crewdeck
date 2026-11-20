@@ -3,6 +3,14 @@ export type CrewdeckLane = string
 /** The one-click setup's progress, for the panel. */
 export type Install = { phase: 'none' | 'running' | 'done' | 'failed'; step: string; done: number; lines: string[] }
 
+/** A proposal as POST /api/proposals {op:'list'} lists it (P3): items the person approves or rejects one by one. */
+export type Proposal = {
+  id: number
+  summary: string
+  status: string
+  items: { n: number; line: string; reason?: string; evidence?: string | null; status: string; can_undo: boolean }[]
+}
+
 /** What POST /api/today answers (src/server.ts todayGlance): the Today panel's data. */
 export type Today = {
   date: string
@@ -46,6 +54,7 @@ declare module 'claude-code' {
       here: Shaped<string>
       lastDone: Shaped<number>
       firstPrompt: Shaped<boolean>
+      proposals: Shaped<{ pending: Proposal[]; recent: Proposal[] } | null>
     }
   }
 }
