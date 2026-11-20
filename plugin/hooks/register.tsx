@@ -220,7 +220,7 @@ async function installed($: Dollar): Promise<boolean> {
 /** The panel's one setup step: the installer above, its STEP lines shown as they come. Safe to run again. */
 async function runInstall($: Dollar, port: number): Promise<void> {
   if ((await read($, installAtom)).phase === 'running') return
-  await update($, installAtom, () => ({ phase: 'running', step: 'Starting…', done: 0, lines: [] }))
+  await update($, installAtom, (): Install => ({ phase: 'running', step: 'Starting…', done: 0, lines: [] }))
   let buffer = ''
   let url = ''
   let failed = ''
@@ -248,11 +248,11 @@ async function runInstall($: Dollar, port: number): Promise<void> {
     failed ||= String((e as Error)?.message ?? e).slice(0, 300)
   }
   if (failed || !url) {
-    await update($, installAtom, (x) => ({ ...x, phase: 'failed', step: failed || 'Setup stopped before it finished. Press Set up again: it carries on where it stopped.' }))
+    await update($, installAtom, (x): Install => ({ ...x, phase: 'failed', step: failed || 'Setup stopped before it finished. Press Set up again: it carries on where it stopped.' }))
     return
   }
   token = '' // the new Crewdeck wrote its token and config
-  await update($, installAtom, (x) => ({ ...x, phase: 'done', step: 'Crewdeck is ready', done: 5 }))
+  await update($, installAtom, (x): Install => ({ ...x, phase: 'done', step: 'Crewdeck is ready', done: 5 }))
   await refreshToday($, port)
   $.ui.toast('Crewdeck is set up')
 }
@@ -305,7 +305,7 @@ async function openToday($: Dollar, port: number): Promise<string> {
   if (problem === 'NOT_INSTALLED') {
     await update($, todayAtom, () => null)
     await update($, todayNote, () => '')
-    await update($, installAtom, (x) => (x.phase === 'running' ? x : { phase: 'none', step: '', done: 0, lines: [] }))
+    await update($, installAtom, (x): Install => (x.phase === 'running' ? x : { phase: 'none', step: '', done: 0, lines: [] }))
   } else if (problem) { await update($, todayNote, () => problem); await update($, todayAtom, () => null) }
   else await refreshToday($, port)
   await $.ui.open({ id: PANE, title: 'Crewdeck' })

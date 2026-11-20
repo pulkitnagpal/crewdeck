@@ -201,7 +201,7 @@ test('the plugin is named crewdeck (0.7.0) everywhere; the bridge keeps its toke
 test('W4/C4: the bridge challenges before its token leaves, binds the proof to the port, beats while busy, puts back on start', () => {
   const reg = read('plugin', 'hooks', 'register.tsx');
   assert.match(reg, /'\/api\/hello', \{ nonce: n \}, false\)/, 'hello is sent without the token');
-  assert.match(reg, /crewdeck-proof:\$\{token\}:\$\{n\}:\$\{port\}/, 'the proof names the port');
+  assert.match(reg, /crewdeck-proof:\$\{token\}:\$\{n\}:\$\{P\(port\)\}/, 'the proof names the port');
   const post = reg.slice(reg.indexOf('async function post('), reg.indexOf('let lastBeat'));
   assert.match(post, /if \(!\(await verified\(\$, port\)\)\) return null[\s\S]*curl\(\$, port, path, body, true\)/, 'the token is sent only after the proof');
   assert.match(reg, /take: false/, 'a busy session keeps its presence and leases');

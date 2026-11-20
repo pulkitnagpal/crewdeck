@@ -21,7 +21,7 @@ export const NODE_SHA256: Record<string, string> = {
 }
 
 /** The release asset crewdeck-<VERSION>.tar.gz (scripts/release.sh prints it). */
-export const APP_SHA256 = '0000000000000000000000000000000000000000000000000000000000000000'
+export const APP_SHA256 = '09a0e6d91bbdb938bf4ef0833a9ff97f8fdf8f5ef1ed3d0d32e8d44d7096586f'
 
 export const APP_URL = `https://github.com/pulkitnagpal/crewdeck/releases/download/v${CREWDECK_VERSION}/crewdeck-${CREWDECK_VERSION}.tar.gz`
 
