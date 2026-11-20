@@ -1,6 +1,6 @@
 {
   "name": "crewdeck",
-  "version": "0.1.0",
+  "version": "0.7.1",
   "description": "Your one-person company inside Claude desktop: SilverBullet notes, Backlog.md boards and Claude agents in one workspace.",
   "license": "MIT",
   "type": "module",
@@ -13,10 +13,14 @@
   },
   "scripts": {
     "crewdeck": "node src/cli.ts",
-    "test": "node --test --test-reporter=spec \"test/**/*.test.ts\""
+    "test": "node scripts/leak-scan.mjs && node --test --test-reporter=spec \"test/**/*.test.ts\"",
+    "leak-scan": "node scripts/leak-scan.mjs"
   },
   "dependencies": {
     "backlog.md": "1.55.3",
+    "htm": "3.1.1",
+    "playwright-core": "1.65.1",
+    "preact": "10.29.8",
     "yaml": "^2.8.1"
   },
   "repository": {
@@ -33,5 +37,8 @@
     "kanban",
     "agents",
     "local-first"
-  ]
+  ],
+  "devDependencies": {
+    "preact-render-to-string": "6.8.2"
+  }
 }

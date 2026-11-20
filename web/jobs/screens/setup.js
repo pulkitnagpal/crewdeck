@@ -1,0 +1,58 @@
+// First run (design §2.2, §24.4): Claude interviews the user (with or without a resume), proposes where to look, fetches
+// once and previews what passes, and writes their notes; or the user edits the files themselves.
+import { useState } from 'preact/hooks';
+import { html, noop, CopyButton, Icon, More } from '../lib.js';
+
+const LABEL = { profile: 'Who you are', career: 'Your work (resume facts)', search: 'What you want', memory: 'What Claude learned', sources: 'Where to look (also the Sources tab)' };
+
+function fileState(f) {
+  if (!f.exists) return html`<span class="chip warn">missing</span>`;
+  if (f.errors) return html`<span class="chip bad">${f.errors} error${f.errors > 1 ? 's' : ''}</span>`;
+  return html`<span class="chip ok">ok</span>`;
+}
+
+export function SetupCard({ state, onSetup = noop, onNotes = noop, onToast = noop, onCancel = noop, onOpenSession = noop }) {
+  const [editing, setEditing] = useState(false);
+  const s = state.setup;
+  const a = state.agent ?? {};
+  const req = s.request && (s.request.status === 'new' || s.request.status === 'picked') ? s.request : null;
+  return html`<section class="card setup" aria-labelledby="setup-title">
+    <div class="stack">
+      <span class="chip info self-start"><${Icon} name="sparkle" size=${12} /> First run</span>
+      <h1 id="setup-title">Set up Jobs</h1>
+      <p class="lead">Claude interviews you and builds your job search.</p>
+    </div>
+    <ol class="how">
+      <li><div class="stack"><span>Open a Claude <b>Code</b> session in your jobs folder</span>
+        <span class="row-flex">${a.open_session && !a.connected ? html`<button type="button" class="btn small primary" onClick=${onOpenSession}>Open in Claude</button>` : null}<code>${a.workspace}</code><${CopyButton} text=${a.workspace} label="Copy" onCopied=${onToast} />
+          ${a.connected ? html`<span class="chip ok">Claude connected</span>` : html`<span class="chip">Not connected</span>`}</span></div></li>
+      <li><span>Click <b>Set up with Claude</b> and answer in the chat</span></li>
+      <li><span>Claude finds where to look and previews matches</span></li>
+      <li><span>Review it on <b>Sources</b> and <b>Preferences</b></span></li>
+    </ol>
+    <${More} summary="How it works">
+      <p>Claude asks about your work, from your resume or just by talking if you don't have one, then the kinds of job you want, where you can work and where to look. Before anything is used, it shows how many real postings your choices catch. Everything lands in notes you can read and change at any time.</p>
+      <p><b>Open in Claude</b> starts the session in Claude desktop: confirm the folder, then press Enter on the hello it fills in. Or pick the folder in a new session's folder chooser. Claude works on Jobs only from there, with its own safety rules.</p>
+      <p>Answer in your own words and your own language. Have your resume or CV ready if you have one; no resume is fine too. It takes about 20 to 30 minutes.</p>
+      <p>Claude proposes job boards for your field and country, checks the careers pages of employers you name, fetches once and previews what passes your rules. If no job board covers your field where you live, it says so and what still works: employers' pages, LinkedIn if you switch it on, links you paste.</p>
+      <p>Nothing is used until you are happy with it. You can also review it in Notes.</p>
+    </${More}>
+    ${req ? html`<div class="state info" role="status"><span class="title"><span class=${`dot ${req.status === 'picked' ? 'busy' : 'wait'}`}></span>${req.status === 'picked' ? 'Claude is setting up Jobs with you in the chat' : a.connected ? 'Waiting for Claude to start the setup' : 'Waiting for a Claude session'}</span>
+        ${req.last ? html`<span class="small soft">${req.last.text}</span>`
+          : req.status === 'new' && !a.connected ? html`<span class="small soft">No Claude session is connected yet: do step 1.</span>`
+          : req.status === 'new' ? html`<span class="small soft">Starts in the chat when Claude is free.</span>` : null}
+        ${req.status === 'new' ? html`<div class="row-flex"><button type="button" class="btn small" onClick=${() => onCancel(req.id)}>Cancel</button></div>` : null}</div>` : null}
+    ${s.request?.status === 'failed' && s.request.result !== 'Cancelled on the page' ? html`<div class="state bad"><span class="title">Setup stopped</span><span class="small">${s.request.result}</span></div>` : null}
+    <div class="row-flex">
+      <button type="button" class="btn primary" onClick=${onSetup} disabled=${!!req}>Set up with Claude</button>
+      <button type="button" class="btn" aria-expanded=${editing} onClick=${() => setEditing(!editing)}>I'll edit the files</button>
+    </div>
+    ${editing ? html`<div class="stack">
+      <p class="soft small">Your notes, in your vault.</p>
+      <ul class="files">${s.files.map((f) => html`<li key=${f.name}><code title=${f.path}>${f.file}</code><span class="small soft">${LABEL[f.name] ?? ''}</span>${fileState(f)}
+        ${f.exists ? html`<button type="button" class="btn small" onClick=${() => onNotes(f.page)}>Open in Notes</button>` : null}</li>`)}</ul>
+      <div class="row-flex"><span class="small">Check them:</span><code>crewdeck jobs check</code><${CopyButton} text="crewdeck jobs check" onCopied=${onToast} /></div>
+      <${More} summary="Details"><p>Run the check in a terminal when you are done. Templates with comments are in <code>vault-template/</code> in the Crewdeck repo.</p></${More}>
+    </div>` : null}
+  </section>`;
+}

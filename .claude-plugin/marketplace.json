@@ -5,9 +5,9 @@
   },
   "plugins": [
     {
-      "name": "crewdeck-bridge",
+      "name": "crewdeck",
       "source": "./plugin"
     }
   ],
-  "description": "Crewdeck: your one-person company inside Claude desktop. The bridge plugin brings page clicks into the right Claude session."
+  "description": "Crewdeck: your one-person company inside Claude desktop. The crewdeck plugin brings page clicks into the right Claude session and carries the Jobs and memory skills."
 }

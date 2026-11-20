@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply: Warehouse Associate (Part-Time) – Example Distribution</title></head>
+<body>
+<!-- A fictional US hourly application (P9h fixture): an availability grid, EEO questions and an SSN field. -->
+<form>
+  <label for="fn">First name *</label><input id="fn" required>
+  <label for="ln">Last name *</label><input id="ln" required>
+  <label for="em">Email *</label><input id="em" type="email" required>
+  <label for="ph">Phone number *</label><input id="ph" required>
+  <label for="ssn">Social Security Number *</label><input id="ssn" required>
+  <label for="pay">Desired pay rate</label><input id="pay">
+  <fieldset><legend>Availability</legend>
+    <label for="mon">Monday availability</label><select id="mon"><option value="">Select</option><option>Morning</option><option>Evening</option><option>Overnight</option><option>Not available</option></select>
+    <label for="wed">Wednesday availability</label><select id="wed"><option value="">Select</option><option>Morning</option><option>Evening</option><option>Overnight</option><option>Not available</option></select>
+    <label for="sat">Saturday availability</label><select id="sat"><option value="">Select</option><option>Morning</option><option>Evening</option><option>Overnight</option><option>Not available</option></select>
+  </fieldset>
+  <fieldset><legend>Voluntary self-identification (EEO)</legend>
+    <label for="g">Gender</label><select id="g"><option value="">Select</option><option>Female</option><option>Male</option><option>Decline to self-identify</option></select>
+    <label for="r">Race/Ethnicity</label><select id="r"><option value="">Select</option><option>Decline to self-identify</option></select>
+    <label for="v">Veteran status</label><select id="v"><option value="">Select</option><option>I am not a protected veteran</option></select>
+  </fieldset>
+  <label for="cv">Resume (optional)</label><input id="cv" type="file">
+  <button type="submit">Submit application</button>
+</form>
+</body>
+</html>

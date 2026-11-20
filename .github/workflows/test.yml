@@ -1,11 +1,40 @@
 name: test
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 25 runs the job-board provider sandbox (its permission model denies the network); 22 and 24 check that
+        # sourcing refuses there and everything else works.
+        node: [22.x, 24.x, 25.x]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+      # Actions pinned by full commit SHA (v4.4.0 of each), not a movable tag.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '${{ matrix.node }}' }
       - run: npm ci
-      - run: npm test
+      # The leak scan is its own step: only it sees the denylist key. It also checks every commit being pushed or
+      # proposed (patches, messages, authors, every added blob); a new branch is compared with the default branch.
+      - name: leak scan
+        env:
+          LEAK_SCAN_KEY: ${{ secrets.LEAK_SCAN_KEY }}
+          LEAK_SCAN_DEFAULT_BRANCH: origin/${{ github.event.repository.default_branch }}
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then export LEAK_SCAN_RANGE="$PR_BASE..$PR_HEAD"
+          elif [ -n "$BEFORE" ]; then export LEAK_SCAN_RANGE="$BEFORE..$AFTER"
+          fi
+          node scripts/leak-scan.mjs
+      # The tests run without the key (a test can't read what it never gets).
+      - name: tests
+        run: node --test --test-reporter=spec "test/**/*.test.ts"
+      - run: npm audit --omit=dev --audit-level=high

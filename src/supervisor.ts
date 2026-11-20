@@ -4,16 +4,18 @@ import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { HOME, REPO } from './config.ts';
 
-export type Service = { name: string; cmd: string; args: string[]; cwd?: string; env?: Record<string, string> };
+/** before: run right before each start (and restart). */
+export type Service = { name: string; cmd: string; args: string[]; cwd?: string; env?: Record<string, string>; before?: () => void };
 
 export function supervise(services: Service[], log: (s: string) => void = console.log) {
   const logs = join(HOME, 'logs');
-  mkdirSync(logs, { recursive: true });
+  mkdirSync(logs, { recursive: true, mode: 0o700 });
   const children = new Map<string, ChildProcess>();
   let stopping = false;
 
   const start = (svc: Service, attempt = 0) => {
-    const out = createWriteStream(join(logs, `${svc.name}.log`), { flags: 'a' });
+    try { svc.before?.(); } catch (e: any) { log(`${svc.name}: ${e?.message ?? e}`); }
+    const out = createWriteStream(join(logs, `${svc.name}.log`), { flags: 'a', mode: 0o600 });
     const child = spawn(svc.cmd, svc.args, { cwd: svc.cwd, env: { ...process.env, ...svc.env }, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout?.pipe(out); child.stderr?.pipe(out);
     children.set(svc.name, child);

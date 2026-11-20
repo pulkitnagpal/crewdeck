@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Bewerbung: Buchhalter (m/w/d) – Example Steuerberatung GmbH</title></head>
+<body>
+<!-- A fictional German application form (P9h fixture): personal details German forms ask, a salary expectation, a tax ID. -->
+<form>
+  <h2>Persönliche Angaben</h2>
+  <label for="anrede">Anrede *</label>
+  <select id="anrede" required><option value="">Bitte wählen</option><option>Herr</option><option>Frau</option><option>Divers</option></select>
+  <label for="vorname">Vorname *</label><input id="vorname" required>
+  <label for="nachname">Nachname *</label><input id="nachname" required>
+  <label for="email">E-Mail-Adresse *</label><input id="email" type="email" required>
+  <label for="tel">Telefonnummer</label><input id="tel" type="tel">
+  <label for="geb">Geburtsdatum</label><input id="geb" type="date">
+  <label for="staat">Staatsangehörigkeit</label><input id="staat">
+  <h2>Ihre Bewerbung</h2>
+  <label for="gehalt">Gehaltsvorstellung (brutto/Jahr) *</label><input id="gehalt" required>
+  <label for="kf">Kündigungsfrist</label><input id="kf">
+  <label for="steuer">Steuer-ID</label><input id="steuer">
+  <label for="warum">Warum möchten Sie bei Example Steuerberatung arbeiten?</label><textarea id="warum" maxlength="1000"></textarea>
+  <label for="cv">Lebenslauf *</label><input id="cv" type="file" required>
+  <label for="ansch">Anschreiben</label><input id="ansch" type="file">
+  <button type="submit">Bewerbung absenden</button>
+</form>
+</body>
+</html>

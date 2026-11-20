@@ -1,0 +1,4 @@
+{
+  "publicIdentifiers": ["github.com/pulkitnagpal/crewdeck", "pulkitnagpal/crewdeck", "github.com/pulkitnagpal"],
+  "attributionFiles": ["LICENSE", "package.json", "plugin/.claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]
+}
