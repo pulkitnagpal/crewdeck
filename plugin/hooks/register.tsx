@@ -353,6 +353,13 @@ async function openToday($: Dollar, port: number): Promise<string> {
   return problem === 'NOT_INSTALLED' ? 'Crewdeck is not set up on this computer yet: press Set up Crewdeck in the panel.' : problem ?? 'Crewdeck is open beside the chat.'
 }
 
+/** a < b for versions like 0.7.0 < 0.7.1. */
+const older = (a: string, b: string) => {
+  const x = a.split('.').map(Number), y = b.split('.').map(Number)
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0)
+  return false
+}
+
 const DAY = (iso: string) => {
   const d = new Date(`${iso}T12:00:00`)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
@@ -436,6 +443,15 @@ export const register: Register = (on, options) => {
           <Text bold>{DAY(t.date)}</Text>
           {note ? <Text color="warning">{note}</Text> : null}
         </Box>
+
+        {t.version && older(t.version, CREWDECK_VERSION) ? (
+          <Box flexDirection="column">
+            <Text bold>Crewdeck {CREWDECK_VERSION} is ready</Text>
+            {inst.phase === 'running' ? <Progress label={inst.step} value={inst.done} max={5} /> : <Text dimColor>You have {t.version}. The update keeps your notes and job data, and takes a minute or two.</Text>}
+            {inst.phase === 'failed' && <Text color="error">{inst.step}</Text>}
+            {inst.phase !== 'running' && <Button key="update" label="Update Crewdeck" variant="primary" onPress={() => runInstall($, port)} />}
+          </Box>
+        ) : null}
 
         <Box flexDirection="column">
           <Text bold>To do</Text>

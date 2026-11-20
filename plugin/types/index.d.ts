@@ -6,6 +6,8 @@ export type Install = { phase: 'none' | 'running' | 'done' | 'failed'; step: str
 /** What POST /api/today answers (src/server.ts todayGlance): the Today panel's data. */
 export type Today = {
   date: string
+  /** The running Crewdeck's version. */
+  version?: string
   url: string
   notes_page: string
   todos: { line: number; done: boolean; text: string }[]

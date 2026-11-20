@@ -254,3 +254,32 @@ test('in a project folder that is not a board yet, the panel adds it with one cl
   expect(s.added).toEqual(['flight-stack /work/flight-stack'])
   await ui.unmount()
 })
+
+test('an older Crewdeck than the plugin: the panel offers Update Crewdeck, which runs the same checked setup', async ($, on) => {
+  const { s, run } = fakeCrewdeck({ running: true })
+  mock.clock(on)
+  on('session.cwd', () => ({ value: '/work' }))
+  on('command.register', () => ({ value: { command: 'crewdeck' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('fs.read', () => ({ value: `${TOKEN}\n` }))
+  on('process.run', async (_, e) => {
+    const r = await run(e.argv, e.init)
+    if (e.argv[0] === 'curl' && r.stdout.includes('"date"')) return { value: { ...r, stdout: JSON.stringify({ ...JSON.parse(r.stdout), version: '0.0.9' }) } }
+    return { value: r }
+  })
+  const spawned: string[] = []
+  on('process.spawn', async function* (_, e) {
+    spawned.push(e.argv.join(' '))
+    yield { stream: 'stdout' as const, text: 'STEP 5/5 Starting Crewdeck\nDONE http://crewdeck.localhost:4848/\n' }
+    return { value: { code: 0, signal: null } }
+  })
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(typed('crewdeck'))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /You have 0\.0\.9/ })).toBeDefined()
+  await ui.press({ key: 'update' })
+  expect(spawned).toEqual(['sh -s'])
+  expect(s.calls.length).toBeGreaterThan(0)
+  await ui.unmount()
+})
