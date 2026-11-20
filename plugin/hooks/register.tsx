@@ -52,6 +52,8 @@ const paneOpen = atom({ plugin: 'crewdeck', key: 'paneOpen' } as const, false, {
 const hereAtom = atom({ plugin: 'crewdeck', key: 'here' } as const, '', { shape: 'here-1' })
 // The last finished Jobs request this session has told the person about (a toast once per request).
 const lastDone = atom({ plugin: 'crewdeck', key: 'lastDone' } as const, 0, { shape: 'lastDone-1' })
+// This session's first prompt has been seen (a Jobs chat opened for a task names its request there: claimed first).
+const firstPrompt = atom({ plugin: 'crewdeck', key: 'firstPrompt' } as const, false, { shape: 'firstPrompt-1' })
 // The one-click setup (docs/everywhere.md E13): where it is, for the panel.
 const installAtom = atom({ plugin: 'crewdeck', key: 'install' } as const, { phase: 'none', step: '', done: 0, lines: [] } as Install, { shape: 'install-1' })
 
@@ -191,6 +193,34 @@ async function settle($: Dollar, port: number, aborted: boolean): Promise<void> 
   await update($, busy, () => false)
 }
 
+/**
+ * A Jobs chat Crewdeck opened for one task (ADR-0004): its first prompt names the request, exactly as
+ * src/session-link.ts builds it. The bridge claims that request for this chat at once, even though the turn is busy, so
+ * no other Jobs chat takes it; the skill then reads it with `request show`.
+ */
+const TASK_REQUEST = [
+  /^Crewdeck: run Find request ([1-9][0-9]{0,9})$/,
+  /^Crewdeck: apply to role [A-Za-z0-9]{1,64} \(request ([1-9][0-9]{0,9})\)$/,
+  /^Crewdeck: prepare role [A-Za-z0-9]{1,64} \(request ([1-9][0-9]{0,9})\)$/,
+  /^Crewdeck: handle tell request ([1-9][0-9]{0,9})$/,
+]
+function taskRequestOf(text: string): number | null {
+  for (const re of TASK_REQUEST) {
+    const m = re.exec(text)
+    if (m) return Number(m[1])
+  }
+  return null
+}
+
+async function claimFirst($: Dollar, port: number, id: number): Promise<void> {
+  const n = nonce()
+  const got = (await post($, port, '/api/claim', { cwd: await $.session.cwd(), by: await who($), nonce: n, take: false, want: [id] })) as Claimed | null
+  if (!got || got.proof !== (await proofFor(n, port))) return
+  if (!got.requests?.some((r) => r.id === id)) return
+  await update($, inflight, (l) => [...new Set([...l, id])])
+  $.ui.status(`Crewdeck · ${got.lane} · request ${id}`)
+}
+
 async function begin($: Dollar, port: number): Promise<void> {
   await update($, busy, () => false)
   // Requests a previous load of this session took but never closed (a reload, a crash) go back to the queue now.
@@ -296,6 +326,19 @@ async function refreshToday($: Dollar, port: number, body: Record<string, unknow
   await update($, hereAtom, () => (root && !got.projects.some((p) => p.path === root) ? root : ''))
 }
 
+/** The panel's Jobs buttons: Crewdeck queues the work and opens a Jobs chat in front for it (never the panel itself). */
+async function jobsAct($: Dollar, port: number, body: { op: 'find' } | { op: 'apply'; role: string }): Promise<void> {
+  const got = (await post($, port, '/api/today/jobs', body)) as (Today & { error?: string; done?: { opened?: boolean; preparing?: boolean; mode?: string } }) | null
+  if (!got) { await update($, todayNote, () => 'That did not reach Crewdeck: is it running?'); return }
+  if (got.error) { await update($, todayNote, () => String(got.error)); return }
+  await update($, todayAtom, () => got)
+  await update($, todayNote, () => '')
+  const d = got.done ?? {}
+  $.ui.toast(d.mode === 'copy' ? 'This site takes answers you copy in: open Jobs'
+    : d.opened ? `A Jobs chat is opening in front of you${d.preparing ? ' to prepare it first (about 1 min)' : ''}: confirm the folder, then press Enter`
+      : d.preparing ? 'Preparing it first (about 1 min) in your Jobs chat' : 'Sent to your Jobs chat')
+}
+
 /** The git project this session's folder is in (the nearest folder up with a .git), found without running git: on a Mac
  * without the developer tools, git itself would pop up Apple's install dialog. */
 async function projectRoot($: Dollar): Promise<string> {
@@ -326,14 +369,21 @@ async function addBoard($: Dollar, port: number, root: string): Promise<void> {
   $.ui.toast(`${slugOf(root)} is a board in Crewdeck now`)
 }
 
-/** What the jobs session's message box says (src/session-link.ts): the only texts the panel opens. */
-const JOBS_SESSION_QS = ['Hello! This is my Crewdeck Jobs session.', 'Hello! Please set up my Crewdeck job search.'].map(encodeURIComponent)
-/** A jobs-session link as Crewdeck builds it: an absolute folder and exactly the fixed hello, nothing else (review: a forged
- * answer from the port must not prefill other words or open another kind of link). */
+/** The only texts a Jobs chat link may prefill (src/session-link.ts, kept in step): the hellos and the task prompts. */
+const JOBS_PROMPTS = [
+  /^Hello! This is my Crewdeck Jobs session\.$/,
+  /^Hello! Please set up my Crewdeck job search\.$/,
+  ...TASK_REQUEST,
+]
+/** A Jobs chat link as Crewdeck builds it: an absolute folder and exactly one of those prompt shapes, ids alphanumeric
+ * (review: a forged answer from the port must not prefill other words or open another kind of link). */
 function isJobsSessionLink(url: string): boolean {
   const m = /^claude:\/\/code\/new\?folder=([^&#\s]+)&q=([^&#\s]*)$/.exec(url)
-  if (!m || !JOBS_SESSION_QS.includes(m[2] ?? '')) return false
-  try { return decodeURIComponent(m[1] ?? '').startsWith('/') } catch { return false }
+  if (!m) return false
+  try {
+    const q = decodeURIComponent(m[2] ?? '')
+    return decodeURIComponent(m[1] ?? '').startsWith('/') && JOBS_PROMPTS.some((re) => re.test(q))
+  } catch { return false }
 }
 
 /**
@@ -348,7 +398,7 @@ async function openPage($: Dollar, url: string, surface?: string): Promise<void>
   await openUrl($, url)
 }
 
-/** Open an address of Crewdeck in the person's default browser, or a new Claude Code session (claude://code/new…). */
+/** Open an address of Crewdeck in the person's default browser, or a new Jobs chat (claude://code/new…, checked). */
 async function openUrl($: Dollar, url: string): Promise<void> {
   const page = /^http:\/\/[a-z0-9.\-]+(:\d+)?\//.test(url)
   if (!page && !isJobsSessionLink(url)) return
@@ -442,6 +492,8 @@ export const register: Register = (on, options) => {
     const open = t.todos.filter((x) => !x.done)
     const j = t.jobs
     const here = await read($, hereAtom)
+    // Proposals waiting for the person's Approve or Reject (P3's glance count; an older Crewdeck has none).
+    const proposals = j && 'counts' in j && typeof j.proposals === 'number' && j.proposals > 0 ? Math.floor(j.proposals) : 0
     if (glance) {
       return (
         <Box flexDirection="column">
@@ -480,14 +532,25 @@ export const register: Register = (on, options) => {
         {j && 'counts' in j ? (
           <Box flexDirection="column">
             <Text bold>Jobs</Text>
+
             {j.activity ? <Text key="act" color={j.activity.state === 'failed' ? 'warning' : undefined} dimColor={j.activity.state === 'done'}>{({ working: '⟳ ', fetching: '⟳ ', waiting: '… ', done: '✓ ', failed: '✗ ' } as Record<string, string>)[j.activity.state]}{j.activity.state === 'fetching' ? `${j.activity.label}: fetching new postings first` : `${j.activity.label}${j.activity.detail ? ` · ${j.activity.detail}` : ''}`}{j.activity.state === 'working' || j.activity.state === 'waiting' ? (j.connected ? ' · in your Jobs chat' : ' · waiting for the Jobs chat') : ''}</Text> : null}
             {j.setup_needed ? <Text dimColor>Not set up yet · about 20 minutes</Text> : (
               <Text>{[j.counts.needs_you ? `${j.counts.needs_you} need you` : '', j.counts.ready ? `${j.counts.ready} ready to submit` : '', j.counts.in_progress ? `${j.counts.in_progress} in progress` : '', j.counts.applied_today ? `${j.counts.applied_today} applied today` : ''].filter(Boolean).join(' · ') || 'Nothing waiting'}</Text>
             )}
-            {j.queue.map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
+            {!j.setup_needed && (j.picks ?? []).length ? <Text key="ready" bold>{j.ready_total ?? (j.picks ?? []).length} job{(j.ready_total ?? 0) === 1 ? '' : 's'} ready</Text> : null}
+            {(j.picks ?? []).map((p) => (
+              <Box key={`pick-${p.id}`} flexDirection="row" columnGap={1}>
+                <Text>{p.company} · {p.title}{(() => { const chip = j.queue.find((q) => q.id === p.id)?.chip; return chip ? ` (${chip})` : p.prepared ? '' : ' (not prepared yet)' })()}</Text>
+                <Button key={`apply-${p.id}`} label="Apply" onPress={() => jobsAct($, port, { op: 'apply', role: p.id })} />
+              </Box>
+            ))}
+            {j.queue.filter((q) => !(j.picks ?? []).some((p) => p.id === q.id)).map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
+            {proposals ? <Text key="proposals">{proposals} proposal{proposals === 1 ? '' : 's'} to review</Text> : null}
             <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
+              {j.setup_needed && j.session_link ? <Button key="jobs-session" label="Set up my job search" variant="primary" onPress={() => openUrl($, j.session_link)} /> : null}
+              {!j.setup_needed ? <Button key="find-now" label="Find now" variant="primary" onPress={() => jobsAct($, port, { op: 'find' })} /> : null}
               <Button key="open-jobs" label="Open Jobs" onPress={(e) => openPage($, `${t.url}/#jobs`, e.surface)} />
-              {!j.connected && j.session_link ? <Button key="jobs-session" label={j.setup_needed ? 'Set up my job search' : 'Start the Jobs session'} variant={j.setup_needed ? 'primary' : undefined} onPress={() => openUrl($, j.session_link)} /> : null}
+              {proposals ? <Button key="review" label="Review" onPress={(e) => openPage($, `${t.url}/#jobs`, e.surface)} /> : null}
             </Box>
           </Box>
         ) : j && 'error' in j ? <Text color="warning">Jobs: {String(j.error)}</Text> : null}
@@ -529,7 +592,14 @@ export const register: Register = (on, options) => {
   })
 
   on('turn.start', async ($, e, next) => {
-    if (e.agentId === undefined) await update($, busy, () => true)
+    if (e.agentId === undefined) {
+      await update($, busy, () => true)
+      if (!(await read($, firstPrompt))) {
+        await update($, firstPrompt, () => true)
+        const id = taskRequestOf(e.text.trim())
+        if (id) await claimFirst($, port, id)
+      }
+    }
     return next(e)
   })
 

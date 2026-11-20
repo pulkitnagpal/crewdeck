@@ -14,7 +14,7 @@ import { type FSWatcher, existsSync, readFileSync, realpathSync, statSync, watch
 import { parse as parseYaml } from 'yaml';
 import { basename, join, sep } from 'node:path';
 import { type Config, CONFIG_PATH, HOME, REPO, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, featureValue, normaliseJobs, setFeature } from '../config.ts';
-import { JOBS_SESSION_PROMPT, JOBS_SETUP_PROMPT, sessionLink } from '../session-link.ts';
+import { JOBS_SESSION_PROMPT, JOBS_SETUP_PROMPT, type JobsTask, jobsTaskLink, sessionLink, taskPrompt } from '../session-link.ts';
 import { HttpError, SECURITY_HEADERS, fromAgent, fromOwnPage, json, ownRead, readJson, send } from '../http.ts';
 import { type JobKind, type Request, type Requests, RequestError, isOpen } from '../requests.ts';
 import { type Ctx, makeCtx, notesOf, todayOf } from './ctx.ts';
@@ -58,6 +58,8 @@ export type JobsApi = {
    * `/api/proposals` { op: list | propose | approve | reject | undo, … } (the panel and `crewdeck jobs propose|proposals`).
    */
   agent(path: '/api/tell' | '/api/proposals', body: any): unknown;
+  /** The Today panel's Jobs buttons (agent endpoint POST /api/today/jobs): Find now, Apply or Prepare a pick. */
+  panelAction(b: any): Promise<unknown>;
   close(): void;
 };
 export type JobsGlance = {
@@ -69,7 +71,10 @@ export type JobsGlance = {
   counts: { needs_you: number; ready: number; in_progress: number; applied_today: number };
   /** Proposal items waiting for the person's Approve or Reject (P3): the panel lists them with POST /api/proposals. */
   proposals: number;
-  queue: { company: string; title: string; chip: string; kind: string }[];
+  queue: { id: string; company: string; title: string; chip: string; kind: string }[];
+  /** P4: today's picks nobody is applying to yet, best first (the panel's "N jobs ready" with Apply on each). */
+  picks: { id: string; company: string; title: string; prepared: boolean }[];
+  ready_total: number;
 };
 export type JobsApiOptions = {
   configPath?: string; pollMs?: number; platform?: string;
@@ -77,7 +82,10 @@ export type JobsApiOptions = {
   reveal?: (file: string) => Promise<void>;
   /** Open a claude://code/new link with the system's handler (tests replace it). */
   openLink?: (link: string) => Promise<void>;
-  /** Open a Jobs chat by itself when work is queued and none is connected (the real server only: `crewdeck up`). */
+  /**
+   * Open a Jobs chat by itself (the real server only: `crewdeck up`): Find, Prepare and Apply open one in front for their
+   * request (ADR-0004); other work opens one when none is connected.
+   */
   autoOpenChat?: boolean;
   /** Find waits for a fresh fetch when sources are stale (the real server only: `crewdeck up`). */
   fetchBeforeFind?: boolean;
@@ -100,14 +108,16 @@ export type JobsApiOptions = {
 const LANE = 'jobs';
 /** Careers pages checked at once from the Sources screen (each is a sandboxed child of ≤ 35 s). */
 const MAX_RESOLVING = 2;
-const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page', tell: 'Tell Crewdeck' };
+const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page', tell: 'Tell Crewdeck', prepare: 'Prepare a role' };
+/** A request kept for the Jobs chat opened for it; after this, any Jobs chat may take it (the person closed the dialog). */
+const CHAT_HOLD_MS = 10 * 60_000;
 const MAX_CLIENTS = 20;
 const SET_ON_PAGE = '(set on the Jobs page)';
 
 /** The longest text the Tell box takes (a request payload is at most 4000 characters as JSON). */
 export const MAX_TELL = 3000;
 /** The prompt of the Jobs chat opened for a tell request (ADR-0004: work runs in a Jobs chat in front of the person). */
-export const tellPrompt = (id: number) => `Crewdeck: handle tell request ${id}`;
+export const tellPrompt = (id: number) => taskPrompt({ kind: 'tell', request: id });
 
 /** jobs/search.md fields the Preferences form edits, and the shape of each value. */
 export const PREF_FIELDS: Record<string, 'list' | 'num' | 'optnum' | 'str' | 'bool' | 'langs' | 'targets' | 'licences'> = {
@@ -460,6 +470,8 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const applyReq = (id: string) => requests.latest(LANE, 'apply', id);
     const queue = v.queue.map((q) => {
       const r = applyReq(q.id);
+      // P4: a pick Find didn't prepare ahead waits for the person's Prepare click (no tokens spent on opening it).
+      if (q.chip.kind === 'muted' && q.chip.text === 'Preparing' && !openPrepare(q.id)) return { ...q, chip: { kind: 'muted', text: 'Not prepared yet' } };
       if (!r || q.chip.kind === 'applied') return q;
       const p = applyPanel({ status: 'picked', apply: { mode: 'fill' }, request: r, connected });
       const chip = { waiting: { kind: 'info', text: 'Waiting for Claude' }, filling: { kind: 'info', text: 'Claude is applying' }, needs_you: { kind: 'first', text: 'Needs you' },
@@ -476,10 +488,13 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const pdf = d.resume ? resumePath(ctx, d.id, notes) : null;
     const panel = applyPanel({ status: d.status, apply: d.apply, applied: d.applied, request: applyReq(d.id), connected });
     const asking = requests.ofLane(LANE, 'improve').filter((r) => isOpen(r) && r.ref === d.id).map((r) => Number(r.payload?.field_id));
+    // P4: is this pick prepared, and is a Prepare running for it (the panel's "Prepare (about 1 min)").
+    const prep = openPrepare(d.id);
+    const prepare = { needed: unprepared(d.id), request: prep ? { id: prep.id, status: prep.status, last: prep.progress?.at(-1)?.text ?? '' } : null };
     return {
       ...v, queue,
       detail: { ...d, resume: pdf ? { file: basename(pdf), url: `/api/jobs/resume/${d.id}`, note: d.resume!.note } : null, copy: d.apply.mode !== 'fill' ? copyModel(db, d.id).answers : null },
-      panel, asking, find, exclude_title_words, proposals,
+      panel, asking, find, exclude_title_words, proposals, prepare,
     };
   }
 
@@ -523,11 +538,49 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     if (!f) throw new HttpError(400, 'no such question on this role');
     return f;
   };
-  const queue = (kind: JobKind, ref: string | undefined, payload: Record<string, unknown>) => {
+  const queue = (kind: JobKind, ref: string | undefined, payload: Record<string, unknown>, front?: { task: (id: number) => JobsTask; fresh: boolean }) => {
     const r = requests.add(LANE, LABEL[kind], { kind, ref, payload });
+    if (front) return { ok: true, request: r.id, status: r.status, ...(openInFront(r.id, front.task(r.id), front.fresh) ? { opened: true } : {}) };
     const opened = openJobsChatIfNone();
     return { ok: true, request: r.id, status: r.status, ...(opened ? { opened_chat: true } : {}) };
   };
+  // ---- P4: Jobs work opened in front of the person (ADR-0004 revised, ADR-0006) ----
+  const launch = (link: string) => {
+    const cmd = platform === 'darwin' ? 'open' : 'xdg-open';
+    return (o.openLink ?? ((l: string) => new Promise<void>((ok, bad) => execFile(cmd, [l], (e) => (e ? bad(new HttpError(500, 'Claude desktop did not open: is it installed?')) : ok())))))(link);
+  };
+  /** Requests a Jobs chat was opened for (never two chats for one request), and their hold timers. */
+  const openedFor = new Set<number>();
+  const chatHolds = new Map<number, ReturnType<typeof setTimeout>>();
+  /**
+   * Open a Jobs chat in front whose first prompt names this request, and keep the request for it (`hold: 'chat'`) so
+   * another Jobs chat doesn't take it first. An idle connected Jobs chat gets the work instead (its bridge claims it),
+   * unless `fresh` (Apply: the form must appear in a chat in front, ADR-0006).
+   */
+  function openInFront(id: number, task: JobsTask, fresh: boolean): boolean {
+    if (!o.autoOpenChat || (platform !== 'darwin' && platform !== 'linux')) return false;
+    const r = requests.get(id);
+    if (!r || r.status !== 'new' || openedFor.has(id)) return false;
+    const p = requests.presence(LANE);
+    if (!fresh && p.connected && p.idle) return false;
+    openedFor.add(id);
+    if (!r.hold) {
+      requests.setHold(id, 'chat');
+      const t = setTimeout(() => { chatHolds.delete(id); if (requests.get(id)?.hold === 'chat') { requests.setHold(id, undefined); emit('queue'); } }, CHAT_HOLD_MS);
+      (t as any).unref?.();
+      chatHolds.set(id, t);
+    }
+    void launch(jobsTaskLink(c.jobs.workspace, task)).catch(() => {});
+    return true;
+  }
+  /** The task prompt for an open jobs request (the page's Open in Claude on a waiting request reopens its chat). */
+  const taskOf = (r: Request): JobsTask | null =>
+    r.kind === 'find' || r.kind === 'tell' ? { kind: r.kind, request: r.id }
+      : (r.kind === 'apply' || r.kind === 'prepare') && r.ref && ROLE_ID.test(r.ref) ? { kind: r.kind, role: r.ref, request: r.id }
+        : null;
+  /** Picked, never prepared (Find prepares only the top few): nothing has read its form yet. */
+  const unprepared = (role: string) => statusOf(role) === 'picked' && !db.prepare('select 1 from form_fields where role_id=? limit 1').get(role);
+  const openPrepare = (role: string) => requests.ofLane(LANE, 'prepare').find((r) => r.ref === role && isOpen(r));
   /**
    * Work for Jobs with no Jobs chat connected: Crewdeck opens one in Claude desktop (docs/everywhere.md E14), at most
    * once every 10 minutes so a closed dialog isn't reopened at every click. Claude desktop asks to confirm the folder.
@@ -542,7 +595,11 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     void (o.openLink ?? ((l: string) => new Promise<void>((ok) => execFile(cmd, [l], () => ok()))))(link).catch(() => {});
     return true;
   }
-  const queueApply = (role: string) => queue('apply', role, { role });
+  const prepareRole = (role: string): Record<string, unknown> => (unprepared(role)
+    ? queue('prepare', role, { role }, { task: (id) => ({ kind: 'prepare', role, request: id }), fresh: false })
+    : { ok: true, prepared: true });
+  const queueApply = (role: string, fresh = true) => queue('apply', role, { role }, { task: (id) => ({ kind: 'apply', role, request: id }), fresh });
+
 
   // ---- Tell Crewdeck and proposals (P3) ----
   /**
@@ -553,8 +610,9 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const text = str(raw, MAX_TELL, 'what you tell Crewdeck');
     if (!text) throw new HttpError(400, 'Tell Crewdeck something first');
     const r = requests.add(LANE, LABEL.tell, { kind: 'tell', payload: { text } });
-    const opened = openJobsChatIfNone(tellPrompt(r.id));
-    return { ok: true, request: r.id, status: r.status, link: sessionLink(c.jobs.workspace, tellPrompt(r.id)), ...(opened ? { opened_chat: true } : {}) };
+    // P4: a Jobs chat in front whose first prompt names it, or the idle Jobs chat that is connected.
+    const opened = openInFront(r.id, { kind: 'tell', request: r.id }, false);
+    return { ok: true, request: r.id, status: r.status, link: sessionLink(c.jobs.workspace, tellPrompt(r.id)), ...(opened ? { opened: true, opened_chat: true } : {}) };
   }
   const applyEnv: ApplyEnv = {
     ctx,
@@ -620,7 +678,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   /** After the user answers on the page: an apply that stopped for them goes on (design §2.3a step 4). */
   const afterAnswer = (role: string) => {
     const last = requests.latest(LANE, 'apply', role);
-    if (last && last.status === 'done' && NEEDS_YOU.test(last.result ?? '') && statusOf(role) !== 'applied' && canApprove(db, role)) return { reapplied: queueApply(role).request };
+    if (last && last.status === 'done' && NEEDS_YOU.test(last.result ?? '') && statusOf(role) !== 'applied' && canApprove(db, role)) return { reapplied: queueApply(role, false).request };
     return {};
   };
 
@@ -632,7 +690,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       return { ok: true, ...r };
     },
     find: (b) => {
-      const out = queue('find', undefined, { count: intIn(b.count ?? (notesOf(ctx).search.data.schedule.daily_picks || 5), 1, 20, 'count') });
+      const out = queue('find', undefined, { count: intIn(b.count ?? (notesOf(ctx).search.data.schedule.daily_picks || 5), 1, 20, 'count') }, { task: (id) => ({ kind: 'find', request: id }), fresh: false });
       // Find fetches first when a source you switched on was never fetched or is older than 6 h: the request waits for
       // the fetch (Claude judges fresh postings, LinkedIn's included), at most 15 minutes.
       if (o.fetchBeforeFind && sourcesStale()) {
@@ -656,6 +714,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       const r = roleArg(b.role);
       if (r.status === 'applied') throw new HttpError(400, 'already applied');
       if (r.status === 'skipped') throw new HttpError(400, 'you skipped this role');
+      if (unprepared(r.id)) return { ...prepareRole(r.id), preparing: true };
       const mode = applyMode(ctx, r, notesOf(ctx).profile.data);
       if (mode.mode !== 'fill') return { ok: true, mode: mode.mode, reason: mode.reason, answers: copyModel(db, r.id).answers };
       if (!canApprove(db, r.id)) throw new HttpError(400, 'Answer the required first-time questions first');
@@ -710,7 +769,14 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       reconcile();
       return { ok: true, ...out };
     },
+    // Opening a pick only shows it: preparing spends tokens, so it waits for the person's Prepare (or Apply) click.
     select: (b) => { selected = roleArg(b.role).id; return { ok: true }; },
+    /** P4: prepare one pick Find didn't prepare ahead (about a minute in the Jobs chat). */
+    prepare: (b) => {
+      const r = roleArg(b.role);
+      if (r.status === 'applied' || r.status === 'skipped') throw new HttpError(400, `this role is ${r.status}`);
+      return prepareRole(r.id);
+    },
     prefs: (b) => {
       const list = prefChanges(b.changes);
       if (!list.length) return { ok: true, changed: [] };
@@ -821,11 +887,13 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     },
     // "Open in Claude": a new Claude Code session in the jobs folder, in Claude desktop (docs/everywhere.md E11). The link
     // is built here from the config, never from the page; the page's frame can't open a claude:// link itself (CSP).
-    openSession: async () => {
+    // With `request` (a waiting Find, Prepare or Apply): that task's chat again, e.g. after the person closed the dialog.
+    openSession: async (b) => {
       if (platform !== 'darwin' && platform !== 'linux') throw new HttpError(404, 'Open in Claude needs macOS or Linux');
-      const link = sessionLink(c.jobs.workspace, setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT);
-      const cmd = platform === 'darwin' ? 'open' : 'xdg-open';
-      await (o.openLink ?? ((l: string) => new Promise<void>((ok, bad) => execFile(cmd, [l], (e) => (e ? bad(new HttpError(500, 'Claude desktop did not open: is it installed?')) : ok())))))(link);
+      const r = b?.request === undefined ? undefined : requests.get(Number(b.request));
+      const task = r && r.lane === LANE && r.status === 'new' ? taskOf(r) : null;
+      if (task) openedFor.add(r!.id);
+      await launch(task ? jobsTaskLink(c.jobs.workspace, task) : sessionLink(c.jobs.workspace, setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT));
       return { ok: true };
     },
     reveal: async (b) => {
@@ -922,9 +990,9 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   function contextFor(r: Request) {
     if (r.lane !== LANE || !r.kind) return undefined;
     refreshFeatures();
-    if (r.kind === 'find') return { daily_picks: notesOf(ctx).search.data.schedule.daily_picks };
+    if (r.kind === 'find') return { daily_picks: notesOf(ctx).search.data.schedule.daily_picks, prepare_ahead: notesOf(ctx).search.data.schedule.prepare_ahead };
     if (r.kind === 'source') return { source: listSources(ctx).find((x) => x.key === r.payload?.key) ?? null };
-    if ((r.kind !== 'apply' && r.kind !== 'improve') || !r.ref || !ROLE_ID.test(r.ref)) return {};
+    if ((r.kind !== 'apply' && r.kind !== 'improve' && r.kind !== 'prepare') || !r.ref || !ROLE_ID.test(r.ref)) return {};
     let role;
     try { role = getRole(db, r.ref); } catch { return { role: null }; }
     const out: any = {
@@ -958,14 +1026,40 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       session_link: sessionLink(c.jobs.workspace, setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT),
       counts: { needs_you: count('first') + count('warn'), ready: count('ready'), in_progress: kinds.filter((k) => !['first', 'warn', 'ready', 'applied'].includes(k)).length, applied_today: count('applied') },
       proposals: pendingCount(db),
-      queue: v.queue.filter((q: any) => q.chip?.kind !== 'applied').slice(0, 6).map((q: any) => ({ company: String(q.company), title: String(q.title), chip: String(q.chip?.text ?? ''), kind: String(q.chip?.kind ?? '') })),
+      queue: v.queue.filter((q: any) => q.chip?.kind !== 'applied').slice(0, 6).map((q: any) => ({ id: String(q.id), company: String(q.company), title: String(q.title), chip: String(q.chip?.text ?? ''), kind: String(q.chip?.kind ?? '') })),
+      ...readyPicks(v.queue),
     };
   }
 
+  /** Picks not applied and with no Apply under way, in the page's order (best first): the panel's "N jobs ready". */
+  function readyPicks(queue: any[]) {
+    const ready = queue.filter((q) => q.chip?.kind !== 'applied' && !requests.latest(LANE, 'apply', q.id));
+    return { ready_total: ready.length, picks: ready.slice(0, 3).map((q) => ({ id: String(q.id), company: String(q.company), title: String(q.title), prepared: !unprepared(q.id) })) };
+  }
+
+  /** The panel's buttons, through the page's own checked actions (the panel can't call those: they are same-origin only). */
+  async function panelAction(b: any): Promise<unknown> {
+    refreshFeatures();
+    const op = String(b?.op ?? '');
+    try {
+      if (op === 'find') return await actions.find({});
+      if (op === 'apply') {
+        const role = String(b.role ?? '');
+        if (!ROLE_ID.test(role) || !todayView(ctx).queue.some((q) => q.id === role)) throw new HttpError(400, 'not one of today\'s picks');
+        return await actions.approve({ role });
+      }
+      throw new HttpError(400, 'op is find or apply');
+    } catch (e) {
+      if (e instanceof RequestError) throw new HttpError(400, e.message);
+      throw e;
+    } finally { emit('server'); }
+  }
+
   return {
-    handle, contextFor, emit, scheduler, glance, agent,
+    handle, contextFor, emit, scheduler, glance, agent, panelAction,
     close() {
       scheduler.stop();
+      for (const t of chatHolds.values()) clearTimeout(t);
       for (const ch of children) { try { ch.kill('SIGKILL'); } catch {} }
       for (const t of timers) clearInterval(t);
       if (flush) clearTimeout(flush);

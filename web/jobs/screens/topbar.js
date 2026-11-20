@@ -13,6 +13,9 @@ export function agentLine(agent) {
   // What waits behind the work in hand goes in the head, which the narrow pane never cuts off: a link pasted or a Find
   // clicked while Claude applies must still show that it was queued.
   if (working) return { dot: 'busy', head: waiting.length ? `Claude is working (${waiting.length} waiting):` : 'Claude is working:', text: `${what(working)}${working.last ? ` · ${working.last.text}` : ''}` };
+  // P4: Crewdeck opened a Jobs chat in front for it (hold: 'chat'): the person confirms the folder and presses Enter there.
+  const inFront = waiting.find((r) => r.hold === 'chat');
+  if (inFront && !working) return { dot: 'wait', head: 'A Jobs chat opened for this:', text: `${what(inFront)} · confirm the folder, then press Enter there` };
   if (waiting.length && !agent.connected) return { dot: 'off', head: 'No Claude session:', text: `${plural(waiting.length, 'request')} waiting` };
   // Find waits for a fresh fetch (hold: 'fetching') before Claude reads anything: say so rather than "waiting".
   if (waiting.length && waiting[0].hold === 'fetching') return { dot: 'busy', head: 'Fetching new postings first…', text: `${what(waiting[0])}${waiting.length > 1 ? ` (+${waiting.length - 1})` : ''}` };

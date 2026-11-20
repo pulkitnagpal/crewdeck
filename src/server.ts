@@ -96,7 +96,7 @@ export function createShell(c: Config, requests = new Requests(), opts: ShellOpt
       // Agent endpoints.
       const m = /^\/api\/requests\/(\d+)\/(done|fail|show|progress)$/.exec(path);
       const tellOrProposals = path === '/api/tell' || path === '/api/proposals';
-      if (path !== '/api/claim' && path !== '/api/requeue' && path !== '/api/today' && path !== '/api/today/todo' && !tellOrProposals && !m) throw new HttpError(404, 'not found');
+      if (path !== '/api/claim' && path !== '/api/requeue' && path !== '/api/today' && path !== '/api/today/todo' && path !== '/api/today/jobs' && !tellOrProposals && !m) throw new HttpError(404, 'not found');
       if (!fromAgent(req, opts.token)) throw new HttpError(401, 'missing or wrong token');
       const b = await readJson(req);
       // Tell Crewdeck (P3): the panel or `crewdeck jobs tell` queues a tell request; the panel and `crewdeck jobs
@@ -117,12 +117,21 @@ export function createShell(c: Config, requests = new Requests(), opts: ShellOpt
         } catch (e) { if (e instanceof TodayError) throw new HttpError(400, e.message); throw e; }
         return json(res, 200, await todayGlance(date));
       }
+      // The panel's Jobs buttons (Find now, Apply on a pick): the same checked actions as the Jobs page's, which open the
+      // task's Jobs chat in front (ADR-0004); then the panel's fresh look.
+      if (path === '/api/today/jobs') {
+        if (!jobsOn()) throw new HttpError(404, 'not found');
+        const out = await (await jobsApi()).panelAction(b);
+        return json(res, 200, { ...(await todayGlance(b.date)), done: out });
+      }
       if (path === '/api/claim') {
         const nonce = String(b.nonce ?? '');
         if (!NONCE.test(nonce)) throw new HttpError(400, 'nonce required');
         const lane = laneFor(c, String(b.cwd ?? ''));
         // take: false is a busy session saying it's still there (presence and its leases) without taking new work.
-        const claimed = requests.claim(lane, String(b.by ?? 'session'), b.take !== false);
+        // want: the request a Jobs chat was opened for, named in its first prompt (at most a few ids).
+        const want = Array.isArray(b.want) ? b.want.slice(0, 4).map(Number).filter((n: number) => Number.isInteger(n) && n > 0) : [];
+        const claimed = requests.claim(lane, String(b.by ?? 'session'), b.take !== false, want);
         // Typed requests travel as kind, ref and payload keys: their values (links, posting text) never reach the prompt.
         const list = claimed.map((r) => (r.kind ? { id: r.id, kind: r.kind, ref: r.ref ?? null, keys: Object.keys(r.payload ?? {}) } : { id: r.id, text: r.text }));
         // The CLI path lets the session close requests without knowing where Crewdeck is installed.
@@ -142,7 +151,7 @@ export function createShell(c: Config, requests = new Requests(), opts: ShellOpt
       if (m![2] === 'show') {
         requests.take(id);
         const context = r.lane === 'jobs' && jobsOn() ? (await jobsApi()).contextFor(r) : undefined;
-        return json(res, 200, { id: r.id, lane: r.lane, kind: r.kind ?? null, ref: r.ref ?? null, status: r.status, text: r.kind ? undefined : r.text, payload: r.payload ?? null, result: r.result ?? null, context });
+        return json(res, 200, { id: r.id, lane: r.lane, kind: r.kind ?? null, ref: r.ref ?? null, status: r.status, hold: r.hold ?? null, text: r.kind ? undefined : r.text, payload: r.payload ?? null, result: r.result ?? null, context });
       }
       if (m![2] === 'progress') return json(res, 200, publicView(requests.progress(id, String(b.text ?? ''))));
       return json(res, 200, publicView(requests.finish(id, String(b.result ?? ''), m![2] === 'fail')));

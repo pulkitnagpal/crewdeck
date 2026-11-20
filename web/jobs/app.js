@@ -87,17 +87,20 @@ function App() {
     if (!funnelAt || todayPv?.at === funnelAt) return;
     preview({}).then((r) => setTodayPv({ at: funnelAt, r })).catch(() => setTodayPv({ at: funnelAt, r: { ok: false, suggestions: [] } }));
   }, [funnelAt]);
+  // P4: Find, Prepare and Apply open a Jobs chat in front (or go to the Jobs chat that is free).
+  const sent = (r) => (r?.opened ? 'A Jobs chat is opening in front of you: confirm the folder, then press Enter' : 'Sent to your Jobs chat');
   const actions = {
     onSelect: (id) => { setSelected(id); act('select', { role: id }).catch(() => {}); },
     onAnswer: (role, v) => run('answer', { role, ...v }, (r) => (r.reapplied ? 'Remembered. Claude continues the application.' : 'Remembered for every later form')),
     onEdit: (role, field_id, text) => run('editAnswer', { role, field_id, text }, 'Saved as your words'),
     onImprove: (role, field_id, instruction) => run('improve', { role, field_id, instruction }, 'Sent to Claude'),
     onSkip: (role, reason, titleWords) => run('notInterested', { role, reason, titleWords }, 'Skipped. Your reason is remembered.').then(() => setSelected(null)),
-    onApply: (role) => run('approve', { role }, (r) => (r.mode === 'copy' ? 'This site takes answers you copy in' : 'Sent to Claude')),
+    onApply: (role) => run('approve', { role }, (r) => (r.mode === 'copy' ? 'This site takes answers you copy in' : sent(r))),
+    onPrepare: (role) => run('prepare', { role }, (r) => (r.prepared ? 'Already prepared' : sent(r))),
     onMarkApplied: (role) => run('markApplied', { role }, 'Marked applied'),
     onCancel: (request) => run('cancel', { request }, 'Cancelled'),
     onReveal: (role) => run('reveal', { role }),
-    onOpenSession: () => run('openSession', {}, 'Claude desktop is opening: confirm the folder, then press Enter on the hello'),
+    onOpenSession: (request) => run('openSession', typeof request === 'number' ? { request } : {}, 'Claude desktop is opening: confirm the folder, then press Enter'),
     onSetup: () => run('setup', {}, 'Claude will start the setup in the chat'),
     onNotes: openNotes,
     onToast: say,
@@ -141,7 +144,7 @@ function App() {
   const warned = (state?.agent?.recent ?? []).find((r) => r.kind === 'link' && sentLinks.current.has(r.id) && /warning|cooldown|already|in progress/i.test(r.result ?? ''));
   return html`<div class="app">
     <${TopBar} screen=${screen} onNav=${nav} agent=${state?.agent} quota=${state?.quota ?? 5} setupNeeded=${!!state?.setup?.needed}
-      onFind=${() => run('find', { count: state?.quota ?? 5 }, 'Sent to Claude')} onLink=${onLink}
+      onFind=${() => run('find', { count: state?.quota ?? 5 }, sent)} onLink=${onLink}
       sources=${state?.sources} onRefresh=${() => run('refreshSources', {}, (r) => (r.already ? 'Already fetching' : 'Fetching new roles (no Claude needed)'))} />
     <${Banners} state=${state} onNotes=${openNotes} onToast=${say} onOpenSession=${actions.onOpenSession} />
     ${warned ? html`<div class="banners"><div class="banner warn"><div class="body"><b>That link wasn't added</b><span class="fix">${warned.result}</span></div>

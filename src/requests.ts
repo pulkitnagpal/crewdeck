@@ -9,7 +9,8 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { HOME, type Config } from './config.ts';
 
 // tell (P3): what the person told Crewdeck (the Tell box, the panel, `crewdeck jobs tell`): intake turns it into a proposal.
-export const JOB_KINDS = ['setup', 'find', 'link', 'apply', 'improve', 'source', 'tell'] as const;
+// prepare (P4): one pick Find didn't prepare ahead, on the person's Prepare click.
+export const JOB_KINDS = ['setup', 'find', 'link', 'apply', 'improve', 'source', 'tell', 'prepare'] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 export type Progress = { at: string; text: string };
 
@@ -19,7 +20,10 @@ export type Request = {
   kind?: JobKind; ref?: string; payload?: Record<string, unknown>; progress?: Progress[];
   /** When Claude took it up (read it with `request show` or posted progress): from then on it is that session's work. */
   taken?: string;
-  /** Held back from claims until Crewdeck finishes something first (`fetching`: a Find waits for fresh postings). */
+  /**
+   * Held back from claims until Crewdeck finishes something first (`fetching`: a Find waits for fresh postings), or kept
+   * for the Jobs chat Crewdeck opened for it (`chat`: only a claim that names it takes it, ADR-0004).
+   */
   hold?: string;
 };
 export type Typed = { kind: JobKind; ref?: string; payload?: Record<string, unknown> };
@@ -58,7 +62,7 @@ export class Requests {
   private items: Request[] = [];
   private file: string;
   private adds = new Map<string, number[]>(); // lane → times of recent adds (rate limit)
-  private seen = new Map<string, { at: number; by: string }>(); // lane → last claim (presence)
+  private seen = new Map<string, { at: number; by: string; idle: boolean }>(); // lane → last claim (presence)
   private heard = new Map<number, number>(); // picked request → when its session was last heard from (the lease; memory only)
   private listeners = new Set<() => void>();
   constructor(file = join(HOME, 'requests.json')) {
@@ -118,25 +122,31 @@ export class Requests {
     return r;
   }
   /** A session of this lane is alive: its bridge claimed (a busy session's bridge claims without taking anything). */
-  markSeen(lane: string, by = 'session') { this.seen.set(lane, { at: Date.now(), by }); }
+  markSeen(lane: string, by = 'session', idle = false) { this.seen.set(lane, { at: Date.now(), by, idle }); }
   /**
    * Is a Claude session working this lane: a claim in the last 10 s. A picked request alone doesn't say so: the session
    * that took it may have crashed (the lease puts it back).
    */
   presence(lane: string) {
     const s = this.seen.get(lane);
-    return { connected: !!s && Date.now() - s.at < SEEN_MS, seen: s ? new Date(s.at).toISOString() : null };
+    const connected = !!s && Date.now() - s.at < SEEN_MS;
+    // idle: its last claim could take work (a busy session's heartbeat can't).
+    return { connected, idle: connected && !!s?.idle, seen: s ? new Date(s.at).toISOString() : null };
   }
   /**
    * Atomically hand a lane's new requests to one session; `take: false` is a busy session's heartbeat (presence only).
    * The session's own picked requests count as heard from, so a long piece of work keeps its lease.
+   * `want`: the request a Jobs chat was opened for (its first prompt names it): taken first, even while busy, and even
+   * when it is kept for that chat (`hold: 'chat'`); never one held for a fetch.
    */
-  claim(lane: string, by: string, take = true): Request[] {
-    this.markSeen(lane, by);
+  claim(lane: string, by: string, take = true, want: number[] = []): Request[] {
+    this.markSeen(lane, by, take);
     this.expire();
     for (const r of this.items) if (r.lane === lane && r.status === 'picked' && r.by === by) this.heard.set(r.id, Date.now());
-    const out = take ? this.items.filter((r) => r.lane === lane && r.status === 'new' && !r.hold) : [];
-    for (const r of out) { r.status = 'picked'; r.by = by; r.updated = now(); r.taken = undefined; this.heard.set(r.id, Date.now()); }
+    const wanted = this.items.filter((r) => r.lane === lane && r.status === 'new' && want.includes(r.id) && (!r.hold || r.hold === 'chat'));
+    const rest = take ? this.items.filter((r) => r.lane === lane && r.status === 'new' && !r.hold && !wanted.includes(r)) : [];
+    const out = [...wanted, ...rest];
+    for (const r of out) { r.status = 'picked'; r.by = by; r.updated = now(); r.taken = undefined; r.hold = undefined; this.heard.set(r.id, Date.now()); }
     if (out.length) this.save();
     return out;
   }

@@ -44,7 +44,7 @@ test('today: the queue, the role\'s answers with sources, first-time questions o
   assert.match(out, /<button[^>]*disabled[^>]*>Apply<\/button>/, 'Apply waits for the first-time answer');
   assert.match(out, /aria-label="Apply"/);
   const r = text(render(html`<${Today} data=${(await s.get(`today?role=${ready}`)).json} state=${state} />`));
-  assert.match(r, /Claude opens the real form/);
+  assert.match(r, /A Jobs chat opens in front of you and fills the real form/);
 });
 
 test('apply panel: every state, as design §2.3a describes it', async () => {
@@ -54,11 +54,17 @@ test('apply panel: every state, as design §2.3a describes it', async () => {
   const show = (panel: any, detail = withPdf, extra = {}) => text(render(html`<${ApplyPanel} d=${detail} panel=${panel} workspace="/tmp/jobs-folder" reveal=${true} ...${extra} />`));
   const P = (request: any, o: any = {}) => applyPanel({ status: 'picked', apply: { mode: 'fill' }, request, connected: true, ...o });
 
-  assert.match(show(P(null)), /Apply.*questions.*Claude opens the real form/);
+  assert.match(show(P(null)), /Apply.*questions.*A Jobs chat opens in front of you and fills the real form/);
   const waiting = show(P(req('new')));
   assert.match(waiting, /Waiting for Claude/);
   assert.match(waiting, /Starts when Claude is free/);
-  assert.match(show(P(req('new'), { connected: false })), /No Claude session is working Jobs: open one in \/tmp\/jobs-folder/);
+  assert.match(show(P(req('new'), { connected: false })), /A Jobs chat opens in front of you for this: confirm the folder, then press Enter\./);
+  assert.match(show(P(req('new'), { connected: false }), withPdf, { openSession: true }), /Open it again/);
+  // P4: a pick Find didn't prepare ahead: Prepare on the person's click, then what the Jobs chat is doing.
+  const unprep = { ...d, counts: { total: 0, known: 0, drafted: 0, first: 0 } };
+  assert.match(show(P(null), unprep, { prepare: { needed: true, request: null } }), /Prepare \(about 1 min\).*Nothing is sent/);
+  assert.match(show(P(null), unprep, { prepare: { needed: true, request: { id: 4, status: 'new', last: '' } } }), /Waiting for the Jobs chat to prepare it/);
+  assert.match(show(P(null), unprep, { prepare: { needed: true, request: { id: 4, status: 'picked', last: 'Reading the form' } } }), /Claude is preparing this role.*Reading the form/);
   const filling = show(P(req('picked', undefined, lines)));
   assert.match(filling, /Claude is filling the form/);
   assert.match(filling, /Open the form/);
@@ -192,6 +198,9 @@ test('first run, banners and the top bar', async () => {
   assert.equal(agentLine({ connected: true, working: [], waiting: [{ label: 'Find jobs', role: null }] }).dot, 'wait');
   // Find waits for a fresh fetch first: the status says so, not "waiting".
   assert.equal(agentLine({ connected: true, working: [], waiting: [{ label: 'Find jobs', role: null, hold: 'fetching' }] }).head, 'Fetching new postings first…');
+  // P4: a Jobs chat opened in front for the request.
+  assert.deepEqual(agentLine({ connected: false, working: [], waiting: [{ label: 'Apply to a role', role: { company: 'Example Labs' }, hold: 'chat' }] }),
+    { dot: 'wait', head: 'A Jobs chat opened for this:', text: 'Apply to a role · Example Labs · confirm the folder, then press Enter there' });
 });
 
 test('posting text is escaped, and a javascript: link never becomes an href', async () => {

@@ -47,7 +47,7 @@ function AnswerBox({ label, options = [], onSave, required = true }) {
   </div>`;
 }
 
-export function ApplyPanel({ d, panel, reveal = false, workspace = '', openSession = false, onOpenSession = noop, onApply = noop, onCancel = noop, onMarkApplied = noop, onAnswer = noop, onReveal = noop, onToast = noop }) {
+export function ApplyPanel({ d, panel, reveal = false, workspace = '', openSession = false, onOpenSession = noop, prepare = null, onPrepare = noop, onApply = noop, onCancel = noop, onMarkApplied = noop, onAnswer = noop, onReveal = noop, onToast = noop }) {
   const p = panel ?? { state: 'ready', progress: [] };
   const c = d.counts;
   const url = safeHref(d.url);
@@ -80,7 +80,7 @@ export function ApplyPanel({ d, panel, reveal = false, workspace = '', openSessi
       break;
     case 'waiting':
       body = html`<div class="state info" role="status"><span class="title"><span class="dot wait"></span>Waiting for Claude</span>
-        <span class="small">${p.connected ? 'Starts when Claude is free.' : html`No Claude session is working Jobs: open one in <code>${workspace}</code>.${openSession ? html` <button type="button" class="btn small primary" onClick=${onOpenSession}>Open in Claude</button>` : ''}`}</span>
+        <span class="small">${p.connected ? 'Starts when Claude is free.' : html`A Jobs chat opens in front of you for this: confirm the folder, then press Enter.${openSession ? html` <button type="button" class="btn small primary" onClick=${() => onOpenSession(p.request)}>Open it again</button>` : ''}`}</span>
         <div class="row-flex">${cancel}</div></div>
         <${Steps} state="waiting" />`;
       break;
@@ -125,9 +125,13 @@ export function ApplyPanel({ d, panel, reveal = false, workspace = '', openSessi
         </div>
         ${p.method === 'account_needed' ? html`<div class="state warn" role="note"><span class="title">This site needs an account</span>
           <span class="small">Create it and sign in in the form tab, then click Continue.</span>${url ? html`<div class="row-flex">${openForm}</div>` : null}</div>` : null}
-        <button type="button" class="btn primary big" disabled=${!d.approvable} onClick=${() => onApply(d.id)}>${p.method === 'account_needed' ? 'Continue' : 'Apply'}</button>
-        <span class="hint">${d.approvable ? 'Claude opens the real form and fills it. You click Submit.'
-          : c.total ? `Answer the ${plural(c.first, 'new question')} first.` : 'Claude is still reading the application form.'}</span>`;
+        ${prepare?.request ? html`<div class="state info" role="status"><span class="title"><span class="dot busy"></span>${prepare.request.status === 'picked' ? 'Claude is preparing this role' : 'Waiting for the Jobs chat to prepare it'}</span>
+            <span class="small">${prepare.request.last || 'About a minute: Claude reads the form, drafts your answers and tailors your resume.'}</span></div>`
+          : prepare?.needed ? html`<button type="button" class="btn primary big" onClick=${() => onPrepare(d.id)}>Prepare (about 1 min)</button>
+            <span class="hint">Claude reads the application form, drafts your answers and tailors your resume in a Jobs chat. Nothing is sent.</span>`
+          : html`<button type="button" class="btn primary big" disabled=${!d.approvable} onClick=${() => onApply(d.id)}>${p.method === 'account_needed' ? 'Continue' : 'Apply'}</button>
+        <span class="hint">${d.approvable ? 'A Jobs chat opens in front of you and fills the real form there. You click Submit.'
+          : c.total ? `Answer the ${plural(c.first, 'new question')} first.` : 'Claude is still reading the application form.'}</span>`}`;
   }
   return html`<aside class="side" aria-label="Apply">
     <div class="panel-head"><h2>Apply</h2>${p.state !== 'ready' && p.state !== 'copy' && p.state !== 'walk_in' ? html`<span class=${cls('chip', { applied: 'ok', needs_you: 'warn', stopped: 'bad', your_turn: 'ok', confirmation: 'ok' }[p.state] ?? 'info')}>${{ waiting: 'Waiting', filling: 'Filling', needs_you: 'Needs you', your_turn: 'Your turn', confirmation: 'Submitted?', stopped: 'Stopped', applied: 'Applied' }[p.state]}</span>` : null}</div>

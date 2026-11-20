@@ -189,6 +189,6 @@ export function Today({ data, state, preview = null, actions = {} }) {
     </nav>
     ${data.detail ? html`<${Detail} d=${data.detail} asking=${data.asking ?? []} exclude=${data.exclude_title_words ?? []} actions=${a}
       panel=${html`<${ApplyPanel} d=${data.detail} panel=${data.panel} reveal=${!!state?.reveal} workspace=${state?.agent?.workspace ?? ''} openSession=${!!state?.agent?.open_session} onOpenSession=${a.onOpenSession}
-        onApply=${a.onApply} onCancel=${a.onCancel} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />`} />` : null}
+        prepare=${data.prepare ?? null} onPrepare=${a.onPrepare} onApply=${a.onApply} onCancel=${a.onCancel} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />`} />` : null}
   </div></div>`;
 }

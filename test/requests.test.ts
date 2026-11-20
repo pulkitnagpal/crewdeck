@@ -154,7 +154,7 @@ test('C4: Cancel closes an open request of its lane as failed; nothing else', ()
 
 test('presence: a claim in the last 10 s; reconcile closes applied/skipped roles', () => {
   const q = new Requests(join(mkdtempSync(join(tmpdir(), 'cdq-')), 'requests.json'));
-  assert.deepEqual(q.presence('jobs'), { connected: false, seen: null });
+  assert.deepEqual(q.presence('jobs'), { connected: false, idle: false, seen: null });
   q.claim('jobs', 's1');
   assert.equal(q.presence('jobs').connected, true);
   assert.equal(q.presence('cockpit').connected, false, 'per lane');

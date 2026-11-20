@@ -20,7 +20,12 @@ export type Today = {
         connected: boolean
         session_link: string
         counts: { needs_you: number; ready: number; in_progress: number; applied_today: number }
-        queue: { company: string; title: string; chip: string; kind: string }[]
+        queue: { id?: string; company: string; title: string; chip: string; kind: string }[]
+        /** Today's picks nobody is applying to yet, best first (P4): the panel's "N jobs ready", Apply on each. */
+        picks?: { id: string; company: string; title: string; prepared: boolean }[]
+        ready_total?: number
+        /** Proposals waiting for Approve or Reject (P3). */
+        proposals?: number
       }
   tickets: { project: string; id: string; title: string; status: string }[]
   more: number
@@ -40,6 +45,7 @@ declare module 'claude-code' {
       install: Shaped<Install>
       here: Shaped<string>
       lastDone: Shaped<number>
+      firstPrompt: Shaped<boolean>
     }
   }
 }

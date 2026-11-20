@@ -66,13 +66,24 @@ test('skills: the six playbooks, each with a name that matches its folder and a 
     assert.doesNotMatch(text, /\/Users\/|\/home\//, `${name}: no home paths`);
   }
   const ws = read('plugin', 'skills', 'jobs-workspace', 'SKILL.md');
-  for (const kind of ['setup', 'find', 'link', 'apply', 'improve', 'source', 'tell']) assert.match(ws, new RegExp(`^## ${kind}\\b`, 'm'), `jobs-workspace works ${kind}`);
+  for (const kind of ['setup', 'find', 'link', 'apply', 'prepare', 'improve', 'source', 'tell']) assert.match(ws, new RegExp(`^## ${kind}\\b`, 'm'), `jobs-workspace works ${kind}`);
   assert.match(ws, /never click/i);
   assert.match(ws, /needs you: /);
   assert.match(ws, /submitted: /);
   assert.match(ws, /background tab/);
   assert.match(ws, /Not picked \(warning\)/, 'the result the page recognises to offer Add it anyway');
   const daily = read('plugin', 'skills', 'jobs-daily-run', 'SKILL.md');
+  // P4: a Jobs chat opened for one task does it first, with the exact prompts Crewdeck sends; Apply stops before Submit.
+  for (const p of ['Crewdeck: run Find request <id>', 'Crewdeck: apply to role <role id> (request <id>)', 'Crewdeck: prepare role <role id> (request <id>)', 'Crewdeck: handle tell request <id>']) assert.ok(ws.includes(`\`${p}\``), p);
+  assert.match(ws, /Do exactly that task first/);
+  assert.match(ws, /stay available/);
+  assert.match(ws, /hold: fetching/);
+  assert.match(ws, /never runs in a chat outside the jobs\s+folder/);
+  // Find judges and picks, and prepares only the top few: the rest wait for the user's Prepare click.
+  assert.match(daily, /schedule\.prepare_ahead/);
+  assert.match(daily, /default \*\*3\*\*/);
+  assert.match(daily, /Never prepare more than `P` here/);
+  assert.doesNotMatch(daily, /prepare each pick/i);
   assert.match(daily, /batches of 10/);
   assert.match(daily, /light, fast model/);
   assert.match(daily, /candidates --budget 40 --batch 10 --need N --start/);

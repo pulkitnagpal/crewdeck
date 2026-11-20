@@ -160,6 +160,8 @@ export const SCHEMAS: Record<string, Schema> = {
       // D36: company (no role at that company) or role (the same title at that company) during the cooldown; and how
       // many roles of one company may be picked or in progress at once.
       cooldown_scope: oneOf(COOLDOWN_SCOPES), per_company: num({ int: true, min: 1, max: 10 }),
+      // P4: how many of Find's picks are prepared right away (the rest on the person's Prepare click).
+      prepare_ahead: num({ int: true, min: 0, max: 50 }),
     }),
     judge_notes: str(),
     rules: map({ t: 'regex' }),
@@ -459,7 +461,7 @@ export type Search = {
     currency: string; floor: number; period: (typeof PAY_PERIODS)[number]; hours_per_week: number | null; days_per_week: number | null; per_unit: string;
     rule: 'top_of_range' | 'bottom_of_range'; unlisted: 'keep' | 'drop'; locale: string; fx: Record<string, number>; fx_updated: string;
   } | null;
-  schedule: { timezone: string; daily_picks: number; cooldown_days: number; cooldown_scope: (typeof COOLDOWN_SCOPES)[number]; per_company: number };
+  schedule: { timezone: string; daily_picks: number; cooldown_days: number; cooldown_scope: (typeof COOLDOWN_SCOPES)[number]; per_company: number; prepare_ahead: number };
   judge_notes: string;
   rules: Record<string, string[]>;
 };
@@ -544,6 +546,7 @@ export const normalise = {
       schedule: {
         timezone: s_(sch.timezone), daily_picks: typeof sch.daily_picks === 'number' ? sch.daily_picks : 5, cooldown_days: typeof sch.cooldown_days === 'number' ? sch.cooldown_days : 60,
         cooldown_scope: sch.cooldown_scope === 'role' ? 'role' : 'company', per_company: typeof sch.per_company === 'number' && sch.per_company >= 1 ? Math.floor(sch.per_company) : 1,
+        prepare_ahead: typeof sch.prepare_ahead === 'number' && sch.prepare_ahead >= 0 ? Math.floor(sch.prepare_ahead) : 3,
       },
       judge_notes: s_(x.judge_notes),
       rules: Object.fromEntries(Object.entries(o(x.rules)).map(([k, v]) => [k, typeof v === 'string' ? [v] : strs(v)])),

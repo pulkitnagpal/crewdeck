@@ -98,7 +98,7 @@ test('normalise fills defaults', () => {
   // v1's "none" (no travel rules a job out) reads as off (D29–D31: exclude.travel: off).
   assert.equal(s.exclude.travel, 'off');
   assert.equal(normalise.search({ exclude: { travel: 'none' } }).exclude.travel, 'off');
-  assert.deepEqual(s.schedule, { timezone: '', daily_picks: 5, cooldown_days: 60, cooldown_scope: 'company', per_company: 1 });
+  assert.deepEqual(s.schedule, { timezone: '', daily_picks: 5, cooldown_days: 60, cooldown_scope: 'company', per_company: 1, prepare_ahead: 3 });
   assert.deepEqual(s.work_pattern, { hours_per_week: { min: null, max: null }, shifts: [], shifts_avoid: [], term_time_only: false });
   assert.equal(s.pay, null);
   assert.equal(normalise.career({}).resume.paper, 'A4');
