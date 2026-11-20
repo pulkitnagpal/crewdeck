@@ -136,16 +136,20 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onSour
   // The rules took most of the pool, or the judge said no to most of what they let through (or both).
   const rulesCause = f.rules.reduce((x, r) => x + r.n, 0) > f.passed_rules;
   const judgeCause = f.passed_rules >= f.need && f.fits < f.need && f.no > 0;
-  const fixes = (preview?.suggestions ?? []).filter((s) => s.more > 0).slice(0, 2);
+  // Most of what passed is another occupation (titles are a score, never a drop): said apart from the rules.
+  const otherCause = (f.other_occupations ?? 0) > f.passed_rules - (f.other_occupations ?? 0);
+  const fixes = (preview?.suggestions ?? []).filter((s) => s.more > 0 || s.raised > 0).slice(0, 2);
   // One quiet line (progressive disclosure): the count and the funnel; the reasons and the fixes open under it.
   return html`<details class="why">
     <summary>
-      <span class="whyhead"><b>Why so few?</b> <span class="count">Find ${f.need} jobs: ${f.picked} picked</span> <span class="soft funnel">· ${f.line}</span></span>
+      <span class="whyhead"><b>Why so few?</b> <span class="count">Find ${f.need} jobs: ${f.picked} picked</span> <span class="soft funnel">· ${f.short ?? f.line}</span></span>
       <span class="whymore" aria-hidden="true">Details</span>
     </summary>
     <div class="whybody">
+      ${f.short && f.short !== f.line ? html`<p>${f.line}</p>` : null}
       ${f.sources?.empty ? html`<p>${f.sources.empty} of ${f.sources.total} sources returned nothing. <button type="button" class="linkbtn" onClick=${onSources}>Open sources</button></p>` : null}
       ${rulesCause && f.rules_line ? html`<p>${f.rules_line}</p>` : null}
+      ${otherCause ? html`<p>${n(f.other_occupations)} of the ${n(f.passed_rules)} that passed your rules are other occupations: set aside, not judged. A kind of job or a title variant in Preferences brings the right ones in.</p>` : null}
       ${judgeCause && f.judge_reasons.length ? html`<div><span>The judge's most common reasons:</span><ul class="reasons">${f.judge_reasons.map((r, i) => html`<li key=${i}>${r.text}${r.n > 1 ? ` (${n(r.n)})` : ''}</li>`)}</ul></div>` : null}
       ${f.sources?.empty && f.sources.why.length ? html`<p>Empty sources: ${f.sources.why.join('; ')}</p>` : null}
       ${f.coverage ? html`<p>${f.coverage}</p>` : null}

@@ -39,7 +39,9 @@ test('presets (deprecated alias, D39): each one is a valid search.md; sources co
   assert.equal(hc.pay.period, 'hour');
   assert.equal(hc.pay.currency, 'USD');
   assert.ok(hc.employment_types.includes('per-diem'));
-  assert.ok(hc.roles.titles.length > 0);
+  // Presets write v0.4 targets (kinds of job), never v1 titles.
+  for (const p of PRESETS) assert.deepEqual(search(p).roles.titles, [], `${p} has no v1 roles.titles`);
+  assert.ok(hc.roles.targets.length > 0 && hc.roles.targets.every((t: any) => t.name && t.titles.length));
   assert.deepEqual(PRESET_QUERIES['healthcare-us'], { families: ['healthcare'], countries: ['us'] });
   assert.deepEqual(PRESET_QUERIES['remote-any-country'], { workplace: ['remote'] });
   // The proposals: real catalog ids, never one of the entries that can't fetch as written (audit 1.4).

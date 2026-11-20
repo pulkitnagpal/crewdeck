@@ -14,6 +14,15 @@
 #              ("buchhalter" → "Finanzbuchhalter").
 #   abbreviations: whole-word-only words and what they stand for. They match only when the user lists them as a
 #              variant; the preview proposes them when a target says the long form.
+#   synonyms:  groups of words or phrases that mean the same inside a title of two or more words ("backend engineer" =
+#              "backend developer" = "back end engineer"). A posting matched through them is a synonym match: it ranks a
+#              little below the person's own words, never drops (ADR-0003).
+#
+# occupations (after the languages): families of titles for the same kind of work, in any language (ADR-0007's first
+# step; ISCO/O*NET codes come later). Each family lists `same` groups (titles that are one job: a synonym match) and the
+# families `adjacent` to it. A posting whose title is in the family of one of the person's targets is a family match;
+# in an adjacent family, an adjacent match. These are scores (title fit 0..1), never drops: only a posting that fits no
+# target at all falls under the "other occupations" floor (ranked last, not judged, counted apart).
 
 gender:
   # Bracketed markers removed from titles (letters joined by / , | . are caught by rule: (m/w/d), (f/m/x), (h/f) …).
@@ -61,6 +70,19 @@ languages:
     stopwords: [of, for, the, and, an, at, with, to, on, our, your, "&", "+"]
     prepositions: [of, for, at, with, to, on]
     endings: [s, es, ing]
+    synonyms:
+      - [engineer, developer, programmer]
+      - [full stack, fullstack]
+      - [backend, back end, server side]
+      - [frontend, front end, client side]
+      - [devops, dev ops]
+      - [machine learning, ml]
+      - [artificial intelligence, ai]
+      - [teacher, educator]
+      - [ux, user experience]
+      - [programme, program]
+      - [optimisation, optimization]
+      - [labourer, laborer]
     abbreviations:
       rn: [registered nurse]
       lpn: [licensed practical nurse]
@@ -125,6 +147,10 @@ languages:
     prepositions: [fur, im, mit, zur, zum, von, bei]
     endings: [in, innen, en, n, e, s, es]
     compound: true
+    synonyms:
+      - [entwickler, programmierer]
+      - [lehrer, lehrkraft]
+      - [krankenpfleger, pflegefachkraft, pflegefachfrau, pflegefachmann]
     abbreviations:
       mfa: [medizinische fachangestellte]
       pta: [pharmazeutisch-technische assistentin]
@@ -151,6 +177,9 @@ languages:
     prepositions: [de, du, des, pour, au, aux, en, sur]
     endings: [e, s, es, x, ne, nes, se, ses]
     swaps: [[eur, euse], [eur, euses], [eur, rice], [eur, rices], [if, ive], [ien, ienne], [er, ere], [er, eres]]
+    synonyms:
+      - [developpeur, programmeur]
+      - [enseignant, professeur]
     abbreviations:
       rh: [ressources humaines]
       daf: [directeur administratif et financier]
@@ -174,6 +203,9 @@ languages:
     prepositions: [de, del, en, para, con, al]
     endings: [a, as, s, es, os]
     swaps: [[o, a], [o, as], [o, os], [e, a]]
+    synonyms:
+      - [desarrollador, programador]
+      - [profesor, docente]
     abbreviations:
       rrhh: [recursos humanos]
       tcae: [tecnico en cuidados auxiliares de enfermeria]
@@ -192,6 +224,9 @@ languages:
     prepositions: [de, do, da, dos, das, em, para, com, no, na]
     endings: [a, as, s, es, os]
     swaps: [[o, a], [o, as], [o, os], [or, ora]]
+    synonyms:
+      - [desenvolvedor, programador]
+      - [professor, docente]
     abbreviations:
       rh: [recursos humanos]
   it:
@@ -209,6 +244,9 @@ languages:
     prepositions: [di, del, della, dei, delle, degli, per, con]
     endings: [a, e, i]
     swaps: [[o, a], [o, i], [o, e], [e, i], [a, e]]
+    synonyms:
+      - [sviluppatore, programmatore]
+      - [insegnante, docente]
     abbreviations: {}
   nl:
     seniority:
@@ -229,7 +267,152 @@ languages:
     endings: [s, en, e]
     swaps: [[er, ster], [er, sters]]
     compound: true
+    synonyms:
+      - [ontwikkelaar, programmeur]
+      - [leraar, docent]
     abbreviations: {}
 
 # Languages that write compounds but have no word lists yet (compound tails still apply to them).
 compound_only: [sv, da, "no", fi]
+
+# Families of occupations (title fit, ADR-0003/0007). ids are stable; titles may be in any of the languages above.
+occupations:
+  software:
+    adjacent: [platform, data-engineering, ml-ai, qa, security, fde]
+    same:
+      - [software engineer, software developer, programmer, swe, sde, software development engineer, softwareentwickler, softwareingenieur, developpeur logiciel, ingenieur logiciel, desarrollador de software, ingeniero de software, desenvolvedor de software, engenheiro de software, sviluppatore software, software ontwikkelaar]
+      - [backend engineer, backend entwickler, developpeur backend, desarrollador backend, desenvolvedor backend, sviluppatore backend]
+      - [full stack engineer, full stack entwickler, developpeur full stack, desarrollador full stack, desenvolvedor full stack, sviluppatore full stack]
+      - [frontend engineer, ui engineer, frontend entwickler, developpeur frontend, desarrollador frontend, desenvolvedor frontend]
+      - [mobile engineer, ios engineer, android engineer, app entwickler]
+      - [web developer, web engineer, webentwickler, developpeur web, desarrollador web]
+      - [tech lead, technical lead, engineering lead]
+  platform:
+    adjacent: [software, data-engineering, security]
+    same:
+      - [site reliability engineer, sre, reliability engineer, production engineer]
+      - [devops engineer, platform engineer, infrastructure engineer, devops, cloud engineer, cloud infrastructure engineer]
+  ml-ai:
+    adjacent: [software, data-engineering, data-science]
+    same:
+      - [ai engineer, ml engineer, machine learning engineer, applied ai engineer, mlops engineer, llmops engineer, mlops, llmops, llm engineer, genai engineer, generative ai engineer, ki entwickler, ingenieur ia, ingeniero de ia]
+  data-engineering:
+    adjacent: [software, ml-ai, platform, data-science]
+    same:
+      - [data engineer, data platform engineer, big data engineer, etl developer, ingeniero de datos]
+      - [analytics engineer]
+  data-science:
+    adjacent: [ml-ai, data-analytics, data-engineering]
+    same:
+      - [data scientist, datenwissenschaftler]
+      - [applied scientist, research scientist]
+  data-analytics:
+    adjacent: [data-science, finance-analysis]
+    same:
+      - [data analyst, datenanalyst, analyste de donnees, analista de datos, analista de dados]
+      - [business intelligence analyst, bi analyst, bi developer, reporting analyst]
+  qa:
+    adjacent: [software]
+    same:
+      - [qa engineer, quality assurance engineer, test engineer, sdet, software tester, test automation engineer, testingenieur]
+  security:
+    adjacent: [platform, software]
+    same:
+      - [security engineer, application security engineer, cloud security engineer, cybersecurity engineer, cyber security engineer]
+  fde:
+    adjacent: [software]
+    same:
+      - [forward deployed engineer, fde, forward deployed software engineer]
+      - [solutions engineer, solution engineer, customer engineer, solutions architect, presales engineer, sales engineer]
+  product:
+    adjacent: [project, design]
+    same:
+      - [product manager, product owner, pm, produktmanager, chef de produit, gerente de producto, gerente de produto, responsable produit]
+      - [technical product manager]
+  project:
+    adjacent: [product]
+    same:
+      - [project manager, projektmanager, projektleiter, chef de projet, jefe de proyecto, gerente de projetos, gerente de proyectos, projectmanager]
+      - [programme manager, delivery manager]
+  design:
+    adjacent: [product]
+    same:
+      - [ux designer, ui ux designer, user experience designer, product designer, interaction designer]
+      - [ux researcher, user researcher]
+  nursing:
+    adjacent: [care-assist]
+    same:
+      - [registered nurse, rn, staff nurse, krankenpfleger, pflegefachkraft, gesundheits und krankenpfleger, infirmier, enfermero, enfermeiro, infermiere, verpleegkundige]
+      - [licensed practical nurse, lpn, licensed vocational nurse, lvn]
+      - [nurse practitioner, np]
+      - [charge nurse, nurse manager, ward manager]
+  care-assist:
+    adjacent: [nursing]
+    same:
+      - [nursing assistant, cna, certified nursing assistant, healthcare assistant, hca, care assistant, pflegehelfer, aide soignant, auxiliar de enfermeria, tcae]
+  teaching:
+    adjacent: [teaching-support]
+    same:
+      - [teacher, educator, lehrer, lehrkraft, enseignant, professeur, profesor, docente, insegnante, leraar, docent]
+      - [lecturer, tutor]
+  teaching-support:
+    adjacent: [teaching]
+    same:
+      - [teaching assistant, learning support assistant, cover supervisor]
+  accounting:
+    adjacent: [bookkeeping, finance-analysis]
+    same:
+      - [accountant, buchhalter, comptable, contador, contabilista, contabile, boekhouder, accounting specialist]
+      - [chartered accountant, certified public accountant, cpa, acca, bilanzbuchhalter]
+  bookkeeping:
+    adjacent: [accounting]
+    same:
+      - [bookkeeper, accounts assistant, accounts payable clerk, accounts receivable clerk, kreditorenbuchhalter, debitorenbuchhalter]
+  finance-analysis:
+    adjacent: [accounting, data-analytics]
+    same:
+      - [financial analyst, finance analyst, fp a analyst, controller]
+  customer-support:
+    adjacent: [customer-success]
+    same:
+      - [customer support agent, customer service representative, csr, support specialist, customer service associate, call center agent, customer care executive]
+  customer-success:
+    adjacent: [customer-support, sales]
+    same:
+      - [customer success manager, csm, customer success associate]
+  sales:
+    adjacent: [customer-success]
+    same:
+      - [account executive, sales executive, sales representative, sales development representative, sdr, bdr, business development representative]
+  marketing:
+    adjacent: [content]
+    same:
+      - [marketing associate, marketing assistant, marketing coordinator, marketing officer, marketing executive, marketing specialist]
+      - [digital marketing specialist, social media specialist, social media manager, growth marketer]
+  content:
+    adjacent: [marketing, translation]
+    same:
+      - [content writer, copywriter, redacteur web, editor de contenidos]
+  translation:
+    adjacent: [content]
+    same:
+      - [translator, ubersetzer, traducteur, traductor, tradutor, traduttore, vertaler, localization specialist, localizador]
+      - [interpreter, dolmetscher, interprete, tolk]
+  warehouse:
+    adjacent: [driving]
+    same:
+      - [warehouse associate, warehouse worker, warehouse operative, package handler, material handler, order picker, picker packer, lagerist, lagermitarbeiter, magasinier, mozo de almacen]
+  driving:
+    adjacent: [warehouse]
+    same:
+      - [truck driver, lorry driver, hgv driver, cdl driver, lkw fahrer, berufskraftfahrer, chauffeur poids lourd]
+      - [delivery driver, courier, repartidor, livreur, kurierfahrer]
+  retail-management:
+    adjacent: [retail]
+    same:
+      - [store manager, retail store manager, shop manager, outlet manager, filialleiter, responsable de magasin, gerente de tienda]
+      - [assistant store manager, asm]
+  retail:
+    adjacent: [retail-management]
+    same:
+      - [sales associate, retail sales associate, store associate, cashier, verkaufer, vendeur, dependiente]

@@ -50,13 +50,17 @@ test('E: backend engineer in India, remote, from a resume: targets checked on po
   ]) posting(p, r);
   const first = preview(p);
   assert.equal(first.pool, 6);
-  assert.equal(first.pass, 2);
+  // Titles are a score (ADR-0003): Platform Engineer (an occupation next to backend) is relevant without a variant;
+  // Product Designer is another occupation, counted apart.
+  assert.equal(first.pass, 4);
+  assert.equal(first.other_occupations, 1);
   assert.ok(first.near.some((g: any) => g.items.some((x: any) => /Platform Engineer/.test(x.label))), 'a near miss the user can add');
   const fix = first.suggestions.find((x: any) => x.kind === 'variants');
   assert.ok(fix, 'a variant fix with its own count');
   // Checked before it is written: the change as a partial search.md, previewed, then saved with the user's yes.
   const tried = preview(p, `roles: { targets: ${JSON.stringify(fix.change['roles.targets'])} }`);
-  assert.deepEqual([tried.pass, tried.was], [4, 2]);
+  assert.deepEqual([tried.pass, tried.was], [4, 4]);
+  assert.equal(fix.raised, 2, 'the two Platform Engineer roles rank as the user\'s own titles');
   assert.deepEqual(fix.pref.map((x: any) => x.path), ['roles.targets[0].titles'], 'one target\'s titles, the rest of it untouched');
   for (const x of fix.pref) pref(p, x.path, JSON.stringify(x.value), 'yes, platform engineer roles too');
   assert.ok(search(p).roles.targets[0].titles.some((t: string) => /platform engineer/i.test(t)));

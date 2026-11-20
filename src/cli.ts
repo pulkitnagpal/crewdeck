@@ -293,6 +293,14 @@ async function up() {
   writeCliWrapper();
   // The jobs workspace's CLAUDE.md and sandbox settings are managed: rewritten on every start, so they follow this Crewdeck.
   if (c.jobs.enabled) (await import('./jobs/setup.ts')).writeWorkspaceFiles(c);
+  // v1 roles.titles become v0.4 targets once, with a Changes line (ADR-0007; idempotent, never a broken note).
+  if (c.jobs.enabled) {
+    try {
+      const { migrateTitles } = await import('./jobs/edit.ts');
+      const m = migrateTitles(join(c.vault, 'jobs', 'search.md'), new Date().toLocaleDateString('en-CA'));
+      if (m.changed) say('· jobs/search.md: your titles are now kinds of job (roles.targets), logged under Changes');
+    } catch (e: any) { say(`! jobs/search.md: titles not updated (${String(e.message).split('\n')[0]})`); }
+  }
   const theme = readFileSync(join(REPO, 'themes', 'backlog.css'), 'utf8');
   // Notes follows Crewdeck's appearance through a managed vault page (SilverBullet's own light/dark switch).
   mkdirSync(join(c.vault, 'Library', 'Crewdeck'), { recursive: true });

@@ -15,9 +15,12 @@ test('jobs check: clean notes pass; a broken note fails with the path and the fi
   assert.equal(ok.code, 0, ok.out + ok.err);
   assert.match(ok.out, /✓ jobs\/search\.md/);
   assert.match(ok.out, /0 errors, 0 warnings/);
+  // Its v1 roles.titles became v0.4 targets on the way (ADR-0007), once.
+  assert.match(ok.out, /updated jobs\/search\.md: your titles are now kinds of job \(roles\.targets\)/);
+  assert.doesNotMatch(jobs(s.home, ['check']).out, /updated jobs\/search\.md/, 'idempotent');
   assert.equal(statSync(s.jobsHome).mode & 0o777, 0o700);
   const file = join(s.vault, 'jobs', 'search.md');
-  writeFileSync(file, readFileSync(file, 'utf8').replace('workplace: [onsite, hybrid]', 'workplace: [onsite, hybird]'));
+  writeFileSync(file, readFileSync(file, 'utf8').replace(/workplace: \[ ?onsite, hybrid ?\]/, 'workplace: [onsite, hybird]'));
   const bad = jobs(s.home, ['check']);
   assert.equal(bad.code, 1);
   assert.match(bad.out, /✗ jobs\/search\.md {2}\(using its last valid version\)/);

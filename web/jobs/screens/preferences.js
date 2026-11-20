@@ -77,11 +77,12 @@ export function PreviewPanel({ pv, busy, dirty, onApply = noop }) {
   if (pv.ok === false) return html`<section class="card pv" aria-label="Preview"><h2>Preview</h2><p class="err" role="status">Can't preview: ${pv.issues.map((i) => `${i.path ? `${i.path}: ` : ''}${i.message}`).join('; ')}</p></section>`;
   if (!pv.pool) return html`<section class="card pv" aria-label="Preview"><h2>Preview</h2><p class="soft">No postings from the last ${pv.days} days yet.</p>
     <${More} summary="Why?"><span>Once your sources are fetched (Refresh sources at the top; add sources on the Sources tab) or you paste job links, this shows what your choices catch.</span></${More}></section>`;
-  const fixes = pv.suggestions.filter((x) => x.more > 0 && Object.keys(x.change).length);
+  const fixes = pv.suggestions.filter((x) => (x.more > 0 || x.raised > 0) && Object.keys(x.change).length);
   return html`<section class="card pv" aria-label="Preview" aria-busy=${busy ? 'true' : 'false'}>
     <h2>Preview <span class="small soft">${plural_(pv.pool, 'posting')} from the last ${pv.days} days</span></h2>
     <p class="count" role="status">${pv.pass.toLocaleString('en-US')} ${pv.pass === 1 ? 'passes' : 'pass'} your rules${pv.was !== null && pv.was !== undefined && dirty ? ` (now ${pv.was.toLocaleString('en-US')})` : ''}</p>
     ${pv.drops.length ? html`<p class="small">Dropped, by first reason: ${pv.drops.slice(0, 5).map((d) => `${d.label} ${d.n.toLocaleString('en-US')}`).join(' · ')}</p>` : null}
+    ${pv.other_occupations ? html`<p class="small soft">Other occupations (not dropped: ranked last and not judged): ${pv.other_occupations.toLocaleString('en-US')}</p>` : null}
     ${pv.single.length ? html`<p class="small soft">Only one thing stops them: ${pv.single.map((d) => `${d.label} ${d.n.toLocaleString('en-US')}`).join(' · ')}</p>` : null}
     ${pv.near.length ? html`<div class="small"><span>Near misses on title:</span><ul>${pv.near.slice(0, 3).map((g) => html`<li key=${g.head}>${g.head} → ${g.items.slice(0, 5).map((x) => `${x.label} (${x.n})`).join(', ')}</li>`)}</ul></div>` : null}
     ${pv.passing.length ? html`<p class="small soft">Passing, e.g.: ${pv.passing.slice(0, 3).map((x) => `${x.title} — ${x.company}`).join(' · ')}</p>` : null}

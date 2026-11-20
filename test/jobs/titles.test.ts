@@ -1,8 +1,8 @@
 // The title matcher (design §24.5, D26): reading a title, word-level matching, modes, level, rank and LinkedIn terms.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { abbreviationsFor, cleanTitle, matchTitle, readTitle, searchTerms, titleMatcher } from '../../src/jobs/titles.ts';
-import { compileRules, describeRules, judgeBrief, prefilter } from '../../src/jobs/rules.ts';
+import { abbreviationsFor, cleanTitle, fitText, matchTitle, readTitle, searchTerms, titleMatcher } from '../../src/jobs/titles.ts';
+import { compileRules, describeRules, isOtherOccupation, judgeBrief, prefilter, titleFitOf } from '../../src/jobs/rules.ts';
 import { normalise, validate } from '../../src/jobs/schema.ts';
 import { rankScore } from '../../src/jobs/pipeline/rank.ts';
 import { searchPlan } from '../../src/jobs/linkedin.ts';
@@ -11,7 +11,9 @@ import { PEOPLE } from './helpers.ts';
 
 const search = (roles: any, extra: any = {}) => normalise.search({ roles, ...extra });
 const rules = (roles: any, extra: any = {}) => compileRules({ search: { data: search(roles, extra) } as any, memory: { data: { items: [] } } as any });
-const keeps = (c: ReturnType<typeof rules>, title: string, language?: string) => prefilter({ title, language }, c).keep;
+/** Eligible and matched as one of the user's own titles (not a synonym or a family: those are lower scores, title-fit.test). */
+const keeps = (c: ReturnType<typeof rules>, title: string, language?: string) => prefilter({ title, language }, c).keep && ['exact', 'words', 'any'].includes(titleFitOf(c, { title, language }).how);
+const relevant = (c: ReturnType<typeof rules>, title: string) => prefilter({ title }, c).keep && !isOtherOccupation(c, { title });
 
 test('reading a title: gender markers go, words split, seniority set apart, ids dropped', () => {
   assert.equal(cleanTitle('Buchhalter (m/w/d)').trim(), 'Buchhalter');
@@ -54,12 +56,14 @@ test('compound tails only for languages that compound: the posting\'s or the use
   assert.ok(keeps(dutch, 'Wijkverpleegkundige'));
 });
 
-test('modes: broad keeps a shared head word and ranks it below; off keeps every title', () => {
+test('modes: broad makes a shared head word relevant and ranks it below; off makes every title fit', () => {
   const words = rules({ titles: [], targets: [{ name: 'B', titles: ['backend engineer'] }] });
   const broad = rules({ targets: [{ name: 'B', titles: ['backend engineer'] }], match: 'broad' });
   const off = rules({ targets: [{ name: 'B', titles: ['backend engineer'] }], match: 'off' });
-  assert.ok(!keeps(words, 'Full Stack Engineer') && keeps(broad, 'Full Stack Engineer') && keeps(off, 'Full Stack Engineer'));
-  assert.ok(!keeps(broad, 'Product Designer') && keeps(off, 'Product Designer'));
+  assert.ok(!keeps(words, 'Full Stack Engineer') && relevant(words, 'Full Stack Engineer'), 'the same family: relevant, not their own title');
+  assert.ok(!relevant(words, 'Mechanical Engineer') && relevant(broad, 'Mechanical Engineer') && keeps(off, 'Mechanical Engineer'));
+  assert.equal(titleFitOf(broad, { title: 'Mechanical Engineer' }).how, 'broad');
+  assert.ok(!relevant(broad, 'Product Designer') && keeps(off, 'Product Designer'));
   assert.equal(matchTitle(broad.titles, 'Full Stack Engineer')?.how, 'broad');
   assert.equal(matchTitle(broad.titles, 'Backend Engineer')?.how, 'exact');
   assert.equal(matchTitle(broad.titles, 'Engineer, Backend')?.how, 'words');
@@ -78,12 +82,12 @@ test('level: entry drops senior words, experienced drops internships, senior dro
   assert.ok(keeps(t('entry', ['team lead']), 'Team Lead'), '"lead" at the end is a role');
 });
 
-test('a title drop names the closest target word', () => {
+test('a title is never a drop (ADR-0003): its fit says how close it is', () => {
   const c = rules({ targets: [{ name: 'Backend engineer', titles: ['backend engineer'] }] });
-  const v = prefilter({ title: 'Full Stack Engineer' }, c);
-  assert.equal(v.keep, false);
-  assert.match((v as any).reason, /"Full Stack Engineer" is not one of your titles \(close to engineer: Backend engineer\)/);
-  assert.doesNotMatch((prefilter({ title: 'Product Designer' }, c) as any).reason, /close to/);
+  for (const t of ['Full Stack Engineer', 'Product Designer', 'Registered Nurse']) assert.equal(prefilter({ title: t }, c).keep, true, t);
+  assert.equal(fitText(titleFitOf(c, { title: 'Full Stack Engineer' })), 'same occupation family as Backend engineer (software)');
+  assert.equal(fitText(titleFitOf(c, { title: 'Mechanical Engineer' })), 'only shares "engineer" with Backend engineer: another occupation');
+  assert.equal(fitText(titleFitOf(c, { title: 'Product Designer' })), 'another occupation');
 });
 
 test('the user\'s own rules.title_gate regex still replaces the matcher', () => {
@@ -130,5 +134,5 @@ test('abbreviations a target could add: RN for registered nurse, SRE for site re
 test('the judge brief names each target', () => {
   const notes = loadJobNotes(PEOPLE.template, null);
   const brief = judgeBrief({ ...notes, search: { ...notes.search, data: search({ targets: [{ name: 'Backend engineer', titles: ['backend engineer', 'SRE'] }], level: 'senior' }) } } as any);
-  assert.match(brief, /Title fit: Backend engineer: backend engineer, SRE\. Level: senior\./);
+  assert.match(brief, /Title and occupation fit: Backend engineer: backend engineer, SRE\. Synonyms and related occupations .* score a little lower, not "no"\. Level: senior\./);
 });

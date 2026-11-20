@@ -7,7 +7,7 @@ import { addEvent, upsertRole } from './db.ts';
 import { cleanHost } from './fields.ts';
 import { type FetchOptions, type NetOptions, guardedFetch } from './net/netguard.ts';
 import type { JobNotes } from './notes.ts';
-import { compileRules, prefilter } from './rules.ts';
+import { compileRules, isOtherOccupation, prefilter } from './rules.ts';
 import { searchTerms } from './titles.ts';
 import { after, plainText } from './text.ts';
 
@@ -178,7 +178,8 @@ export async function searchLinkedin(ctx: Ctx, o: ClientOptions & { days?: numbe
     if (res.stopped) break;
     if (ctx.db.prepare('select 1 from roles where url=?').get(canonicalJobUrl(c.id))) { res.known++; continue; }
     // The card alone often settles it (title, company, location): no detail request for what the rules drop.
-    if (!prefilter({ title: c.title, company: c.company, location: c.location }, compiled).keep) { res.skipped++; continue; }
+    // Another occupation (title fit below the floor) would never be judged: not worth one of LinkedIn's few requests.
+    if (!prefilter({ title: c.title, company: c.company, location: c.location }, compiled).keep || isOtherOccupation(compiled, { title: c.title })) { res.skipped++; continue; }
     if (details >= (o.maxDetails ?? 40) || client.requests >= client.cap) break;
     details++;
     try {

@@ -30,13 +30,14 @@ test('prefilter: the notes\' rules, then company cooldown and one active pick pe
   role(w.ctx, { company: 'Busy Co', title: 'BI Analyst' }, 'picked');
   const busy = role(w.ctx, { company: 'Busy Co' });
   const r = runPrefilter(w.ctx);
-  assert.equal(r.kept, 1);
+  assert.equal(r.kept, 2, 'the analyst role and the engineering one (titles are a score, never a drop: ADR-0003)');
   assert.equal(status(w, ok), 'new');
+  assert.equal(status(w, eng), 'new');
   const rule = (id: string) => reason(w, id).split(':')[0];
-  assert.deepEqual([sales, eng, munich, cheap, cool, busy].map(rule), ['title_exclude', 'title_gate', 'location_elsewhere', 'pay', 'cooldown', 'active_pick']);
+  assert.deepEqual([sales, munich, cheap, cool, busy].map(rule), ['title_exclude', 'location_elsewhere', 'pay', 'cooldown', 'active_pick']);
   const pay = getRole(w.ctx.db, ok);
   assert.deepEqual([pay.pay_min, pay.pay_max, pay.pay_currency, pay.pay_period, pay.pay_status], [60000, 70000, 'EUR', 'year', 'ok']);
-  assert.equal(runPrefilter(w.ctx).kept, 1, 'running again changes nothing');
+  assert.equal(runPrefilter(w.ctx).kept, 2, 'running again changes nothing');
 });
 
 test('refilter: after a preference change, roles dropped in the last N days come back; older drops stay', () => {

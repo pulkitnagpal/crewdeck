@@ -33,6 +33,13 @@ export function judge(ctx: Ctx, verdicts: Verdict[]) {
   const at = nowIso(ctx);
   return tx(ctx.db, () => verdicts.map((v) => {
     const r = getRole(ctx.db, v.role);
+    // A pick read in full at Prepare that turns out not to fit: a "no" sets it aside and clears its eligibility.
+    if (v.eligible === 'no' && ['picked', 'prepared'].includes(r.status)) {
+      ctx.db.prepare('update roles set eligibility=?, evidence=?, score=?, updated_at=? where id=?').run('no', v.evidence, v.score, at, v.role);
+      if (v.reason) addEvent(ctx.db, v.role, 'judge', v.reason, at);
+      setStatus(ctx.db, v.role, 'judged_out', `at prepare: ${v.reason ?? v.evidence}`, at);
+      return { role: v.role, stored: true };
+    }
     if (!['new', 'bench'].includes(r.status)) return { role: v.role, stored: false, why: `status is ${r.status}` };
     ctx.db.prepare('update roles set eligibility=?, evidence=?, score=?, updated_at=? where id=?').run(v.eligible, v.evidence, v.score, at, v.role);
     if (v.reason) addEvent(ctx.db, v.role, 'judge', v.reason, at);

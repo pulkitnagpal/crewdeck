@@ -8,7 +8,7 @@ import { type Issue, MEMORY_KINDS } from './schema.ts';
 import { type FileRoots, readChecked } from '../files.ts';
 import { NOTES, NOTE_NAMES, loadJobNotes } from './notes.ts';
 import { compileRules, describeRules, judgeBrief } from './rules.ts';
-import { meTarget, parsePath, setField } from './edit.ts';
+import { meTarget, migrateTitles, parsePath, setField } from './edit.ts';
 import { retire } from './memory.ts';
 import { RISK, confirmText, featureChanges, widens } from './features.ts';
 
@@ -43,8 +43,11 @@ export function formatIssues(issues: Issue[]): string[] {
 
 function check() {
   const c = context();
+  // v1 roles.titles become v0.4 targets (with synonyms) once, with a Changes line (ADR-0007).
+  const mig = migrateTitles(join(c.vault, NOTES.search), today(c));
   const notes = loadJobNotes(c.vault, c.jobs.home);
   say(`Jobs notes in ${c.vault}`);
+  if (mig.changed) say(`· updated ${NOTES.search}: your titles are now kinds of job (roles.targets): ${mig.targets.map((t) => `${t.name} (${t.titles.join(', ')})`).join('; ')}`);
   for (const n of NOTE_NAMES) {
     const l = notes[n];
     const errs = l.issues.filter((i) => i.level === 'error').length;

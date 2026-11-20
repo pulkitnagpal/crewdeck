@@ -2,7 +2,8 @@
 tags: jobs
 # Preset: onsite-city. On-site or hybrid work in and around your city. Setup with Claude fills in the titles and the city.
 roles:
-  titles: []                 # a job title must contain one of these
+  targets: []                # one per kind of job, e.g. - { name: Barista, titles: [barista, coffee shop assistant] }
+  titles: []
   seniority_prefer: []
   exclude_title_words: [intern, internship]
 workplace: [onsite, hybrid]  # add remote if you also want remote roles

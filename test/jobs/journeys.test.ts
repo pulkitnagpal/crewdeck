@@ -75,9 +75,11 @@ function journey(s: Spec) {
     const dropOf = new Map(pf.drops.map((d: any) => [d.id, d]));
     for (const x of s.postings) {
       const d = dropOf.get(ids.get(`${x.title} — ${x.company}`)) as any;
-      log(`  ${x.title} — ${x.company}: ${d ? `dropped (${d.rule}: ${d.reason})` : 'passes'}`);
-      assert.equal(d?.rule ?? 'pass', x.expect, `${x.title} — ${x.company}: ${d?.reason ?? 'kept'}`);
+      log(`  ${x.title} — ${x.company}: ${d ? `dropped (${d.rule}: ${d.reason})` : x.expect === 'other' ? 'passes, another occupation (not judged)' : 'passes'}`);
+      // 'other': another occupation passes the rules (titles are never a drop, ADR-0003) but is never a candidate.
+      assert.equal(d?.rule ?? 'pass', x.expect === 'other' ? 'pass' : x.expect, `${x.title} — ${x.company}: ${d?.reason ?? 'kept'}`);
     }
+    const others = s.postings.filter((x) => x.expect === 'other').length;
     // 6. Find within a budget: judge-ready candidates in rank order with the funnel, a scripted judge, the picks.
     const brief = ok(p, ['judge-brief']);
     for (const re of s.brief) assert.match(brief, re);
@@ -85,7 +87,8 @@ function journey(s: Spec) {
     const need = 5;
     const run = json(p, ['candidates', '--budget', '20', '--need', String(need), '--start']);
     assert.deepEqual(run.batch.map((c: any) => c.id).sort(), passes.map((x) => ids.get(`${x.title} — ${x.company}`)).sort(), 'every posting that passed the rules is a candidate');
-    assert.equal(run.run.funnel.passed_rules, passes.length);
+    assert.equal(run.run.funnel.passed_rules, passes.length + others);
+    assert.equal(run.run.funnel.other_occupations, others);
     const verdicts = run.batch.map((c: any) => {
       const x = s.postings.find((y) => ids.get(`${y.title} — ${y.company}`) === c.id)!;
       return { role: c.id, eligible: x.judge ?? 'yes', score: x.judge === 'no' ? 20 : 80, evidence: `scripted judge: ${x.title}` };
@@ -94,7 +97,9 @@ function journey(s: Spec) {
     const after = json(p, ['candidates', '--budget', '20', '--need', String(need)]);
     const fits = verdicts.filter((v: any) => v.eligible === 'yes').length;
     assert.equal(after.run.funnel.fits, fits);
-    assert.match(after.run.funnel.line, new RegExp(`^${s.postings.length} fetched → ${passes.length} passed your rules → ${verdicts.length} judged → ${fits} fits?$`));
+    const companies = new Set(verdicts.filter((v: any) => v.eligible === 'yes').map((v: any) => s.postings.find((y) => ids.get(`${y.title} — ${y.company}`) === v.role)!.company)).size;
+    assert.equal(after.run.funnel.fit_companies, companies);
+    assert.match(after.run.funnel.line, new RegExp(`^${s.postings.length} fetched → ${passes.length + others} passed your rules${others ? ` \\(${others} other occupations? set aside\\)` : ''} → ${verdicts.length} judged → ${fits} fits?${fits ? ` from ${companies} compan(y|ies)` : ''}$`));
     log(`find: ${after.run.funnel.line}${after.run.funnel.rules_line ? ` · ${after.run.funnel.rules_line}` : ''}`);
     const picked = ok(p, ['pick', '--n', String(need)]);
     log(`picked:\n${picked.trim()}`);
@@ -154,7 +159,7 @@ journey({
     { title: 'Backend Developer (Go)', company: 'Sample Labs', location: 'Remote, India', source_key: 'weworkremotely', expect: 'pass' },
     { title: 'Backend Engineer', company: 'Placeholder Inc', location: 'Remote', description: 'This role is US only.', source_key: 'remotive', expect: 'other_only' },
     { title: 'Backend Engineer', company: 'Example Budget', location: 'Remote - India', pay_text: '$10,000 – $20,000 a year', source_key: 'weworkremotely', expect: 'pay' },
-    { title: 'Product Designer', company: 'Example Studio', location: 'Remote, India', source_key: 'remotive', expect: 'title_gate' },
+    { title: 'Product Designer', company: 'Example Studio', location: 'Remote, India', source_key: 'remotive', expect: 'other' },
     { title: 'Backend Engineer, Payments', company: 'Demo Fintech', location: 'Remote - India', expect: 'pass', judge: 'no' },
   ],
   targets: ['Backend developer'],
@@ -211,7 +216,7 @@ journey({
     { title: 'Registered Nurse, ICU (Nights)', company: 'Sample Medical Center', location: 'Columbus, OH', pay_text: '$42/hr', expect: 'pass' },
     { title: 'Registered Nurse - Day Shift', company: 'Demo Hospital', location: 'Columbus, OH', pay_text: '$44/hr', description: 'Days only, 7a-7p.', expect: 'pass', judge: 'no' },
     { title: 'RN, Med/Surg', company: 'Placeholder Clinic', location: 'Columbus, OH', pay_text: '$30 - $34 an hour', expect: 'pay' },
-    { title: 'Nursery Assistant', company: 'Example Kids', location: 'Columbus, OH', expect: 'title_gate' },
+    { title: 'Nursery Assistant', company: 'Example Kids', location: 'Columbus, OH', expect: 'other' },
     { title: 'Registered Nurse', company: 'Placeholder Hospital', location: 'Toronto, ON, Canada', expect: 'location_elsewhere' },
   ],
   targets: ['Nurse'],
@@ -268,7 +273,7 @@ journey({
     { title: 'Finanzbuchhalter (m/w/d)', company: 'Example Logistik GmbH', location: 'Berlin', description: 'Hybrid: zwei Tage Homeoffice. Deutsch C1.', pay_text: '52.000 – 58.000 € brutto/Jahr', source_key: 'arbeitsagentur', language: 'de', expect: 'pass' } as any,
     { title: 'Bilanzbuchhalter*in', company: 'Sample Treuhand', location: 'Berlin', source_key: 'arbeitsagentur', expect: 'pass' },
     { title: 'Buchhalterin (m/w/d) Teilzeit', company: 'Demo Praxis', location: 'Berlin', expect: 'pass', judge: 'unclear' },
-    { title: 'Steuerfachangestellte (m/w/d)', company: 'Example Kanzlei', location: 'Berlin', source_key: 'arbeitsagentur', expect: 'title_gate' },
+    { title: 'Steuerfachangestellte (m/w/d)', company: 'Example Kanzlei', location: 'Berlin', source_key: 'arbeitsagentur', expect: 'other' },
     { title: 'Senior Accountant', company: 'Placeholder AG', location: 'München', source_key: 'arbeitsagentur', expect: 'location_elsewhere' },
   ],
   targets: ['Buchhaltung'],
@@ -359,7 +364,7 @@ journey({
     { title: 'Marketing Associate (Fresh Grad)', company: 'Example Foods', location: 'Manila', pay_text: '₱22,000 - ₱25,000 per month', source_key: 'kalibrr', expect: 'pass' },
     { title: 'Marketing Assistant', company: 'Sample Retail', location: 'Makati, Manila', source_key: 'kalibrr', expect: 'pass' },
     { title: 'Senior Marketing Associate', company: 'Demo Corp', location: 'Manila', source_key: 'kalibrr', expect: 'level' },
-    { title: 'Senior Marketing Manager', company: 'Example Brands', location: 'Manila', source_key: 'kalibrr', expect: 'title_gate' },
+    { title: 'Senior Marketing Manager', company: 'Example Brands', location: 'Manila', source_key: 'kalibrr', expect: 'level' },
     { title: 'Marketing Associate', company: 'Placeholder Inc', location: 'Cebu City', source_key: 'kalibrr', expect: 'location_elsewhere' },
   ],
   targets: ['Marketing'],

@@ -3,7 +3,14 @@ tags: jobs
 # Preset: healthcare-us. Clinical and healthcare roles in the United States: state-level places, hourly pay, licences.
 # Setup with Claude keeps the titles that are yours and asks for your states and licences.
 roles:
-  titles: [registered nurse, RN, licensed practical nurse, LPN, nurse practitioner, case manager, care coordinator, medical assistant]
+  # One entry per kind of job; titles match in any order, with synonyms and related occupations ranked a little lower.
+  targets:
+    - { name: Registered nurse, titles: [registered nurse, RN, staff nurse] }
+    - { name: Practical nurse, titles: [licensed practical nurse, LPN, licensed vocational nurse] }
+    - { name: Nurse practitioner, titles: [nurse practitioner, NP] }
+    - { name: Care coordination, titles: [case manager, care coordinator] }
+    - { name: Medical assistant, titles: [medical assistant] }
+  titles: []
   seniority_prefer: []
   exclude_title_words: [intern, director]
 workplace: [onsite, hybrid, remote]   # telehealth and remote case management count as remote

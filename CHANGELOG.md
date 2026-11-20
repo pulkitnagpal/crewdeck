@@ -3,6 +3,19 @@
 What changed for people using Crewdeck. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Crewdeck is not released yet: versions below name the `crewdeck` plugin's version and the state of `main`.
 
+## [Unreleased] — Jobs v2 P1a: titles are a score
+
+- **Titles never drop a posting any more** (ADR-0003): only eligibility does (places, workplace, employment type, pay
+  floor, the title words, companies and industries you excluded, cooldowns). Each posting gets a title fit: your own
+  titles first, then synonyms (developer for engineer, product owner for product manager, RN for registered nurse, in
+  seven languages), the same occupation family, an adjacent one. Postings that fit none of your kinds of job are
+  **other occupations**: ranked last, never judged, counted apart.
+- **Your v1 titles become kinds of job** (`roles.targets`, with synonyms) on the next `crewdeck jobs check` or start,
+  logged under Changes. Presets write kinds of job.
+- **Honest counts**: "7 fits from 2 companies"; a pick set aside at Prepare no longer counts as a fit; the coverage line
+  shows whenever fewer than 3 × N passed; Find picks up to N and never pads.
+- The judge treats your preferences and notes ("prefer startups") as scoring only, never a "no".
+
 ## [0.7.2] (plugin 0.7.3) — Seamless Jobs, a calmer Today
 
 - **Find fetches first** when a source you switched on was never fetched or is over 6 hours old: the request waits for

@@ -3,7 +3,8 @@ tags: jobs
 # Preset: remote-any-country. Remote work from wherever you live. Setup with Claude fills in the titles and places;
 # change anything here, on the Jobs page, or by telling Claude (it runs `crewdeck jobs pref set …`).
 roles:
-  titles: []                 # a job title must contain one of these, e.g. [customer success manager, account manager]
+  targets: []                # one per kind of job, e.g. - { name: Customer success, titles: [customer success manager, account manager] }
+  titles: []
   seniority_prefer: []       # ordering, not a filter, e.g. [senior, lead]
   exclude_title_words: [intern, internship]
 workplace: [remote]          # remote | hybrid | onsite
