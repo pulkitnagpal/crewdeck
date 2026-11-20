@@ -1,6 +1,6 @@
 // The /crewdeck command and the Today panel (docs/everywhere.md E6, E7), against a fake Crewdeck: the token file, the
 // challenge-first hello, /api/today and /api/today/todo, answered by hooks standing for the engine's fs and process.
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 const TOKEN = 'a'.repeat(64)
 const HOME = '/fake/crewdeck-home'
@@ -46,6 +46,7 @@ function fakeCrewdeck(o: { running: boolean }) {
   const run = async (argv: readonly string[], init?: { stdin?: string }) => {
     const ok = (stdout: string) => res(0, stdout, '')
     if (argv[0] === 'sh') return ok(HOME)
+    if (argv[0] === 'test') return ok('')
     if (argv[0] === 'open') { s.opened.push(argv[1] ?? ''); return ok('') }
     if (argv[0] === `${HOME}/bin/crewdeck`) { s.started++; s.running = true; return ok('http://crewdeck.localhost:4848/') }
     if (argv[0] === 'curl') {
@@ -78,6 +79,7 @@ const PANE = {
 
 test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding go to Crewdeck with the token', async ($, on) => {
   const { s, run } = fakeCrewdeck({ running: true })
+  mock.clock(on)
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -97,7 +99,7 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
     expect(await ui.find({ type: 'Text', text: /1 need you · 2 ready to submit/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Acme · Backend Engineer \(Needs you\)/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /TASK-2 Fix login · In Progress/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /needs a Claude Code session open in your jobs folder/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /its own Claude chat, in your jobs folder/ })).toBeDefined()
     await ui.unmount()
   }
 
@@ -117,6 +119,7 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
 
 test('/crewdeck starts Crewdeck when it is not running; /crewdeck jobs opens the Jobs page', async ($, on) => {
   const { s, run } = fakeCrewdeck({ running: false })
+  mock.clock(on)
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -130,23 +133,74 @@ test('/crewdeck starts Crewdeck when it is not running; /crewdeck jobs opens the
   expect(s.opened).toEqual(['http://crewdeck.localhost:4848/#jobs'])
 })
 
-test('without Crewdeck set up, the panel says so and offers Start', async ($, on) => {
+test('not set up yet: /crewdeck shows Welcome with one Set up button; Set up runs the installer and shows its steps, then Today', async ($, on) => {
+  const { s, run } = fakeCrewdeck({ running: false })
+  let installedNow = false
+  mock.clock(on)
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('fs.read', () => { throw new Error('ENOENT') })
-  on('process.run', async (_, e) => ({ value: e.argv[0] === 'sh' ? res(0, HOME, '') : res(127, '', 'not found') }))
+  on('fs.read', (_, e) => {
+    if (!installedNow) return { deny: 'ENOENT' }
+    return { value: e.path.endsWith('config.yaml') ? 'port: 4848\nvault: ~/Crewdeck/vault\n' : `${TOKEN}\n` }
+  })
+  on('process.run', async (_, e) => {
+    if (e.argv[0] === 'test') return { value: res(installedNow ? 0 : 1, '', '') }
+    return { value: await run(e.argv, e.init) }
+  })
+  const spawned: string[] = []
+  on('process.spawn', async function* (_, e) {
+    spawned.push(e.argv.join(' '))
+    expect(e.input).toContain('shasum -a 256')
+    yield { stream: 'stdout' as const, text: 'STEP 1/5 Downloading Node 25.9.0 (about 50 MB)\nSTEP 2/5 Downloading Crewdeck\n' }
+    yield { stream: 'stdout' as const, text: '✓ Jobs is on\n✗ no Chromium-based browser for Jobs\nSTEP 5/5 Starting Crewdeck\n' }
+    installedNow = true
+    s.running = true
+    yield { stream: 'stdout' as const, text: 'DONE http://crewdeck.localhost:4848/\n' }
+    return { value: { code: 0, signal: null } }
+  })
 
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const out = await $.command.run(typed('crewdeck'))
-  expect(out.text).toMatch(/Crewdeck did not start|not set up/)
+  expect(out.text).toMatch(/not set up on this computer yet/)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ type: 'Text', text: /Welcome to Crewdeck/ })).toBeDefined()
+    expect((await ui.find({ key: 'setup' }))?.props.label).toBe('Set up Crewdeck')
+    await ui.unmount()
+  }
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ key: 'start' }))?.props.label).toBe('Start Crewdeck')
+  await ui.press({ key: 'setup' })
+  expect(spawned).toEqual(['sh -s'])
+  // Done: the panel shows Today from the new Crewdeck, with the job search as the next step.
+  expect((await ui.find({ key: 'todo-4' }))?.props.label).toBe('☐ Tweet for the day')
+  expect((await ui.find({ key: 'jobs-session' }))?.props.label).toBe('Start the Jobs session')
+  await ui.unmount()
+})
+
+test('a failed setup says why and offers Try again', async ($, on) => {
+  mock.clock(on)
+  on('command.register', () => ({ value: { command: 'crewdeck' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('fs.read', () => ({ deny: 'ENOENT' }))
+  on('process.run', async (_, e) => ({ value: e.argv[0] === 'sh' ? res(0, HOME, '') : res(1, '', '') }))
+  on('process.spawn', async function* () {
+    yield { stream: 'stdout' as const, text: 'STEP 1/5 Downloading Node\nFAIL the Node download does not match its checksum: nothing was installed\n' }
+    return { value: { code: 1, signal: null } }
+  })
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(typed('crewdeck'))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'setup' })
+  expect(await ui.find({ type: 'Text', text: /does not match its checksum/ })).toBeDefined()
+  expect((await ui.find({ key: 'setup' }))?.props.label).toBe('Try again')
   await ui.unmount()
 })
 
 test('the panel opens only Crewdeck\'s own jobs-session link: any other text, folder or scheme from the server is refused', async ($, on) => {
   const { s, run } = fakeCrewdeck({ running: true })
+  mock.clock(on)
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))

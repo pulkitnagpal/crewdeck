@@ -14,7 +14,7 @@ import { type FSWatcher, existsSync, readFileSync, realpathSync, statSync, watch
 import { parse as parseYaml } from 'yaml';
 import { basename, join, sep } from 'node:path';
 import { type Config, CONFIG_PATH, HOME, REPO, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, featureValue, normaliseJobs, setFeature } from '../config.ts';
-import { JOBS_SESSION_PROMPT, sessionLink } from '../session-link.ts';
+import { JOBS_SESSION_PROMPT, JOBS_SETUP_PROMPT, sessionLink } from '../session-link.ts';
 import { HttpError, SECURITY_HEADERS, fromAgent, fromOwnPage, json, ownRead, readJson, send } from '../http.ts';
 import { type JobKind, type Request, type Requests, RequestError, isOpen } from '../requests.ts';
 import { type Ctx, makeCtx, notesOf, todayOf } from './ctx.ts';
@@ -693,7 +693,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     // is built here from the config, never from the page; the page's frame can't open a claude:// link itself (CSP).
     openSession: async () => {
       if (platform !== 'darwin' && platform !== 'linux') throw new HttpError(404, 'Open in Claude needs macOS or Linux');
-      const link = sessionLink(c.jobs.workspace, JOBS_SESSION_PROMPT);
+      const link = sessionLink(c.jobs.workspace, setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT);
       const cmd = platform === 'darwin' ? 'open' : 'xdg-open';
       await (o.openLink ?? ((l: string) => new Promise<void>((ok, bad) => execFile(cmd, [l], (e) => (e ? bad(new HttpError(500, 'Claude desktop did not open: is it installed?')) : ok())))))(link);
       return { ok: true };
@@ -813,7 +813,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       setup_needed: setupView(notesOf(ctx)).needed,
       connected: requests.presence(LANE).connected,
-      session_link: sessionLink(c.jobs.workspace, JOBS_SESSION_PROMPT),
+      session_link: sessionLink(c.jobs.workspace, setupView(notesOf(ctx)).needed ? JOBS_SETUP_PROMPT : JOBS_SESSION_PROMPT),
       counts: { needs_you: count('first') + count('warn'), ready: count('ready'), in_progress: kinds.filter((k) => !['first', 'warn', 'ready', 'applied'].includes(k)).length, applied_today: count('applied') },
       queue: v.queue.filter((q: any) => q.chip?.kind !== 'applied').slice(0, 6).map((q: any) => ({ company: String(q.company), title: String(q.title), chip: String(q.chip?.text ?? ''), kind: String(q.chip?.kind ?? '') })),
     };

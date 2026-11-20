@@ -1,5 +1,8 @@
 export type CrewdeckLane = string
 
+/** The one-click setup's progress, for the panel. */
+export type Install = { phase: 'none' | 'running' | 'done' | 'failed'; step: string; done: number; lines: string[] }
+
 /** What POST /api/today answers (src/server.ts todayGlance): the Today panel's data. */
 export type Today = {
   date: string
@@ -31,6 +34,7 @@ declare module 'claude-code' {
       today: Shaped<Today | null>
       todayNote: Shaped<string>
       paneOpen: Shaped<boolean>
+      install: Shaped<Install>
     }
   }
 }

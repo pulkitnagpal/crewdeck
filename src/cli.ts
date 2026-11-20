@@ -2,7 +2,9 @@
 // crewdeck — setup | init | up | add-project <name> <path> | doctor | jobs <cmd>
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync, chmodSync, rmSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { join, sep } from 'node:path';
+import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { parse } from 'yaml';
 import { CONFIG_PATH, HOME, REPO, SB_VERSION, TOKEN_PATH, defaults, effectiveAddress, ensureHome, ensureToken, expand, loadConfig, pageUrl, readToken, rotateToken, saveConfig, writeCliWrapper, type Config } from './config.ts';
@@ -18,6 +20,14 @@ import { checkedPath, notCrewdeckFile } from './files.ts';
 
 const say = (s: string) => console.log(s);
 
+/** SHA-256 of each SilverBullet server build Crewdeck installs, as its GitHub release publishes them (asset digests). */
+const SB_SHA256: Record<string, string> = {
+  '2.12.1/darwin-aarch64': 'cd83db88e1759e929eadd5f78130a41f0d4c8ed150a3fa79c914fb8985721c37',
+  '2.12.1/darwin-x86_64': '36fc5c30d5b1471faad3b5a903ff177015839589f880d9861b627c924b4ec0ca',
+  '2.12.1/linux-aarch64': '33000b6f7c879d04d3c72f0bb2e3c79b6f51e829c43f1f95ce1fa24b937a10e2',
+  '2.12.1/linux-x86_64': '0ea5c0575021de354b79bf53fb85f170aca93e228b5593959869ff8841dbb1d3',
+};
+
 async function installSilverBullet(version = SB_VERSION) {
   const bin = silverbulletBin();
   if (existsSync(bin)) {
@@ -31,9 +41,15 @@ async function installSilverBullet(version = SB_VERSION) {
   say(`Downloading SilverBullet ${version}…`);
   const r = await fetch(url);
   if (!r.ok) throw new Error(`download failed (${r.status}): ${url}`);
+  const zip = Buffer.from(await r.arrayBuffer());
+  // Checked against the digest SilverBullet's release publishes, before anything is unpacked or run.
+  const want = SB_SHA256[`${version}/${os}-${arch}`];
+  if (!want) throw new Error(`No pinned checksum for SilverBullet ${version} (${os}-${arch})`);
+  const got = createHash('sha256').update(zip).digest('hex');
+  if (got !== want) throw new Error(`SilverBullet download does not match its checksum (got ${got}): nothing was installed`);
   const dir = join(tmpdir(), `crewdeck-sb-${Date.now()}`);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'sb.zip'), Buffer.from(await r.arrayBuffer()));
+  writeFileSync(join(dir, 'sb.zip'), zip);
   execFileSync('unzip', ['-o', '-q', join(dir, 'sb.zip'), '-d', dir]);
   mkdirSync(join(HOME, 'bin'), { recursive: true });
   cpSync(join(dir, os === 'windows' ? 'silverbullet.exe' : 'silverbullet'), bin);
@@ -59,9 +75,29 @@ function initBoard(path: string, name: string) {
   writeFileSync(cfg, readFileSync(cfg, 'utf8').replace(/^statuses:.*$/m, 'statuses: ["To Do", "In Progress", "Needs you", "Done"]'));
 }
 
+/** A port nothing on this machine listens on (127.0.0.1). */
+function portFree(port: number): Promise<boolean> {
+  return new Promise((ok) => {
+    const s = createNetServer();
+    s.once('error', () => ok(false));
+    s.listen(port, '127.0.0.1', () => s.close(() => ok(true)));
+  });
+}
+
 async function init(args: string[], quiet = false) {
-  const c: Config = existsSync(CONFIG_PATH) ? (loadConfigRaw()) : defaults();
+  const fresh = !existsSync(CONFIG_PATH);
+  const c: Config = fresh ? defaults() : loadConfigRaw();
   const v = flag(args, 'vault'); if (v) c.vault = v;
+  const p = flag(args, 'port');
+  if (p !== undefined) {
+    if (!/^\d+$/.test(p) || Number(p) < 1024 || Number(p) > 65000) throw new Error('--port: a number from 1024 to 65000');
+    c.port = Number(p); c.silverbullet = { ...c.silverbullet, port: Number(p) + 1 };
+  } else if (fresh && !((await portFree(c.port)) && (await portFree(c.silverbullet.port)))) {
+    // Something else already uses Crewdeck's usual ports: a new install takes the next free pair instead of failing.
+    for (let base = c.port + 100; base < c.port + 2000; base += 100) {
+      if ((await portFree(base)) && (await portFree(base + 1))) { c.port = base; c.silverbullet = { ...c.silverbullet, port: base + 1 }; say(`· port ${defaults().port} is in use: Crewdeck uses ${base}`); break; }
+    }
+  }
   saveConfig(c);
   ensureToken();
   await installSilverBullet(c.silverbullet.version);
@@ -361,7 +397,7 @@ const [cmd, ...rest] = process.argv.slice(2);
 // Jobs loads only when used.
 const jobs = (a: string[]) => import('./jobs/cli.ts').then((m) => m.main(a));
 const run: Record<string, (a: string[]) => unknown> = { setup, init: (a: string[]) => init(a), up, open: openCmd, service: serviceCmd, address: addressCmd, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, progress: progressCmd, jobs };
-const USAGE = 'usage: crewdeck setup [--vault <path>] [--preset <name>] [--no-plugin] [--service|--no-service] | init [--vault <path>] | add-project <name> <repo> | up | open [jobs|notes|session] | service install|uninstall|status|restart | address [--short [--name <host>]] [--undo] | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>';
+const USAGE = 'usage: crewdeck setup [--vault <path>] [--port <n>] [--preset <name>] [--no-plugin] [--service|--no-service] | init [--vault <path>] | add-project <name> <repo> | up | open [jobs|notes|session] | service install|uninstall|status|restart | address [--short [--name <host>]] [--undo] | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>';
 if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help' || !Object.hasOwn(run, cmd)) { say(USAGE); process.exit(cmd && !['--help', '-h', 'help'].includes(cmd) ? 1 : 0); }
 // --help never runs a command (jobs has its own help).
 if (cmd !== 'jobs' && (rest.includes('--help') || rest.includes('-h'))) { say(USAGE); process.exit(0); }

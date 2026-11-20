@@ -20,7 +20,8 @@
 //   requests this session holds keep their lease; on start, put back what a previous load of this session held.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Dollar, Register } from 'claude-code'
-import type { Today } from '../types'
+import type { Install, Today } from '../types'
+import { CREWDECK_VERSION, INSTALL_SH } from './install-script'
 
 // A request is either text the person typed (Ask box) or a typed request from a page's own button (kind, ref and the
 // names of its payload fields only: the values, such as links or posting text, are read with `request show`).
@@ -47,9 +48,14 @@ const laneAtom = atom({ plugin: 'crewdeck', key: 'lane' } as const, '', { shape:
 const todayAtom = atom({ plugin: 'crewdeck', key: 'today' } as const, null as Today | null, { shape: 'today-1' })
 const todayNote = atom({ plugin: 'crewdeck', key: 'todayNote' } as const, '', { shape: 'todayNote-1' })
 const paneOpen = atom({ plugin: 'crewdeck', key: 'paneOpen' } as const, false, { shape: 'paneOpen-1' })
+// The one-click setup (docs/everywhere.md E13): where it is, for the panel.
+const installAtom = atom({ plugin: 'crewdeck', key: 'install' } as const, { phase: 'none', step: '', done: 0, lines: [] } as Install, { shape: 'install-1' })
 
-// The token, read once per load (module variables start over on reload, which re-reads it).
+// The token, read once per load (module variables start over on reload, which re-reads it), and the port Crewdeck
+// actually runs on, from its own config (a new install picks another port when the usual one is taken).
 let token = ''
+let livePort = 0
+const P = (port: number) => livePort || port
 
 async function loadToken($: Dollar): Promise<void> {
   const home = await $.process.run(['sh', '-c', 'printf %s "${CREWDECK_HOME:-$HOME/.crewdeck}"'], { timeoutMs: 3000 })
@@ -57,6 +63,9 @@ async function loadToken($: Dollar): Promise<void> {
   try {
     const t = (await $.fs.read(`${home.stdout}/token`)).trim()
     if (/^[a-f0-9]{64}$/.test(t)) token = t
+    const m = /^port:\s*(\d{4,5})\s*$/m.exec(await $.fs.read(`${home.stdout}/config.yaml`).catch(() => ''))
+    const p = Number(m?.[1] ?? 0)
+    livePort = p >= 1024 && p <= 65535 ? p : 0
   } catch {
     // No token yet: Crewdeck hasn't run. Stay quiet and try again later.
   }
@@ -74,7 +83,7 @@ async function curl($: Dollar, port: number, path: string, body: unknown, withTo
   // Headers, body and address go to curl on stdin (--config -), never in its arguments: other users of the computer can
   // read a process's arguments (ps), and the token must not be among them.
   const config = [
-    `url = ${cfg(`http://127.0.0.1:${port}${path}`)}`,
+    `url = ${cfg(`http://127.0.0.1:${P(port)}${path}`)}`,
     'header = "content-type: application/json"',
     ...(withToken ? [`header = ${cfg(`x-crewdeck-token: ${token}`)}`] : []),
     `data-binary = ${cfg(JSON.stringify(body))}`,
@@ -90,7 +99,7 @@ async function curl($: Dollar, port: number, path: string, body: unknown, withTo
 }
 
 const nonce = () => crypto.randomUUID().replace(/-/g, '')
-const proofFor = (n: string, port: number) => sha256Hex(`crewdeck-proof:${token}:${n}:${port}`)
+const proofFor = (n: string, port: number) => sha256Hex(`crewdeck-proof:${token}:${n}:${P(port)}`)
 
 /** The server on this port knows our token: asked with a nonce alone, before the token is sent. */
 async function verified($: Dollar, port: number): Promise<boolean> {
@@ -200,14 +209,62 @@ async function crewdeckHome($: Dollar): Promise<string> {
   return home.exitCode === 0 ? home.stdout : ''
 }
 
+/** Crewdeck has been set up on this computer (its config exists). */
+async function installed($: Dollar): Promise<boolean> {
+  const home = await crewdeckHome($)
+  if (!home) return false
+  const r = await $.process.run(['test', '-f', `${home}/config.yaml`], { timeoutMs: 3000 }).catch(() => null)
+  return r?.exitCode === 0
+}
+
+/** The panel's one setup step: the installer above, its STEP lines shown as they come. Safe to run again. */
+async function runInstall($: Dollar, port: number): Promise<void> {
+  if ((await read($, installAtom)).phase === 'running') return
+  await update($, installAtom, () => ({ phase: 'running', step: 'Starting…', done: 0, lines: [] }))
+  let buffer = ''
+  let url = ''
+  let failed = ''
+  const lines: string[] = []
+  const take = async (line: string) => {
+    const s = line.trim()
+    if (!s) return
+    if (s.startsWith('STEP ')) {
+      const m = /^STEP (\d)\/(\d) (.*)$/.exec(s)
+      await update($, installAtom, (x) => ({ ...x, step: m?.[3] ?? s.slice(5), done: Number(m?.[1] ?? 0) - 1 }))
+    } else if (s.startsWith('FAIL ')) failed = s.slice(5)
+    else if (s.startsWith('DONE ')) url = s.slice(5)
+    else if (/^[✓✗·!]/.test(s)) { lines.push(s); await update($, installAtom, (x) => ({ ...x, lines: lines.slice(-12) })) }
+  }
+  try {
+    const child = $.process.spawn({ argv: ['sh', '-s'], input: INSTALL_SH })
+    for await (const chunk of child) {
+      buffer += chunk.text
+      const parts = buffer.split('\n')
+      buffer = parts.pop() ?? ''
+      for (const l of parts) await take(l)
+    }
+    if (buffer) await take(buffer)
+  } catch (e) {
+    failed ||= String((e as Error)?.message ?? e).slice(0, 300)
+  }
+  if (failed || !url) {
+    await update($, installAtom, (x) => ({ ...x, phase: 'failed', step: failed || 'Setup stopped before it finished. Press Set up again: it carries on where it stopped.' }))
+    return
+  }
+  token = '' // the new Crewdeck wrote its token and config
+  await update($, installAtom, (x) => ({ ...x, phase: 'done', step: 'Crewdeck is ready', done: 5 }))
+  await refreshToday($, port)
+  $.ui.toast('Crewdeck is set up')
+}
+
 /** `crewdeck open --print`: starts Crewdeck when it isn't running (the service, or a detached `up`) and prints its address. */
 async function ensureRunning($: Dollar, port: number): Promise<string | null> {
   if (await verified($, port)) return null
   const home = await crewdeckHome($)
-  if (!home) return 'Crewdeck is not set up on this computer yet: see the README, "Let Claude install it".'
+  if (!home || !(await installed($))) return 'NOT_INSTALLED'
   const cli = `${home}/bin/crewdeck`
   const r = await $.process.run([cli, 'open', '--print'], { timeoutMs: 40_000 }).catch(() => null)
-  if (!r) return `Crewdeck is not set up yet (no ${cli}): run crewdeck setup once.`
+  if (!r) return `Crewdeck is set up but not started yet: press Set up Crewdeck to finish.`
   if (r.exitCode !== 0) return `Crewdeck did not start: ${(r.stderr || r.stdout).trim().split('\n').pop() ?? ''}`
   token = '' // a new start wrote a new token
   return (await verified($, port)) ? null : 'Crewdeck started but does not answer yet: try again in a few seconds.'
@@ -225,13 +282,13 @@ async function refreshToday($: Dollar, port: number, body: Record<string, unknow
   await update($, todayNote, () => '')
 }
 
-/** What the jobs session's message box says (src/session-link.ts JOBS_SESSION_PROMPT): the only text the panel opens. */
-const JOBS_SESSION_Q = encodeURIComponent('Hello! This is my Crewdeck Jobs session.')
+/** What the jobs session's message box says (src/session-link.ts): the only texts the panel opens. */
+const JOBS_SESSION_QS = ['Hello! This is my Crewdeck Jobs session.', 'Hello! Please set up my Crewdeck job search.'].map(encodeURIComponent)
 /** A jobs-session link as Crewdeck builds it: an absolute folder and exactly the fixed hello, nothing else (review: a forged
  * answer from the port must not prefill other words or open another kind of link). */
 function isJobsSessionLink(url: string): boolean {
   const m = /^claude:\/\/code\/new\?folder=([^&#\s]+)&q=([^&#\s]*)$/.exec(url)
-  if (!m || m[2] !== JOBS_SESSION_Q) return false
+  if (!m || !JOBS_SESSION_QS.includes(m[2] ?? '')) return false
   try { return decodeURIComponent(m[1] ?? '').startsWith('/') } catch { return false }
 }
 
@@ -245,10 +302,14 @@ async function openUrl($: Dollar, url: string): Promise<void> {
 async function openToday($: Dollar, port: number): Promise<string> {
   const problem = await ensureRunning($, port)
   await update($, paneOpen, () => true)
-  if (problem) { await update($, todayNote, () => problem); await update($, todayAtom, () => null) }
+  if (problem === 'NOT_INSTALLED') {
+    await update($, todayAtom, () => null)
+    await update($, todayNote, () => '')
+    await update($, installAtom, (x) => (x.phase === 'running' ? x : { phase: 'none', step: '', done: 0, lines: [] }))
+  } else if (problem) { await update($, todayNote, () => problem); await update($, todayAtom, () => null) }
   else await refreshToday($, port)
-  await $.ui.open({ id: PANE, title: 'Crewdeck · Today' })
-  return problem ?? 'Crewdeck is open beside the chat.'
+  await $.ui.open({ id: PANE, title: 'Crewdeck' })
+  return problem === 'NOT_INSTALLED' ? 'Crewdeck is not set up on this computer yet: press Set up Crewdeck in the panel.' : problem ?? 'Crewdeck is open beside the chat.'
 }
 
 const DAY = (iso: string) => {
@@ -286,10 +347,27 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Input } = $.ui.resolve(e)
+    const { Box, Text, Button, Input, Progress } = $.ui.resolve(e)
     const t = await read($, todayAtom)
     const note = await read($, todayNote)
     const glance = e.props.placement === 'widget'
+    const inst = await read($, installAtom)
+    if (!t && (inst.phase !== 'none' || !note)) {
+      // Not set up on this computer: one button does everything (docs/everywhere.md E13).
+      return (
+        <Box flexDirection="column" gap={1}>
+          <Text bold>Welcome to Crewdeck</Text>
+          <Text>Your notes, your projects and a job search, next to this chat. Claude does the work; you decide.</Text>
+          {inst.phase === 'none' && <Box flexDirection="column">
+            <Text dimColor>Set up downloads Node and Crewdeck {CREWDECK_VERSION} (about 70 MB, each checked before it is used), creates your notes in ~/Crewdeck/vault and keeps Crewdeck running in the background. It takes 2 to 5 minutes and needs nothing else from you.</Text>
+          </Box>}
+          {inst.phase === 'running' && <Progress label={inst.step} value={inst.done} max={5} />}
+          {inst.phase === 'failed' && <Text color="error">{inst.step}</Text>}
+          {inst.lines.map((l, i) => <Text key={`il-${i}`} dimColor={!l.startsWith('✗')} color={l.startsWith('✗') ? 'warning' : undefined}>{l}</Text>)}
+          {inst.phase !== 'running' && <Button key="setup" label={inst.phase === 'failed' ? 'Try again' : 'Set up Crewdeck'} variant="primary" onPress={() => runInstall($, port)} />}
+        </Box>
+      )
+    }
     if (!t) {
       return (
         <Box flexDirection="column" gap={1}>
@@ -330,14 +408,14 @@ export const register: Register = (on, options) => {
         {j && 'counts' in j ? (
           <Box flexDirection="column">
             <Text bold>Jobs</Text>
-            {j.setup_needed ? <Text>Not set up yet: open Jobs and click Set up with Claude.</Text> : (
+            {j.setup_needed ? <Text>Next: set up your job search. Claude interviews you in a chat of its own (about 20 minutes, with or without a resume).</Text> : (
               <Text>{[j.counts.needs_you ? `${j.counts.needs_you} need you` : '', j.counts.ready ? `${j.counts.ready} ready to submit` : '', j.counts.in_progress ? `${j.counts.in_progress} in progress` : '', j.counts.applied_today ? `${j.counts.applied_today} applied today` : ''].filter(Boolean).join(' · ') || 'Nothing waiting. Find jobs on the Jobs page.'}</Text>
             )}
             {j.queue.map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
-            {!j.connected && <Text dimColor>Jobs work needs a Claude Code session open in your jobs folder.</Text>}
+            {!j.connected && !j.setup_needed && <Text dimColor>Jobs work needs its own Claude chat, in your jobs folder.</Text>}
             <Box flexDirection="row" gap={1}>
               <Button key="open-jobs" label="Open Jobs" onPress={() => openUrl($, `${t.url}/#jobs`)} />
-              {!j.connected && j.session_link ? <Button key="jobs-session" label="Start the Jobs session" onPress={() => openUrl($, j.session_link)} /> : null}
+              {!j.connected && j.session_link ? <Button key="jobs-session" label={j.setup_needed ? 'Set up my job search' : 'Start the Jobs session'} variant={j.setup_needed ? 'primary' : undefined} onPress={() => openUrl($, j.session_link)} /> : null}
             </Box>
           </Box>
         ) : j && 'error' in j ? <Text color="warning">Jobs: {String(j.error)}</Text> : null}

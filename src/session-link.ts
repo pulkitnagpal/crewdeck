@@ -6,6 +6,8 @@ import { isAbsolute } from 'node:path';
 
 /** What the new jobs session's message box says: the person presses Enter, and the bridge brings Jobs' requests. */
 export const JOBS_SESSION_PROMPT = 'Hello! This is my Crewdeck Jobs session.';
+/** Before the job search is set up: sent in the jobs folder, it starts the setup interview (the jobs-setup skill). */
+export const JOBS_SETUP_PROMPT = 'Hello! Please set up my Crewdeck job search.';
 
 export function sessionLink(folder: string, prompt?: string): string {
   if (!isAbsolute(folder)) throw new Error('a session folder is an absolute path');
