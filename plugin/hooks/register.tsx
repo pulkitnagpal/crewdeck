@@ -443,7 +443,7 @@ export const register: Register = (on, options) => {
           {t.todos.map((x) => (
             <Button key={`todo-${x.line}`} plain label={`${x.done ? '☑' : '☐'} ${x.text}`} onPress={() => toggle(x.line, x.text, !x.done)} />
           ))}
-          <Input key="add-todo" placeholder="Add a to-do and press Enter" submitLabel="add"
+          <Input key="add-todo" placeholder="Add a to-do" submitLabel="add"
             onSubmit={async (v) => { if (v.trim()) await refreshToday($, port, { date: t.date, op: 'add', text: v.trim() }, '/api/today/todo') }} />
         </Box>
 
@@ -455,7 +455,7 @@ export const register: Register = (on, options) => {
             )}
             {j.queue.map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
             {!j.connected && !j.setup_needed && <Text dimColor>Jobs work needs its own Claude chat, in your jobs folder.</Text>}
-            <Box flexDirection="row" gap={1}>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
               <Button key="open-jobs" label="Open Jobs" onPress={() => openUrl($, `${t.url}/#jobs`)} />
               {!j.connected && j.session_link ? <Button key="jobs-session" label={j.setup_needed ? 'Set up my job search' : 'Start the Jobs session'} variant={j.setup_needed ? 'primary' : undefined} onPress={() => openUrl($, j.session_link)} /> : null}
             </Box>
@@ -476,13 +476,13 @@ export const register: Register = (on, options) => {
             {t.tickets.length === 0 && <Text dimColor>No open tickets.</Text>}
             {t.tickets.map((k) => <Text key={`t-${k.project}-${k.id}`}>{k.id} {k.title} · {k.status}{t.projects.length > 1 ? ` (${k.project})` : ''}</Text>)}
             {t.more > 0 && <Text dimColor>and {t.more} more on the boards</Text>}
-            <Box flexDirection="row" gap={1}>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
               {t.projects.map((p) => <Button key={`board-${p.name}`} label={`Open ${p.label === 'Board' ? p.name : p.label} board`} onPress={() => openUrl($, `${t.url}/#board:${p.name}`)} />)}
             </Box>
           </Box>
         )}
 
-        <Box flexDirection="row" gap={1}>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
           <Button key="open" label="Open Crewdeck" variant="primary" onPress={() => openUrl($, `${t.url}/`)} />
           <Button key="notes" label="Today's notes" onPress={() => openUrl($, `${t.url}/#notes/${t.notes_page}`)} />
           <Button key="refresh" label="Refresh" onPress={() => refreshToday($, port)} />
