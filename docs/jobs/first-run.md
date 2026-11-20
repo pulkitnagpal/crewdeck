@@ -1,185 +1,97 @@
-# First run: from zero to your first application (v2)
+# First run: from zero to your first application (v3)
 
-This walks a brand-new user through Crewdeck Jobs on a Mac, in the Claude desktop app, one step at a time. Each step
-says what you do, what you should see, and what to do if you don't. It takes about 30 minutes, most of it the
-interview with Claude. Linux works the same way (the differences are noted).
-
-You type commands in a terminal (or ask Claude to run them for you, step 1). `crewdeck …` below means
-`node src/cli.ts …` run in the folder where you cloned Crewdeck (or `crewdeck …` itself after `npm link`). Paths are the
-defaults; yours differ if you passed `--vault` or changed the config.
+This walks a brand-new user through Crewdeck on a Mac, in the Claude desktop app, one step at a time. Each step says
+what you do, what you should see, and what to do if you don't. It takes about 30 minutes, most of it the interview with
+Claude. Linux works the same way (the differences are noted). You never need a terminal.
 
 **What you need:** a Mac (or Linux) computer, the [Claude desktop app](https://claude.ai/download) with a plan that
-includes Claude Code, an internet connection, and your resume if you have one (no resume is fine too).
+includes its Code tab, Chrome, Brave or Edge, an internet connection, and your resume if you have one (no resume is
+fine too).
+
+`crewdeck …` commands mentioned below are ones Claude runs for you; in Terminal they are `~/.crewdeck/bin/crewdeck …`.
 
 ## 0. Starting fresh if you used Crewdeck before
 
 Skip this if you never ran Crewdeck. To start over as a brand-new user, move your old data aside. **Never delete it**:
-these moves are backups you can put back.
-
-1. Stop the running Crewdeck: `crewdeck service uninstall` if it runs in the background (`crewdeck service status`
-   says), else Ctrl-C in the terminal where `crewdeck up` runs (or stop it where Claude started it).
-   `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:4848/` should then print `000`.
-2. Move the old Crewdeck home, vault and jobs folder aside:
-   ```bash
-   mv ~/.crewdeck ~/.crewdeck.backup-$(date +%Y%m%d)
-   mv ~/Crewdeck/vault ~/Crewdeck/vault.backup-$(date +%Y%m%d)
-   mv ~/Crewdeck/jobs ~/Crewdeck/jobs.backup-$(date +%Y%m%d)
-   ```
-   (If your vault was elsewhere, `vault:` in the old `config.yaml` says where; the jobs folder is `jobs.workspace`.)
-   To go back later: stop Crewdeck, move the new folders aside the same way, and move the backups back to their names.
-3. The plugin: if `claude plugin list` shows `crewdeck@crewdeck` installed from this same checkout, keep it (`crewdeck
-   setup` updates it to this checkout's version and says "the crewdeck plugin is installed and up to date"). If it shows the old `crewdeck-bridge`, or a `crewdeck`
-   marketplace from somewhere else, remove them first (the new marketplace has the same name):
-   ```bash
-   claude plugin uninstall crewdeck-bridge@crewdeck
-   claude plugin marketplace remove crewdeck
-   ```
-
-Your project repos keep their boards (`backlog/` lives in each repo); add them again with `crewdeck add-project`.
-
-## 1. Install
-
-**The easy way: let Claude do it.** In the Claude desktop app, start a new session in the **Code** tab (pick your home
-folder) and paste the prompt from the README's "Let Claude install it". Claude checks git and Node, clones Crewdeck
-into `~/crewdeck`, runs `npm ci` and `crewdeck setup`, explains each step and asks before running anything. Then skip
-to step 3.
-
-**By hand:**
+these moves are backups you can put back. In a Code session, ask Claude to do this for you, or in Terminal:
 
 ```bash
-git clone https://github.com/pulkitnagpal/crewdeck.git
-cd crewdeck
-npm ci
+~/.crewdeck/bin/crewdeck service uninstall
+mv ~/.crewdeck ~/.crewdeck.backup-$(date +%Y%m%d)
+mv ~/Crewdeck/vault ~/Crewdeck/vault.backup-$(date +%Y%m%d)
+mv ~/Crewdeck/jobs ~/Crewdeck/jobs.backup-$(date +%Y%m%d)
 ```
 
-**You should see** npm finish with "added … packages" and no errors. (To try a branch that isn't merged yet:
-`git switch <branch>` before `npm ci`.)
+To go back later: uninstall the service the same way, move the new folders aside, and move the backups back. Your
+project repos keep their boards (`backlog/` lives in each repo).
 
-**Node.** `node --version` must say v22.18 or newer, and **v25 or newer to fetch from job boards** (from 25, Node can
-run the boards' third-party code with no network access of its own). On 22 or 24 everything else works and fetching
-says why it doesn't. On a Mac: the installer from [nodejs.org](https://nodejs.org) ("Current"), or `brew install node`
-if you use Homebrew. **git:** macOS offers to install it (the command line developer tools) the first time you type
-`git`; accept.
+## 1. Add Crewdeck to Claude
 
-**If not:** on a Node older than 22.18, npm warns `EBADENGINE` and Crewdeck's commands fail to start: install a newer
-Node and run `npm ci` again.
+In the Claude desktop app, open the **Code** tab. Click **+** next to the message box → **Plugins** → **Add
+marketplace**, enter `pulkitnagpal/crewdeck`, then install **crewdeck** (scope: user). Or type these two lines in the
+message box, one at a time:
 
-## 2. Set everything up (one command)
-
-```bash
-crewdeck setup --service
+```text
+/plugin marketplace add pulkitnagpal/crewdeck
+/plugin install crewdeck@crewdeck
 ```
 
-`--service` keeps Crewdeck running in the background from now on and starts it when you log in (no admin password;
-`crewdeck service uninstall` removes it). Without it (`--no-service`), you start Crewdeck yourself in step 3.
-(`--vault <path>` puts your notes somewhere else. `--preset <name>` still exists for one release but is deprecated:
-setup with Claude proposes sources from your own profile.)
-
-It does, in order:
-- **Crewdeck's home** `~/.crewdeck/` (private: config, the bridge token, SilverBullet, the tracker) and **your vault**
-  `~/Crewdeck/vault`: your notes.
-- **Jobs:** the five job notes in the vault (empty templates for the interview to fill), the private tracker in
-  `~/.crewdeck/jobs/`, and the job-board providers (downloaded from a pinned commit and checked file by file).
-- **Your jobs folder** `~/Crewdeck/jobs`: the folder you open a Claude session in to work on Jobs. Crewdeck writes a
-  `CLAUDE.md` (the hard rules) and `.claude/settings.json` (Claude Code's sandbox) there and rewrites them on every
-  start, so don't edit them.
-- **The `crewdeck` plugin** in Claude (from this checkout): `/crewdeck` in any session, the bridge that brings your
-  clicks on the Jobs page into the jobs session, and the Jobs skills.
-- With `--service`, **the background service** (a LaunchAgent on a Mac, a `systemd --user` unit on Linux).
-
-**You should see** (with your own paths):
-```
-Setting up Crewdeck…
-Downloading SilverBullet 2.12.1…
-Installed /Users/you/.crewdeck/bin/silverbullet
-Vault ready: /Users/you/Crewdeck/vault
-✓ Jobs is on (/Users/you/.crewdeck/config.yaml)
-✓ /Users/you/.crewdeck/jobs (private), tracker jobs.db (schema v4)
-✓ job notes ready for setup to fill in: me/profile.md, me/career.md, jobs/search.md, jobs/memory.md, jobs/sources.md
-✓ jobs workspace /Users/you/Crewdeck/jobs: CLAUDE.md and .claude/settings.json (managed: rewritten on every init and up)
-✓ browser for reading forms and resume PDFs: Google Chrome
-✓ job-board providers: 137 from career-ops-hq/career-ops@f3b043d (MIT), 166 files verified
-✓ installed the crewdeck plugin in Claude (it loads in new sessions)
-✓ Crewdeck runs in the background now, and starts when you log in (/Users/you/Library/LaunchAgents/io.crewdeck.server.plist)
-
-Done. Now:
-  1. Crewdeck is running at http://crewdeck.localhost:4848 (open it in any browser, or in Claude desktop's browser pane).
-  2. In any Claude session, type /crewdeck for today's to-dos, jobs and tickets beside the chat.
-  3. For Jobs: in Claude desktop, start a new Code session in the folder /Users/you/Crewdeck/jobs
-     and say hello. Then click "Set up with Claude" on the Jobs page: Claude interviews you there.
-```
-Without `--service`, line 1 says to start Crewdeck with `crewdeck up` and leave it running.
-Running it again is safe: it never overwrites a note you changed (those show as "kept your …").
+**You should see** crewdeck in the plugin list as installed.
 
 **If not:**
-- The SilverBullet download needs internet and `unzip`.
-- "no Chromium-based browser": install Chrome, Chromium, Brave or Edge (or set `jobs.browser` in the config to its
-  full path). Jobs needs one to read forms and print resume PDFs.
-- The providers line failed (offline, GitHub down): pasted links still work; run `crewdeck jobs providers install`
-  later.
-- The plugin line failed: "claude is not on PATH" means Claude Code's command line isn't installed; in Claude desktop
-  use + → Plugins → Add marketplace with the path of your checkout, then install `crewdeck`. "a marketplace called
-  crewdeck is already added from somewhere else": see step 0.3, then run `crewdeck setup` again.
+- macOS asks to install the "command line developer tools": click **Install** and wait for it to finish, then add the
+  marketplace again. Claude uses them (git) to fetch plugins; Crewdeck itself doesn't.
+- "a marketplace called crewdeck is already added": you added it before; install **crewdeck** from it.
 
-`crewdeck doctor` checks everything; until the next step its last line is "✗ Crewdeck isn't running on port 4848".
-If it says "✗ another Crewdeck answers on port 4848 (its notes: …), not this one", an older Crewdeck is still running:
-stop it (step 0.1).
+## 2. Type /crewdeck and click Set up Crewdeck
 
-## 3. Open Crewdeck and the Jobs tab
+Start a **new** Code session (a plugin loads in sessions started after it was installed), in any folder, and type
+`/crewdeck`.
 
-With the background service, Crewdeck is already running: go to **http://crewdeck.localhost:4848** in any browser, or
-in the Claude desktop app's Code tab ask Claude to "open Crewdeck" (it opens the page in the browser pane). In any
-session, `/crewdeck` opens a panel beside the chat with today's to-dos, what Jobs waits on and your tickets.
+**You should see** a panel beside the chat: **Welcome to Crewdeck**, what setup does, and **Set up Crewdeck**. Click
+it. The panel shows each step:
+1. Downloading Node (about 50 MB, from nodejs.org; checked against its published checksum before it is used).
+2. Downloading Crewdeck (from its GitHub release; checked the same way).
+3. Installing what Crewdeck needs (a minute or two).
+4. Setting up your notes (`~/Crewdeck/vault`), Jobs, the job-board providers and the background service (Crewdeck
+   starts when you log in, and comes back by itself if it stops).
+5. Starting Crewdeck.
 
-Without the service, either:
-- **From a terminal:** `crewdeck up` (with Node 25 for job-board fetching). It prints
-  `Crewdeck on http://crewdeck.localhost:4848  (notes: …; projects: none yet)` and keeps running; leave that window
-  open. Then open that address as above.
-- **From Claude:** type `/crewdeck`, or ask "open Crewdeck": it starts Crewdeck in the background and opens it.
-
-Click **Jobs** in the rail on the left.
-
-**You should see**, in the same light or dark as Claude:
-- the tabs **Today · Sources · Applications · What Claude knows · Preferences · Settings**, and **Find 5 jobs** greyed
-  out (it waits for setup);
-- under them, **No Claude session** on Jobs, **No sources yet** with **Open Sources**, and **Paste a job link**;
-- on Today, the **Set up Jobs** card: four steps, your jobs folder with **Copy** and "not connected yet", and the
-  buttons **Set up with Claude** and **I'll edit the files**.
-
-![The setup card on a new install](../img/jobs-setup-light.png)
+Then the panel shows **Today**: your to-dos (empty for now), **Jobs** with **Set up my job search**, and buttons to open
+Crewdeck. Crewdeck itself is at **http://crewdeck.localhost:4848** (Claude's browser pane or any browser).
 
 **If not:**
-- `EADDRINUSE`: something else uses 4848 or 4849 (an older Crewdeck?). Stop it, or change `port` and
-  `silverbullet.port` in `~/.crewdeck/config.yaml` (and the plugin's `port`).
-- Notes is blank: wait a few seconds on the first start (it indexes the vault). The browser pane logs a service worker
-  error for Notes; that is harmless.
+- A step says it could not download: check your internet connection and click **Try again**: setup carries on where it
+  stopped. Nothing half-downloaded is ever used.
+- "✗ no Chromium-based browser": install Chrome, Brave or Edge; Jobs needs one to read forms and print resume PDFs.
+- Something else already uses port 4848: setup picks the next free port and says so (the panel follows it).
 
-## 4. Open a Claude Code session in your jobs folder
+## 3. Set up my job search
 
-Click **Open in Claude** on the setup card (or run `crewdeck open session`). Claude desktop opens a new Code session in
-your jobs folder: it asks you to confirm the folder (it always asks for a folder that comes from a link), and puts
-"Hello! This is my Crewdeck Jobs session." in the message box. Press Enter.
+Click **Set up my job search** in the panel (the Jobs page has the same button, **Open in Claude**). Claude desktop asks
+you to confirm the folder `~/Crewdeck/jobs` (it always asks for a folder that comes from a link), and opens a new chat
+there with "Hello! Please set up my Crewdeck job search." in the message box. Press Enter.
 
-By hand instead: in Claude desktop's Code tab, start a **new** session and pick the folder `~/Crewdeck/jobs` in the
-folder chooser (the setup card shows the full path; **Copy** puts it on your clipboard), then say hello.
-
-**You should see** within a few seconds: the session's status line reads `Crewdeck · jobs`, the card's "not connected
-yet" turns into **Claude connected**, and the top bar says **Claude connected**.
+This chat is Claude's job-search workspace: it works on Jobs only from here, with its own safety rules (Claude Code's
+sandbox), and the Jobs page shows **Claude connected** while it is open.
 
 **If not:**
-- Still "No Claude session": `claude plugin list` must show `crewdeck@crewdeck` enabled, with the plugin's `port` equal
-  to Crewdeck's. A session started before the plugin was installed doesn't have it: start a new one (or restart the
-  Claude app). Send any message to wake the session: the bridge checks in every few seconds.
-- "Crewdeck: server failed its identity check": Crewdeck isn't running on that port, or it restarted with a new token.
-  Start it, then send a message.
+- Nothing opens: Claude desktop must be installed (your browser may ask once to open it). Or start a Code session by
+  hand and pick the folder `~/Crewdeck/jobs` in its folder chooser.
 - Linux: Bash refuses to run in this folder without `bubblewrap` and `socat` (the jobs folder's sandbox): install them.
+
+## 4. Open Crewdeck
+
+Click **Open Crewdeck** in the panel, or ask Claude to "open Crewdeck" (it opens the page in Claude's browser pane).
+The rail on the left has **Notes** (your files on the left, **Today** and formatting buttons at the top) and **Jobs**.
+
+On **Jobs → Today** you see the setup card while the interview runs, and your picks once Find has run. The interview
+(step 5) happens in the job-search chat.
 
 ## 5. Set up with Claude (the interview)
 
-Click **Set up with Claude**.
-
-**You should see** a toast in the session ("Crewdeck: 1 request for jobs") once it is idle, and Claude starts the
-`jobs-setup` interview in that chat; the card says **Claude is setting up Jobs with you in the chat**. Answer in your
+The hello you sent in step 3 starts the interview. (From the Jobs page, **Set up with Claude** does the same: a toast
+in the session, "Crewdeck: 1 request for jobs", and the card says **Claude is setting up Jobs with you in the chat**.) Answer in your
 own words and your own language. Claude proposes, you confirm; it writes nothing you didn't say yes to.
 
 If you clicked before the session was open, the card says **Waiting for a Claude session** ("No Claude session is
@@ -354,7 +266,7 @@ setup skill runs again over your current notes, and Claude writes only what you 
 - **Open in Claude** needs the Claude desktop app; your browser may ask once whether to open it.
 - **`crewdeck.localhost`** works in Chrome, Edge, Brave, Firefox, Safari and Claude's browser pane with nothing set up.
   An address without the port is optional: `crewdeck address --short` (your admin password, once).
-- **The plugin loads only in new sessions.** A session that was open before `crewdeck setup` never connects: start a
+- **The plugin loads only in new sessions.** A session that was open before you installed the plugin never connects: start a
   new one in `~/Crewdeck/jobs`.
 - **Requests wait for an idle session.** While Claude is answering you, page clicks queue up ("Waiting for Claude");
   they start when it finishes.

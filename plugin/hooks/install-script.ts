@@ -4,7 +4,7 @@
 //
 //   ~/.crewdeck/runtime/node-v<NODE>-<platform>/   Node, from nodejs.org (its SHASUMS256.txt digests)
 //   ~/.crewdeck/app/<VERSION>/                    Crewdeck, from its GitHub release (the asset's digest), npm ci'd
-//   then: crewdeck setup --service --no-plugin    the vault, Jobs, the background service (the plugin is already in)
+//   then: crewdeck setup --from-plugin --service  the vault, Jobs, the background service (the plugin is already in)
 //
 // Test hooks (the person's own environment only): CREWDECK_HOME, CREWDECK_VAULT, CREWDECK_PORT, CREWDECK_NO_SERVICE=1, and
 // CREWDECK_NODE_URL / CREWDECK_NODE_SHA256 / CREWDECK_APP_URL / CREWDECK_APP_SHA256 to install from local copies.
@@ -89,8 +89,8 @@ else
 fi
 
 step "4/5 Setting up your notes, Jobs and the background service"
-set -- setup --no-plugin --service
-[ "\${CREWDECK_NO_SERVICE:-}" = 1 ] && set -- setup --no-plugin --no-service
+set -- setup --from-plugin --service
+[ "\${CREWDECK_NO_SERVICE:-}" = 1 ] && set -- setup --from-plugin --no-service
 [ -n "\${CREWDECK_VAULT:-}" ] && set -- "$@" --vault "$CREWDECK_VAULT"
 [ -n "\${CREWDECK_PORT:-}" ] && set -- "$@" --port "$CREWDECK_PORT"
 CREWDECK_HOME="$CREWDECK_HOME" node "$APP/src/cli.ts" "$@"

@@ -3,6 +3,34 @@
 What changed for people using Crewdeck. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Crewdeck is not released yet: versions below name the `crewdeck` plugin's version and the state of `main`.
 
+## [0.7.0] — Two-step onboarding
+
+Installing Crewdeck is now two steps inside the Claude desktop app, with nothing to install by hand
+([design E13](docs/everywhere.md)):
+
+1. Add the `crewdeck` plugin (Code tab: + → Plugins → Add marketplace `pulkitnagpal/crewdeck`).
+2. Type `/crewdeck` and click **Set up Crewdeck**.
+
+### Added
+
+- **One-click setup in the `/crewdeck` panel**: downloads Node 25.9.0 from nodejs.org and the Crewdeck release from
+  GitHub, each checked against a SHA-256 pinned in the plugin before anything runs; installs into `~/.crewdeck`; sets up
+  the notes, Jobs and the background service; shows each step; carries on where it stopped after a failure. No git, no
+  Node, no terminal.
+- **Set up my job search** in the panel opens the job-search chat with "Please set up my Crewdeck job search." ready to
+  send, which starts the interview.
+- A fresh setup picks free ports when 4848/4849 are taken; the plugin reads the port from Crewdeck's config.
+- `scripts/release.sh` builds the release download and prints the checksum to pin.
+
+### Changed
+
+- The SilverBullet download in setup is checked against its release's published SHA-256.
+- The README and first-run guide start with the two steps; the source install moved under "From source (developers)".
+
+### Removed
+
+- "Let Claude install it" (the prompt to paste) and the plan for a separate Mac app: the plugin does it all.
+
 ## [Unreleased] — Crewdeck everywhere (plugin 0.6.0)
 
 One address, always on, in every Claude session ([design](docs/everywhere.md)).

@@ -10,8 +10,9 @@ set up). It shows the person's notes, Jobs and project boards. It runs in the ba
 otherwise only while `crewdeck up` runs.
 
 `crewdeck` is the Crewdeck CLI. If it isn't on the PATH, use `~/.crewdeck/bin/crewdeck` (written the first time Crewdeck
-started). If neither exists, Crewdeck isn't set up on this computer: say so, and point at the README's "Let Claude install
-it" section. Don't install anything without the person's yes.
+started). If neither exists, Crewdeck isn't set up on this computer yet: tell the person to type `/crewdeck` and click
+**Set up Crewdeck** in the panel (it downloads and checks everything it needs, a few minutes). Don't install anything
+yourself.
 
 1. **The panel beside the chat.** Tell the person they can type `/crewdeck`: it opens the Today panel (today's to-dos,
    what Jobs is waiting on, open tickets) and starts Crewdeck if needed. You can't type it for them.

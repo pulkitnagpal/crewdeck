@@ -183,11 +183,12 @@ test('every crewdeck command in the skills, the generated workspace CLAUDE.md an
 
 // ---- the plugin ----
 
-test('the plugin is named crewdeck (0.6.0) everywhere; the bridge keeps its token and proof', () => {
+test('the plugin is named crewdeck (0.7.0) everywhere; the bridge keeps its token and proof', () => {
   const p = JSON.parse(read('plugin', '.claude-plugin', 'plugin.json'));
   assert.equal(p.name, 'crewdeck');
   assert.equal(p.displayName, 'Crewdeck');
-  assert.equal(p.version, '0.6.0');
+  assert.equal(p.version, '0.7.0');
+  assert.equal(JSON.parse(read('package.json')).version, p.version, 'the app and the plugin release together');
   const m = JSON.parse(read('.claude-plugin', 'marketplace.json'));
   assert.deepEqual(m.plugins.map((x: any) => x.name), ['crewdeck']);
   const reg = read('plugin', 'hooks', 'register.tsx');

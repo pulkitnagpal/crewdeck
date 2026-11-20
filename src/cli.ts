@@ -142,13 +142,18 @@ async function setup(args: string[]) {
   const preset = flag(args, 'preset');
   for (const l of await jobsInit({ preset, quiet: true })) say(l);
   const c = loadConfig();
-  let plugin = false;
-  if (args.includes('--no-plugin')) say('· plugin not installed (--no-plugin)');
+  // --from-plugin: the /crewdeck panel's one-click setup runs this; the plugin is already in Claude, and the panel shows
+  // the next steps itself.
+  const fromPlugin = args.includes('--from-plugin');
+  let plugin = fromPlugin;
+  if (fromPlugin) { /* already installed */ }
+  else if (args.includes('--no-plugin')) say('· plugin not installed (--no-plugin)');
   else { const p = installPlugin(c.port); plugin = p.ok; say(`${p.ok ? '✓' : '✗'} ${p.text}`); }
   // Always on (docs/everywhere.md E4): only when asked. The README's install prompt has Claude ask the person first.
   const svc = await import('./service.ts');
   if (args.includes('--service')) { for (const l of svc.installService()) say(l); }
   else if (!args.includes('--no-service') && !svc.serviceInstalled()) say('· Crewdeck runs only while crewdeck up runs. To keep it running in the background (it starts when you log in): crewdeck service install');
+  if (fromPlugin) return;
   const running = svc.serviceInstalled() && (await svc.waitForCrewdeck(c.port, 15_000));
   say(['', 'Done. Now:',
     running ? `  1. Crewdeck is running at ${pageUrl(c)} (open it in any browser, or in Claude desktop's browser pane).` : `  1. Start Crewdeck: crewdeck up (leave it running), then open ${pageUrl(c)}`,
@@ -397,7 +402,7 @@ const [cmd, ...rest] = process.argv.slice(2);
 // Jobs loads only when used.
 const jobs = (a: string[]) => import('./jobs/cli.ts').then((m) => m.main(a));
 const run: Record<string, (a: string[]) => unknown> = { setup, init: (a: string[]) => init(a), up, open: openCmd, service: serviceCmd, address: addressCmd, 'add-project': addProject, doctor, requests: requestsCmd, request: requestCmd, progress: progressCmd, jobs };
-const USAGE = 'usage: crewdeck setup [--vault <path>] [--port <n>] [--preset <name>] [--no-plugin] [--service|--no-service] | init [--vault <path>] | add-project <name> <repo> | up | open [jobs|notes|session] | service install|uninstall|status|restart | address [--short [--name <host>]] [--undo] | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>';
+const USAGE = 'usage: crewdeck setup [--vault <path>] [--port <n>] [--preset <name>] [--no-plugin|--from-plugin] [--service|--no-service] | init [--vault <path>] | add-project <name> <repo> | up | open [jobs|notes|session] | service install|uninstall|status|restart | address [--short [--name <host>]] [--undo] | doctor | requests | request done|fail|show <id> [--result-file <path>] | progress <id> --text-file <path> | jobs <cmd>';
 if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help' || !Object.hasOwn(run, cmd)) { say(USAGE); process.exit(cmd && !['--help', '-h', 'help'].includes(cmd) ? 1 : 0); }
 // --help never runs a command (jobs has its own help).
 if (cmd !== 'jobs' && (rest.includes('--help') || rest.includes('-h'))) { say(USAGE); process.exit(0); }

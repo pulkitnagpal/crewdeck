@@ -28,40 +28,24 @@ service it is always running ([Always on](#always-on-and-from-anywhere)).
 in Pune, a new graduate, a warehouse worker without a resume, a freelance translator, an engineer who wants remote work.
 Claude talks with you in your own language; the page itself is in English for now.
 
-What you need today:
-- **A desktop or laptop computer** with macOS or Linux. Crewdeck runs on your own computer, and Claude fills forms in a
-  browser next to it, so it doesn't work on a phone or tablet. (Windows: not yet.)
-- **The [Claude desktop app](https://claude.ai/download)** with a plan that includes Claude Code (its **Code** tab).
-- **About 30 minutes** with Claude for the first setup: an interview about your work and what you're looking for.
-  A resume helps but isn't needed.
-- Claude can install it for you (below). You don't need to know how to program.
+What you need: a Mac or Linux computer with the [Claude desktop app](https://claude.ai/download) on a plan that
+includes its **Code** tab, and Chrome, Brave or Edge (Claude fills job forms in it). Nothing to install by hand and no
+programming. Windows: not yet.
 
-## Let Claude install it
+## Get started: two steps
 
-Open the Claude desktop app, start a new session in the **Code** tab (any folder, for example your home folder), and
-paste this:
+1. **Add Crewdeck to Claude.** In the Claude desktop app, open the **Code** tab, click **+** next to the message box →
+   **Plugins** → **Add marketplace**, enter `pulkitnagpal/crewdeck`, and install **crewdeck**. (Or type
+   `/plugin marketplace add pulkitnagpal/crewdeck`, then `/plugin install crewdeck@crewdeck`.) If your Mac asks to
+   install the "command line developer tools", click **Install**: Claude needs them to fetch plugins, once.
+2. **Type `/crewdeck`** in a new Code session and click **Set up Crewdeck**. It downloads what Crewdeck needs (about
+   70 MB, each download checked before it is used), creates your notes in `~/Crewdeck/vault`, and keeps Crewdeck running
+   in the background from now on. It takes a few minutes; the panel shows each step.
 
-```text
-Please install Crewdeck for me from https://github.com/pulkitnagpal/crewdeck and get it running.
-I am not a developer: explain each step in plain words and ask me before you run anything.
-1. Check that git and Node.js are installed. `node --version` must be 22.18 or newer (25 or newer to fetch jobs from
-   job boards). If something is missing or too old, tell me exactly how to install it on my computer and wait for me.
-2. If ~/.crewdeck or ~/Crewdeck already exists, stop and ask me what to do. Never delete or move my files.
-3. Clone the repository into ~/crewdeck, then run `npm ci` in it.
-4. Run `node src/cli.ts setup` there and tell me what each line of its output means. If installing the plugin fails,
-   tell me how to add it in the app instead (+ → Plugins → Add marketplace, with the path of ~/crewdeck).
-   Before you run it, ask me whether Crewdeck should run in the background and start when I log in (recommended): if I
-   say yes, add `--service`, if no, `--no-service`.
-5. Run `node src/cli.ts doctor` and explain anything marked ✗.
-6. If I said no to the background service, start Crewdeck with `node src/cli.ts up` in the background and leave it
-   running. Open http://crewdeck.localhost:4848 in the browser pane. Tell me I can type /crewdeck in any new Claude
-   session to see today's to-dos, jobs and tickets beside the chat.
-7. For Jobs, run `node src/cli.ts open session`: Claude desktop opens a new Code session in ~/Crewdeck/jobs. Tell me to
-   confirm the folder and press Enter on the hello, then click "Set up with Claude" on the Jobs page.
-```
-
-Claude runs the commands with your approval, one by one. The full walk-through, with what you should see at each step,
-is [docs/jobs/first-run.md](docs/jobs/first-run.md).
+That's it. The panel beside the chat then shows your day (to-dos, jobs, tickets) and **Set up my job search**, which
+opens Claude's job-search chat: confirm the folder, press Enter, and Claude interviews you (about 20 minutes, with or
+without a resume). Crewdeck itself is at **http://crewdeck.localhost:4848** in any browser, and `/crewdeck` brings it
+back in any Claude session. The full walk-through is [docs/jobs/first-run.md](docs/jobs/first-run.md).
 
 ## What's in it
 
@@ -83,20 +67,15 @@ is [docs/jobs/first-run.md](docs/jobs/first-run.md).
 
 ## Requirements
 
-In plain words: a Mac or Linux computer, the Claude desktop app, Node.js (a free program that runs Crewdeck), git (to
-download it) and a Chrome-like browser. In detail:
+For the two steps above: macOS or Linux, the Claude desktop app with its Code tab, a Chromium-based browser (Chrome,
+Chromium, Brave or Edge) for Jobs, and an internet connection for the first setup. `/crewdeck` brings its own Node
+(25.9.0 from nodejs.org, checksum-checked) into `~/.crewdeck/runtime`, so nothing else is needed. Linux also needs
+`bubblewrap` and `socat` for Claude Code's sandbox in the jobs workspace.
 
-- macOS or Linux. (Windows: not yet, see the [roadmap](docs/roadmap.md).)
-- **Node.js 22.18 or newer.** Crewdeck runs its TypeScript directly; there is no build step.
-- **Node.js 25 or newer to fetch from job boards.** The job-board providers are third-party code. From Node 25, Node can
-  run them with no network access of their own (Crewdeck makes their requests through its own guard). On Node 22 or 24
-  sourcing says so and does nothing; pasted links, Prepare and Apply still work.
-- git and `unzip`.
-- A Chromium-based browser (Chrome, Chromium, Brave or Edge) for Jobs: it reads forms and prints resume PDFs headless.
-- The [Claude desktop app](https://claude.ai/download) (its Code tab), or Claude Code in a terminal.
-- Linux only: `bubblewrap` and `socat` for Claude Code's sandbox in the jobs workspace.
+From source (developers, below): Node.js 22.18 or newer (25 or newer to fetch from job boards: from 25, Node can run
+the job-board providers with no network of their own), git and `unzip`.
 
-## Quick start
+## From source (developers)
 
 A step-by-step walk-through for a new user, with what you should see at each step, is in
 [docs/jobs/first-run.md](docs/jobs/first-run.md). The short version:
