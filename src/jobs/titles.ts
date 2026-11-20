@@ -18,14 +18,19 @@ export type SeniorityClass = 'entry' | 'student' | 'mid' | 'senior' | 'none';
 // ---- the data ----
 type LangData = {
   seniority?: Record<string, [string, SeniorityClass]>; end_role?: string[]; stopwords?: string[]; prepositions?: string[];
-  endings?: string[]; swaps?: [string, string][]; compound?: boolean; abbreviations?: Record<string, string[]>;
+  endings?: string[]; swaps?: [string, string][]; compound?: boolean; abbreviations?: Record<string, string[]>; synonyms?: string[][];
 };
+/** A family of occupations (data/title-words.yaml `occupations`): `same` groups are one job each; `adjacent` names related families. */
+export type Occupation = { id: string; adjacent: string[]; same: string[][] };
 export type TitleWords = {
   seniority: Map<string, { canon: string; cls: SeniorityClass }>;
   phrases: Map<string, { canon: string; cls: SeniorityClass }>;
   endRole: Set<string>; stop: Set<string>; preps: Set<string>; endings: Set<string>; swaps: [string, string][];
   compound: Set<string>; abbreviations: Map<string, string[]>;
   genderBrackets: Set<string>; genderEndings: Set<string>; genderJoin: RegExp; languages: string[];
+  /** Word or phrase groups that mean the same inside a title (every language), each phrase as its folded words. */
+  synonyms: string[][][];
+  occupations: Map<string, Occupation>;
 };
 
 const FILE = join(import.meta.dirname, 'data', 'title-words.yaml');
@@ -42,7 +47,11 @@ export function loadTitleWords(file = FILE): TitleWords {
     seniority: new Map(), phrases: new Map(), endRole: new Set(), stop: new Set(), preps: new Set(), endings: new Set(), swaps: [],
     compound: new Set((y.compound_only ?? []).map(String)), abbreviations: new Map(),
     genderBrackets: new Set((y.gender?.brackets ?? []).map((b: string) => foldWord(b))), genderEndings: new Set(), genderJoin: /$^/, languages: Object.keys(langs),
+    synonyms: [], occupations: new Map(),
   };
+  for (const [id, o] of Object.entries((y.occupations ?? {}) as Record<string, any>)) {
+    w.occupations.set(id, { id, adjacent: (o?.adjacent ?? []).map(String), same: (o?.same ?? []).map((g: unknown[]) => g.map((x) => foldWord(String(x)))) });
+  }
   for (const [code, d] of Object.entries(langs)) {
     for (const [k, [canon, cls]] of Object.entries(d.seniority ?? {})) {
       const key = foldWord(String(k));
@@ -55,6 +64,7 @@ export function loadTitleWords(file = FILE): TitleWords {
     for (const s of d.swaps ?? []) w.swaps.push([foldWord(s[0]), foldWord(s[1])]);
     if (d.compound) w.compound.add(code);
     for (const [k, v] of Object.entries(d.abbreviations ?? {})) w.abbreviations.set(foldWord(k), v.map(foldWord));
+    for (const g of d.synonyms ?? []) w.synonyms.push(g.map((x) => split(foldWord(String(x)))).filter((x) => x.length));
   }
   const joiners: string[] = y.gender?.joiners ?? [];
   const endings: string[] = (y.gender?.endings ?? []).map(foldWord).sort((a: string, b: string) => b.length - a.length);
@@ -137,9 +147,18 @@ export function readTitle(title: string, tw = loadTitleWords()): ReadTitle {
 // ---- targets ----
 export type Target = { name: string; titles: string[]; families: string[]; skills: string[]; /** v1 roles.titles */ legacy?: boolean; path: string };
 type TWord = { w: string; f: string; whole: boolean };
-type Variant = { title: string; words: TWord[]; flat: string[]; head: string | null; order: string[] };
-export type CompiledTarget = Target & { variants: Variant[]; heads: string[]; own: Set<string> };
-export type TitleMatcher = { mode: MatchMode; level: LevelWanted; targets: CompiledTarget[]; userCompound: boolean; tw: TitleWords };
+type Variant = { title: string; words: TWord[]; flat: string[]; head: string | null; order: string[];
+  /** Per word, the stems any posting word that matches it must contain (a quick check before the word-by-word one). */
+  stems?: string[][] };
+export type CompiledTarget = Target & { variants: Variant[]; heads: string[]; own: Set<string>;
+  /** Titles that mean the same job (word synonyms of its titles, and the rest of their occupation group): a synonym match. */
+  synonyms: Variant[];
+  /** The occupation families its titles belong to (data/title-words.yaml `occupations`). */
+  occupations: string[] };
+/** A family a posting may fall in for these targets: family (a target's own) or adjacent, and its titles. */
+type FamilyUse = { id: string; how: 'family' | 'adjacent'; target: number; variants: Variant[] };
+export type TitleMatcher = { mode: MatchMode; level: LevelWanted; targets: CompiledTarget[]; userCompound: boolean; tw: TitleWords;
+  families: FamilyUse[]; headWords: Set<string> };
 
 /** The user's targets: roles.targets, then roles.titles (v1) as one more target. */
 export function targetsOf(search: Pick<Search, 'roles'>): Target[] {
@@ -179,12 +198,141 @@ const LANG_NAMES: Record<string, string> = {
 const langOf = (name: string) => { const n = foldWord(name).trim(); return /^[a-z]{2}$/.test(n) ? n : LANG_NAMES[n]; };
 
 export function titleMatcher(search: Pick<Search, 'roles'> & Partial<Pick<Search, 'languages'>>, tw = loadTitleWords()): TitleMatcher {
+  const langs = (search.languages ?? []).map((l) => langOf(l.name)).filter(Boolean) as string[];
+  const userCompound = langs.some((l) => tw.compound.has(l));
+  const fams = occupationVariants(tw);
   const targets = targetsOf(search).map((t) => {
     const variants = t.titles.map((x) => variantOf(x, tw)).filter((v): v is Variant => !!v);
-    return { ...t, variants, heads: [...new Set(variants.map((v) => v.head).filter((h): h is string => !!h))], own: new Set(variants.flatMap((v) => v.words.map((x) => x.w))) };
+    const ownTitles = new Set(variants.map((v) => v.order.join(' ')));
+    // The occupation groups its titles are in (each title read as a posting: every word of a member found in it).
+    const groups: { id: string; gi: number }[] = [];
+    for (const title of t.titles) {
+      const read = readTitle(title, tw);
+      for (const [id, gs] of fams) gs.forEach((g, gi) => { if (!groups.some((x) => x.id === id && x.gi === gi) && g.some((v) => matches(v, read, userCompound, tw))) groups.push({ id, gi }); });
+    }
+    const synonyms = dedupe([...t.titles.flatMap((x) => expandTitle(x, tw)).map((x) => variantOf(x, tw)), ...groups.flatMap((g) => fams.get(g.id)![g.gi])]
+      .filter((v): v is Variant => !!v && !ownTitles.has(v.order.join(' '))));
+    return { ...t, variants, heads: [...new Set(variants.map((v) => v.head).filter((h): h is string => !!h))], own: new Set(variants.flatMap((v) => v.words.map((x) => x.w))), synonyms, occupations: [...new Set(groups.map((g) => g.id))] };
   });
-  const langs = (search.languages ?? []).map((l) => langOf(l.name)).filter(Boolean) as string[];
-  return { mode: search.roles.match ?? 'words', level: search.roles.level ?? 'any', targets, userCompound: langs.some((l) => tw.compound.has(l)), tw };
+  // The families a posting may fall in: the targets' own (a family match), then the families next to them (adjacent).
+  const families: FamilyUse[] = [];
+  const seen = new Set<string>();
+  targets.forEach((t, ti) => t.occupations.forEach((id) => { if (!seen.has(id)) { seen.add(id); families.push({ id, how: 'family', target: ti, variants: fams.get(id)!.flat() }); } }));
+  targets.forEach((t, ti) => t.occupations.forEach((id) => {
+    for (const a of tw.occupations.get(id)?.adjacent ?? []) if (fams.has(a) && !seen.has(a)) { seen.add(a); families.push({ id: a, how: 'adjacent', target: ti, variants: fams.get(a)!.flat() }); }
+  }));
+  // A title that is only a head word ("Senior Engineer", "Developer III"): the heads and their one-word synonyms.
+  const headWords = new Set<string>();
+  for (const t of targets) for (const h of t.heads) {
+    headWords.add(h);
+    for (const g of tw.synonyms) if (g.some((p) => p.length === 1 && p[0] === h)) for (const p of g) if (p.length === 1) headWords.add(p[0]);
+  }
+  return { mode: search.roles.match ?? 'words', level: search.roles.level ?? 'any', targets, userCompound, tw, families, headWords };
+}
+
+const dedupe = (vs: Variant[]) => { const m = new Map<string, Variant>(); for (const v of vs) if (!m.has(v.order.join(' '))) m.set(v.order.join(' '), v); return [...m.values()]; };
+
+/**
+ * A title's other wordings through the synonym groups: "backend engineer" → "backend developer", "back end engineer",
+ * "server side programmer" … (folded; the title itself left out). Only titles of two or more words: a bare "developer"
+ * is too wide to rewrite. At most `cap`.
+ */
+export function expandTitle(title: string, tw = loadTitleWords(), cap = 24): string[] {
+  const words = split(foldWord(cleanTitle(title, tw)));
+  if (words.length < 2) return [];
+  const slots: string[][][] = [];
+  for (let i = 0; i < words.length;) {
+    let best: string[][] | null = null, len = 0;
+    for (const g of tw.synonyms) for (const ph of g) if (ph.length > len && ph.every((w, k) => words[i + k] === w)) { best = g; len = ph.length; }
+    if (best) { slots.push(best); i += len; } else { slots.push([[words[i]]]); i++; }
+  }
+  let out: string[][] = [[]];
+  for (const alts of slots) out = out.flatMap((o) => alts.map((a) => [...o, ...a])).slice(0, cap * 4);
+  const self = words.join(' ');
+  return [...new Set(out.map((w) => w.join(' ')))].filter((t) => t !== self).slice(0, cap);
+}
+
+const famCache = new WeakMap<TitleWords, Map<string, Variant[][]>>();
+/** Every occupation group's titles as variants, with their synonym wordings (compiled once per word data). */
+function occupationVariants(tw: TitleWords): Map<string, Variant[][]> {
+  const have = famCache.get(tw);
+  if (have) return have;
+  const out = new Map<string, Variant[][]>();
+  for (const [id, o] of tw.occupations) out.set(id, o.same.map((g) => dedupe(g.flatMap((x) => [x, ...expandTitle(x, tw, 8)]).map((x) => variantOf(x, tw)).filter((v): v is Variant => !!v))));
+  famCache.set(tw, out);
+  return out;
+}
+
+// A posting word matching a target word holds the target word less at most a swapped ending (3 letters), so the
+// quick check looks for that stem in the posting's words (canonical and as written) before matching word by word.
+const stem = (w: string) => (w.length > 5 ? w.slice(0, w.length - 3) : w.length > 3 ? w.slice(0, 3) : w);
+const hayOf = new WeakMap<ReadTitle, string>();
+/** Every word of a variant somewhere in the posting's title. */
+function matches(v: Variant, read: ReadTitle, compound: boolean, tw: TitleWords): boolean {
+  v.stems ??= v.words.map((x) => [...new Set([stem(x.w), stem(x.f)])]);
+  let hay = hayOf.get(read);
+  if (hay === undefined) { hay = read.words.map((p) => `${p.w} ${p.f}`).join(' '); hayOf.set(read, hay); }
+  if (!v.stems.every((ss) => ss.some((s) => hay!.includes(s)))) return false;
+  return positions(v, read, false, compound, tw).every((p) => p >= 0);
+}
+
+// ---- title fit (ADR-0003): a score, never a drop ----
+export type FitHow = 'any' | 'exact' | 'words' | 'synonym' | 'family' | 'generic' | 'broad' | 'adjacent' | 'head' | 'none';
+/**
+ * How well a title fits the person's targets, 0..1: their own title (in order, then any order), a synonym (slightly
+ * lower), the same occupation family, a bare head word ("Senior Engineer"), an adjacent family, a shared head word only.
+ */
+export const FIT: Record<FitHow, number> = { any: 1, exact: 1, words: 0.95, synonym: 0.85, family: 0.6, generic: 0.5, broad: 0.5, adjacent: 0.4, head: 0.2, none: 0 };
+/** Below this a posting is another occupation: ranked last, never in the judge's budget, counted apart (not a drop). */
+export const OTHER_OCCUPATION_FIT = 0.25;
+export type TitleFit = { fit: number; how: FitHow; target: number | null; name: string | null; title: string | null; variant: number; family: string | null; skills: string[] };
+
+const fitCache = new WeakMap<TitleMatcher, Map<string, TitleFit>>();
+export function titleFit(m: TitleMatcher, title: string, lang?: string | null, read?: ReadTitle): TitleFit {
+  let cache = fitCache.get(m);
+  if (!cache) { cache = new Map(); fitCache.set(m, cache); }
+  const key = `${lang ?? ''}\u0000${title}`;
+  let f = cache.get(key);
+  if (!f) { f = fitOf(m, title, lang, read ?? readTitle(title, m.tw)); if (cache.size < 20_000) cache.set(key, f); }
+  return f;
+}
+
+function fitOf(m: TitleMatcher, title: string, lang: string | null | undefined, read: ReadTitle): TitleFit {
+  const out = (how: FitHow, target: number | null, title_: string | null = null, variant = 0, family: string | null = null): TitleFit =>
+    ({ fit: FIT[how], how, target, name: target === null ? null : m.targets[target].name, title: title_, variant, family, skills: target === null ? [] : m.targets[target].skills });
+  if (m.mode === 'off' || !m.targets.length) return out('any', null);
+  const own = matchTitle(m.mode === 'broad' ? { ...m, mode: 'words' } : m, title, lang, read);
+  if (own) return out(own.how, own.target, own.title, own.variant);
+  const compound = compoundFor(m, lang);
+  for (let ti = 0; ti < m.targets.length; ti++) {
+    const v = m.targets[ti].synonyms.find((x) => matches(x, read, compound, m.tw));
+    if (v) return out('synonym', ti, v.title);
+  }
+  const fam = (how: 'family' | 'adjacent') => m.families.find((f) => f.how === how && f.variants.some((x) => matches(x, read, compound, m.tw)));
+  const f = fam('family');
+  if (f) return out('family', f.target, null, 0, f.id);
+  const near = closest(m, read, lang);
+  if (read.role.length === 1 && m.headWords.has(read.role[0])) return out('generic', near?.target ?? 0, read.role[0]);
+  if (near && m.mode === 'broad') return out('broad', near.target, near.head);
+  const a = fam('adjacent');
+  if (a) return out('adjacent', a.target, null, 0, a.id);
+  if (near) return out('head', near.target, near.head);
+  return out('none', null);
+}
+
+/** Why a title fits as it does, in a few words ("means the same as Backend engineer (backend developer)"). */
+export function fitText(f: TitleFit): string {
+  const t = f.name ? ` ${f.name}` : '';
+  switch (f.how) {
+    case 'any': return 'any title';
+    case 'exact': case 'words': return `one of your titles (${f.title})`;
+    case 'synonym': return `means the same as${t} (${f.title})`;
+    case 'family': return `same occupation family as${t} (${f.family})`;
+    case 'adjacent': return `an occupation next to${t} (${f.family})`;
+    case 'generic': case 'broad': return `shares the head word "${f.title}" with${t}`;
+    case 'head': return `only shares "${f.title}" with${t}: another occupation`;
+    default: return 'another occupation';
+  }
 }
 
 /** Does posting word `w` stand for target word `t`? Same word, an ending, a vowel swap, or a compound tail. */

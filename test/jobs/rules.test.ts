@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadJobNotes } from '../../src/jobs/notes.ts';
-import { type Posting, compileRules, describeRules, judgeBrief, prefilter, travelLevel } from '../../src/jobs/rules.ts';
+import { type Posting, compileRules, describeRules, isOtherOccupation, judgeBrief, prefilter, titleFitOf, travelLevel } from '../../src/jobs/rules.ts';
 import { normalise } from '../../src/jobs/schema.ts';
 import { PEOPLE } from './helpers.ts';
 
@@ -36,8 +36,9 @@ check('berlin-analyst', { title: 'Data Analyst', company: 'Acme', location: 'Ber
   ['occasional travel (threshold is frequent)', { description: 'Occasional travel to our Hamburg office.' }],
   ['no pay listed (unlisted: keep)', { description: 'Great team.' }],
   ['a Berlin office of a company that is also in Munich', { location: 'Berlin or Munich' }],
+  // ADR-0003: a title outside the targets is never a drop (another occupation: ranked last, not judged).
+  ['title outside the targets', { title: 'Marketing Manager' }],
 ], [
-  ['title outside the targets', { title: 'Marketing Manager' }, 'title_gate'],
   ['intern', { title: 'Data Analyst Intern' }, 'title_exclude'],
   ['Werkstudent', { title: 'Werkstudent Data Analyst (m/w/d)' }, 'title_exclude'],
   ['sales', { title: 'Sales Data Analyst' }, 'title_exclude'],
@@ -73,8 +74,20 @@ check('us-nurse', { title: 'Telehealth Registered Nurse', company: 'Example Heal
   ['must be located elsewhere', { description: 'Candidates must be located in California.' }, 'other_only'],
   ['bottom of range below the floor', { pay_text: '$35 - $50 per hour' }, 'pay'],
   ['occasional travel (threshold is occasional)', { description: 'Travel up to 25% to clinics.' }, 'travel'],
-  ['not a nursing title', { title: 'Data Analyst' }, 'title_gate'],
 ]);
+
+test('titles are a score, never a drop (ADR-0003): another occupation is set apart, synonyms and families fit', () => {
+  const nurse = rulesOf('us-nurse'), analyst = rulesOf('berlin-analyst');
+  for (const [c, title, location] of [[nurse, 'Data Analyst', 'Remote - Texas'], [analyst, 'Marketing Manager', 'Berlin'], [nurse, 'Software Engineer', 'Remote - Texas']] as const) {
+    assert.equal(prefilter({ company: 'Example Co', location, description: '', title }, c).keep, true, title);
+    assert.equal(isOtherOccupation(c, { title }), true, `${title} is another occupation`);
+  }
+  assert.equal(titleFitOf(nurse, { title: 'Staff Nurse' }).how, 'synonym');
+  assert.equal(titleFitOf(nurse, { title: 'Licensed Practical Nurse' }).how, 'family');
+  assert.equal(isOtherOccupation(nurse, { title: 'Licensed Practical Nurse' }), false);
+  assert.match(describeRules(nurse), /title_gate\s+off: titles are a score, not a drop/);
+  assert.match(describeRules(nurse), /Title fit \(a score, never a drop\): .*below 0\.25: other occupations/s);
+});
 
 // Example: remote from the EU/UK or hybrid in Lisbon, EUR per month.
 check('example', { title: 'Senior Product Designer', company: 'Acme', location: 'Remote', description: '' }, [
@@ -112,7 +125,8 @@ test('rules overrides replace a compiled regex by name', () => {
   const c = compileRules(n);
   assert.equal(c.source.title_gate, 'rules (your override)');
   assert.equal(prefilter({ title: 'Graphic Designer', location: 'Remote' }, c).keep, true);
-  assert.equal(prefilter({ title: 'Graphic Designer', location: 'Remote' }, rulesOf('example')).keep, false);
+  assert.equal(prefilter({ title: 'Graphic Designer', location: 'Remote' }, rulesOf('example')).keep, true, 'without the override the title is a score');
+  assert.equal(prefilter({ title: 'Product Manager', location: 'Remote' }, c).keep, false, 'the override is an explicit rule: it drops');
 });
 
 test('no places or unknown places: location drops are off, not guessed', () => {

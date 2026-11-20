@@ -113,4 +113,6 @@ export function setRoleStatus(ctx: Ctx, roleId: string, status: string, reason =
     throw new Error(`from ${from} to ${status} is not allowed${hint}`);
   }
   setStatus(ctx.db, roleId, status as Status, text(reason, 1000), nowIso(ctx));
+  // Set aside after reading the whole posting (at Prepare): no longer a fit, so the funnel and pick never count it as one.
+  if (status === 'judged_out') ctx.db.prepare(`update roles set eligibility='no' where id=? and eligibility='yes'`).run(roleId);
 }

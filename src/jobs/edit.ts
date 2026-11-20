@@ -2,7 +2,8 @@
 // file is touched. `pref set` also logs the change under "## Changes" in jobs/search.md, quoting the user.
 import { parse, stringify } from 'yaml';
 import { mergeListInDoc, readNote, renderNote, setInDoc, writeAtomic } from './notes.ts';
-import { type Schema, didYouMean, keysAt, schemaAt, validate } from './schema.ts';
+import { type Schema, didYouMean, keysAt, normalise, schemaAt, validate } from './schema.ts';
+import { expandTitle, loadTitleWords, titleMatcher } from './titles.ts';
 
 const PROFILE_ROOTS = ['identity', 'standard_answers', 'education', 'copy_only_hosts', 'references'];
 const CAREER_ROOTS = ['resume', 'sections', 'facts', 'skills', 'terms', 'language'];
@@ -177,6 +178,44 @@ export function overlayChanges(note: 'search', data: unknown, at: (string | numb
   const s = at.length ? schemaAt(note, at) : { t: 'obj' };
   if (at.length && s?.t !== 'obj') return [{ segs: at, value: data }];
   return Object.entries(data as Record<string, unknown>).flatMap(([k, v]) => overlayChanges(note, v, [...at, k]));
+}
+
+/**
+ * v1 → v0.4 (ADR-0007): move `roles.titles` into `roles.targets`, one target per occupation family (titles in no family
+ * share one target), each with its titles and up to two synonym wordings per title. Additive and comment-preserving:
+ * existing targets stay first and untouched, `titles` is emptied in place (its comment kept), and a dated Changes line
+ * records the old list. Idempotent: nothing to do once `roles.titles` is empty. Never writes a note with errors.
+ */
+export function migrateTitles(file: string, today: string): { changed: boolean; targets: { name: string; titles: string[] }[]; line?: string } {
+  const n = readNote(file);
+  if (!n.exists || n.errors.length) return { changed: false, targets: [] };
+  const raw = (n.doc.toJS() ?? {}) as any;
+  const titles: string[] = Array.isArray(raw?.roles?.titles) ? raw.roles.titles.map((t: unknown) => String(t ?? '').trim()).filter(Boolean) : [];
+  if (!titles.length) return { changed: false, targets: [] };
+  if (validate('search', raw).some((i) => i.level === 'error')) return { changed: false, targets: [] };
+  const existing: any[] = Array.isArray(raw.roles.targets) ? raw.roles.targets : [];
+  const have = new Set(existing.flatMap((t) => (Array.isArray(t?.titles) ? t.titles : [])).map((t: unknown) => String(t).toLowerCase()));
+  const tw = loadTitleWords();
+  const groups = new Map<string, string[]>();
+  for (const t of titles) {
+    if (have.has(t.toLowerCase())) continue;
+    const fam = titleMatcher(normalise.search({ roles: { targets: [{ name: t, titles: [t] }] }, languages: raw.languages ?? [] }), tw).targets[0]?.occupations[0] ?? '';
+    const list = groups.get(fam) ?? [];
+    for (const x of [t, ...expandTitle(t, tw).slice(0, 2)]) if (!list.some((y) => y.toLowerCase() === x.toLowerCase()) && !have.has(x.toLowerCase())) list.push(x);
+    groups.set(fam, list);
+  }
+  const added = [...groups.values()].filter((l) => l.length).map((l) => ({ name: l[0].charAt(0).toUpperCase() + l[0].slice(1), titles: l }));
+  if (added.length) {
+    const seq = n.doc.getIn(['roles', 'targets'], true) as any;
+    const items = added.map((t) => { const node = n.doc.createNode(t) as any; const ts = node.get('titles', true); if (ts) ts.flow = true; node.flow = true; return node; });
+    if (seq && Array.isArray(seq.items)) { seq.items.push(...items); if (!seq.items.length || seq.flow) seq.flow = false; }
+    else setInDoc(n.doc, ['roles', 'targets'], added);
+  }
+  setInDoc(n.doc, ['roles', 'titles'], []);
+  if (validate('search', n.doc.toJS()).some((i) => i.level === 'error')) return { changed: false, targets: [] };
+  const line = `${today}: roles.titles → roles.targets (automatic update to v0.4 kinds of job, with synonyms): was ${titles.join(', ')}; now ${added.map((t) => `${t.name} (${t.titles.join(', ')})`).join('; ') || 'already in your targets'}.`;
+  writeAtomic(file, renderNote(n.doc, addChangeLine(n.body, line)));
+  return { changed: true, targets: added, line };
 }
 
 const noteFile = (note: string) => ({ profile: 'me/profile.md', career: 'me/career.md', search: 'jobs/search.md' })[note] ?? note;

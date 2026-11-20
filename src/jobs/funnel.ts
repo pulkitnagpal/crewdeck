@@ -4,6 +4,7 @@
 import { type Ctx, notesOf, todayOf } from './ctx.ts';
 import { REASON_LABEL, fmt } from './preview.ts';
 import { readSourcesState } from './sources.ts';
+import { compileRules, isOtherOccupation } from './rules.ts';
 import { suggestSources } from './suggest.ts';
 
 export const FUNNEL_DAYS = 14;
@@ -13,10 +14,14 @@ export type Funnel = {
   fetched: number;
   rules: { rule: string; label: string; n: number }[];
   passed_rules: number;
-  /** passed_rules = judged + waiting + other (closed or set aside before judging) */
+  /** Passed the rules but fit none of the person's occupations (title fit below the floor): never judged, not a drop. */
+  other_occupations: number;
+  /** passed_rules = other_occupations + judged + waiting + other (closed or set aside before judging) */
   judged: number; waiting: number; other: number;
-  /** judged = fits + no + unclear */
+  /** judged = fits + no + unclear (a fit set aside at Prepare counts as no) */
   fits: number; no: number; unclear: number;
+  /** Distinct companies among the fits (one pick per company: "7 fits from 2 companies"). */
+  fit_companies: number;
   picked: number;
   /** The judge's most common reasons for "no" (when the rules weren't the cause). */
   judge_reasons: { text: string; n: number }[];
@@ -25,6 +30,8 @@ export type Funnel = {
   /** The coverage line (D42) when the pool is too small to fill the picks. */
   coverage: string | null;
   line: string; rules_line: string;
+  /** The line without the other occupations and companies, for a one-line header. */
+  short: string;
 };
 
 /** The funnel for a Find that wants `need` picks, from the tracker as it is now. */
@@ -35,21 +42,33 @@ export function findFunnel(ctx: Ctx, need: number): Funnel {
       where first_seen >= ? and status = 'prefiltered_out' group by 1 order by n desc, rule`).all(since) as any[])
     .map((r) => ({ rule: String(r.rule || 'other'), label: REASON_LABEL[r.rule] ?? String(r.rule || 'other'), n: Number(r.n) }));
   const dropped = rules.reduce((a, r) => a + r.n, 0);
-  const e = ctx.db.prepare(`select eligibility, status, count(*) n from roles where first_seen >= ? and status <> 'prefiltered_out' group by 1, 2`).all(since) as any[];
+  // A role judged "yes" and then set aside at Prepare (judged_out) is not a fit (counted with the noes).
+  const e = ctx.db.prepare(`select case when eligibility = 'yes' and status = 'judged_out' then 'no' else eligibility end eligibility, status, count(*) n
+      from roles where first_seen >= ? and status <> 'prefiltered_out' group by 1, 2`).all(since) as any[];
   const sum = (f: (r: any) => boolean) => e.filter(f).reduce((a, r) => a + Number(r.n), 0);
   const fits = sum((r) => r.eligibility === 'yes'), no = sum((r) => r.eligibility === 'no'), unclear = sum((r) => r.eligibility === 'unclear');
-  const waiting = sum((r) => r.eligibility === null && r.status === 'new');
+  const fit_companies = Number((ctx.db.prepare(`select count(distinct company_id) n from roles where first_seen >= ? and status not in ('prefiltered_out','judged_out') and eligibility = 'yes'`).get(since) as any).n);
+  // Unjudged roles outside every target (title fit below the floor): other occupations, set aside, never judged.
+  const compiled = compileRules(notesOf(ctx));
+  const unjudged = ctx.db.prepare(`select title, language from roles where first_seen >= ? and status = 'new' and eligibility is null`).all(since) as any[];
+  const other_occupations = unjudged.filter((r) => isOtherOccupation(compiled, r)).length;
+  const waiting = unjudged.length - other_occupations;
   const judged = fits + no + unclear;
   const passed_rules = fetched - dropped;
   const picked = Number((ctx.db.prepare(`select count(*) n from roles where picked_on = ? and source <> 'pasted' and status in ('picked','prepared','applied')`).get(todayOf(ctx)) as any).n);
   const judge_reasons = (ctx.db.prepare(`select e.detail text, count(*) n from events e join roles r on r.id = e.role_id
       where e.kind = 'judge' and r.eligibility = 'no' and r.first_seen >= ? group by e.detail order by n desc, max(e.at) desc limit 3`).all(since) as any[]).map((r) => ({ text: String(r.text).slice(0, 200), n: Number(r.n) }));
   const f: Funnel = {
-    at: ctx.clock().toISOString(), days: FUNNEL_DAYS, need, fetched, rules, passed_rules, judged, waiting, other: passed_rules - judged - waiting,
-    fits, no, unclear, picked, judge_reasons, sources: sourcesLine(ctx), coverage: null, line: '', rules_line: '',
+    at: ctx.clock().toISOString(), days: FUNNEL_DAYS, need, fetched, rules, passed_rules, other_occupations, judged, waiting,
+    other: passed_rules - other_occupations - judged - waiting,
+    fits, fit_companies, no, unclear, picked, judge_reasons, sources: sourcesLine(ctx), coverage: null, line: '', rules_line: '', short: '',
   };
-  if (fetched < need * 4) f.coverage = coverage(ctx);
-  f.line = `${fmt(fetched)} fetched → ${fmt(passed_rules)} passed your rules → ${fmt(judged)} judged → ${fmt(fits)} fit${fits === 1 ? 's' : ''}`;
+  // Too few to fill the picks honestly (up to N, never padded): too small a pool, or too few left after the rules.
+  if (fetched < need * 4 || passed_rules - other_occupations < need * 3) f.coverage = coverage(ctx);
+  const plural = (n: number, one: string, many: string) => `${fmt(n)} ${n === 1 ? one : many}`;
+  f.line = `${fmt(fetched)} fetched → ${fmt(passed_rules)} passed your rules${other_occupations ? ` (${plural(other_occupations, 'other occupation', 'other occupations')} set aside)` : ''} → ${fmt(judged)} judged → ${plural(fits, 'fit', 'fits')}${fits ? ` from ${plural(fit_companies, 'company', 'companies')}` : ''}`;
+  // The one-line form for a narrow header (the Today card's summary): the full line opens under it.
+  f.short = `${fmt(fetched)} fetched → ${fmt(passed_rules)} passed → ${fmt(judged)} judged → ${plural(fits, 'fit', 'fits')}`;
   f.rules_line = rules.length ? `Most went at your rules: ${rules.slice(0, 3).map((r) => `${r.label} ${fmt(r.n)}`).join(' · ')}` : '';
   return f;
 }

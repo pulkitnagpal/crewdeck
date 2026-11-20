@@ -96,7 +96,7 @@ test('owner acceptance: from zero to ≥ 100 passing with the right place drops,
       const r = fixture.get(c.id)!;
       const fits = r.kind === 'pass' || r.kind === 'engineering' || /backend|ai engineer/i.test(r.title);
       // His own titles score highest, as a judge reading his notes would.
-      return { role: c.id, eligible: fits ? 'yes' : 'no', score: !fits ? 15 : /backend|ai engineer/i.test(r.title) ? 92 : 80, evidence: `scripted: ${r.title}, ${r.location}` };
+      return { role: c.id, eligible: fits ? 'yes' : 'no', score: !fits ? 15 : /backend engineer|ai engineer/i.test(r.title) ? 92 : 80, evidence: `scripted: ${r.title}, ${r.location}` };
     });
     ok(p, ['judge', '--results-file', file(p, JSON.stringify(verdicts))]);
     run = json(p, ['candidates', '--budget', '40', '--need', '5']);
@@ -108,7 +108,7 @@ test('owner acceptance: from zero to ≥ 100 passing with the right place drops,
   assert.equal(new Set(picked.map((l) => l.split('  ')[1].split(' — ')[0])).size, 5, 'one per company');
   assert.match(picked[0], /Senior Backend Engineer/, 'the one role the old gate passed is still the first pick');
   const funnel = json(p, ['candidates', '--budget', '40', '--need', '5']).run.funnel;
-  assert.match(funnel.line, /^1,480 fetched → \d+ passed your rules → \d+ judged → \d+ fits?$/);
+  assert.match(funnel.line, /^1,480 fetched → [\d,]+ passed your rules \([\d,]+ other occupations set aside\) → \d+ judged → \d+ fits? from \d+ compan(y|ies)$/);
   out.push(`find: ${batches} batch(es), ${run.run.judged} judged, picked ${picked.length}: ${funnel.line}`, ...picked.map((l) => `  ${l}`));
   writeFileSync(join(p.root, 'acceptance.txt'), `${out.join('\n')}\n`);
   if (process.env.CREWDECK_JOURNEYS) writeFileSync(join(process.env.CREWDECK_JOURNEYS, 'owner-acceptance.txt'), `${out.join('\n')}\n`);

@@ -3,7 +3,8 @@ tags: jobs
 # Preset: non-engineering. Any field: operations, marketing, sales, finance, design, people, support, research…
 # Setup with Claude fills in the titles, places and workplace with you.
 roles:
-  titles: []                 # e.g. [operations manager, program manager, marketing manager]
+  targets: []                # e.g. - { name: Operations, titles: [operations manager, program manager] }
+  titles: []
   seniority_prefer: []
   exclude_title_words: [intern, internship, engineer, developer]
 workplace: []                # remote | hybrid | onsite

@@ -10,14 +10,16 @@ import { ensureHome } from '../../config.ts';
 import { type Ctx, notesOf, nowIso } from '../ctx.ts';
 import { setStatus, tx } from '../db.ts';
 import type { JobNotes } from '../notes.ts';
-import { type Compiled, compileRules, prefilter, titleMatchOf } from '../rules.ts';
+import { type Compiled, compileRules, prefilter, titleFitOf } from '../rules.ts';
+import { type FitHow, OTHER_OCCUPATION_FIT } from '../titles.ts';
 import { fold } from '../places.ts';
 import { clip, plainText } from '../text.ts';
 import type { NetOptions } from '../net/netguard.ts';
 import { type Funnel, findFunnel } from '../funnel.ts';
 import { trackerCheck, trackerRules } from './tracker.ts';
 
-export type Ranked = { id: string; company: string; company_id: number; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string; posted_at: string | null; first_seen: string };
+export type Ranked = { id: string; company: string; company_id: number; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string; posted_at: string | null; first_seen: string;
+  /** Title/occupation fit 0..1; below OTHER_OCCUPATION_FIT another occupation (ranked last, never judged). */ fit: number };
 export type Candidate = { id: string; company: string; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string };
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -37,14 +39,18 @@ export function priorityBonus(notes: Pick<JobNotes, 'sources'>): Map<string, num
   return new Map(keys.map((k, i) => [k, n <= 1 ? PRIORITY_TOP : Math.round((PRIORITY_TOP * (n - 1 - i)) / (n - 1))]));
 }
 const PAY_RANK: Record<string, number> = { ok: 8, unclear: 3, no_rate: 3, unlisted: 2, below_floor: 0 };
+/** Rank points by how a title fits (the user's own titles: 10-30 by their position, added in rankScore). */
+const TITLE_POINTS: Partial<Record<FitHow, number>> = { synonym: 20, family: 14, generic: 12, adjacent: 10, broad: 8, head: 3 };
 
 /** A cheap score from the notes (no Claude). */
 export function rankScore(row: { title: string; description?: string; source?: string; source_key?: string | null; posted_at?: string | null; first_seen?: string; pay_status?: string | null; language?: string | null }, notes: Pick<JobNotes, 'search' | 'career'> & Partial<Pick<JobNotes, 'sources'>>, at: Date, priority: Map<string, number> = notes.sources ? priorityBonus(notes as Pick<JobNotes, 'sources'>) : new Map(), compiled: Pick<Compiled, 'titles'> = compileRules({ search: notes.search, memory: { data: { items: [] } } as any })): number {
   const s = notes.search.data, title = fold(row.title ?? ''), desc = plainText(row.description ?? ''), body = `${title}\n${fold(desc)}`;
   let score = 0;
-  // Which target title matched and how (D26): the old phrase in order first, any order a little less, broad least.
-  const m = titleMatchOf(compiled as Compiled, row);
-  if (m) score += m.how === 'broad' ? 8 : Math.max(10, 30 - m.variant * 3) - (m.how === 'words' ? 4 : 0);
+  // Title fit (D26, ADR-0003): the user's own title in order first (earlier titles more), any order a little less, then a
+  // synonym, the same occupation family, a bare head word, an adjacent family. Other occupations get nothing.
+  const m = titleFitOf(compiled as Compiled, row);
+  score += TITLE_POINTS[m.how] ?? 0;
+  if (m.how === 'exact' || m.how === 'words') score += Math.max(10, 30 - m.variant * 3) - (m.how === 'words' ? 4 : 0);
   const si = s.roles.seniority_prefer.findIndex((t) => has(title, t));
   if (si >= 0) score += Math.max(5, 15 - si * 3);
   // Skills: career.md's, plus the matched target's own (a switcher's new field ranks by its skills).
@@ -77,8 +83,9 @@ export function rankRoles(ctx: Ctx): Ranked[] {
   }
   if (dropped.length) tx(ctx.db, () => { for (const d of dropped) setStatus(ctx.db, d.id, 'prefiltered_out', d.reason, now); });
   const priority = priorityBonus(notes);
-  return keep.map((r) => ({ ...r, rank: rankScore(r, notes, at, priority, compiled) }))
-    .sort((a, b) => b.rank - a.rank || String(b.posted_at ?? b.first_seen).localeCompare(String(a.posted_at ?? a.first_seen)) || a.id.localeCompare(b.id));
+  const other = (r: { fit: number }) => (r.fit < OTHER_OCCUPATION_FIT ? 1 : 0);
+  return keep.map((r) => ({ ...r, rank: rankScore(r, notes, at, priority, compiled), fit: titleFitOf(compiled, r).fit }))
+    .sort((a, b) => other(a) - other(b) || b.rank - a.rank || String(b.posted_at ?? b.first_seen).localeCompare(String(a.posted_at ?? a.first_seen)) || a.id.localeCompare(b.id));
 }
 
 export const toCandidate = (r: Ranked): Candidate => ({ id: r.id, company: r.company, title: r.title, url: r.url, location: r.location, pay: r.pay, source: r.source, rank: r.rank, description: clip(plainText(r.description ?? '')) });
@@ -138,7 +145,8 @@ export function pickableCompanies(ctx: Ctx): number {
 export type Budgeted = {
   batch: Candidate[];
   run: { started: string; budget: number; judged: number; remaining: number; need: number; passed: number; done: boolean; why: 'enough' | 'budget' | 'pool' | null; funnel: Funnel };
-  pool: { unjudged: number };
+  /** unjudged: roles in the person's occupations still to judge; other_occupations: set aside, never judged. */
+  pool: { unjudged: number; other_occupations: number };
 };
 
 /**
@@ -154,7 +162,9 @@ export function budgetedCandidates(ctx: Ctx, o: { budget: number; batch: number;
   if (o.start || !run || now.getTime() - Date.parse(run.started) > RUN_TTL_MS || !existsSync(runFile(ctx.home))) run = { started: now.toISOString(), budget: o.budget, judged: [] };
   run.budget = o.budget;
   run.need = o.need;
-  const ranked = rankRoles(ctx);
+  // Other occupations (title fit below the floor) are ranked last and never spend the judge's budget (ADR-0003).
+  const all = rankRoles(ctx);
+  const ranked = all.filter((r) => r.fit >= OTHER_OCCUPATION_FIT);
   // The funnel is stored with the run (design §24.7): the page's card and Claude's close line read the same numbers.
   run.funnel = findFunnel(ctx, o.need);
   writeFindRun(ctx.home, run);
@@ -165,6 +175,6 @@ export function budgetedCandidates(ctx: Ctx, o: { budget: number; batch: number;
   return {
     batch,
     run: { started: run.started, budget: run.budget, judged: run.judged.length, remaining, need: o.need, passed, done: !!why, why, funnel: run.funnel },
-    pool: { unjudged: ranked.length },
+    pool: { unjudged: ranked.length, other_occupations: all.length - ranked.length },
   };
 }

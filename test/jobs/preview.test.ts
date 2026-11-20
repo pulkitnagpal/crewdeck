@@ -38,15 +38,22 @@ test('the owner\'s case: the saved notes pass more, the variants fix passes ≥ 
   const w = world('example');
   seedOwner(w.ctx, w.vault);
   const saved = runPreview(w.ctx);
-  assert.ok(saved.pass > 1, `word matching alone: ${saved.pass}`);
-  assert.deepEqual(saved.near[0].items.slice(0, 2).map((x) => x.label).sort(), ['Full Stack Engineer', 'Software Engineer']);
+  // Titles are a score (ADR-0003): synonyms and the same or an adjacent occupation family pass without any variant.
+  assert.ok(saved.pass >= 100, `synonyms and families alone: ${saved.pass}`);
+  assert.ok(saved.other_occupations > 900 && saved.eligible === saved.pass + saved.other_occupations);
+  // Near titles, most alike first: synonyms (ML Engineer, Backend Developer), then the same family; never a bare head.
+  const near = saved.near[0].items.map((x) => x.label);
+  assert.deepEqual(near.slice(0, 2).sort(), ['Backend Developer', 'ML Engineer']);
+  assert.ok(near.indexOf('Full Stack Engineer') < near.indexOf('Platform Engineer'), near.join(', '));
+  assert.ok(!saved.near.flatMap((g) => g.items).some((x) => /^(engineer|manager|developer)$/i.test(x.label)), 'never a bare head word');
   assert.equal(saved.near[0].head, 'engineer');
   const fix = saved.suggestions.find((s) => s.kind === 'variants')!;
   assert.ok(fix, 'a variants fix is offered');
-  assert.match(fix.label, /^Add 5 title variants: \d+ more pass$/);
+  assert.match(fix.label, /^Add 5 title variants: \d+ rank higher$/);
+  assert.deepEqual((fix.pref[0].value as string[]).slice(2, 4), ['ml engineer', 'backend developer'], 'synonyms first');
   assert.deepEqual(fix.pref.map((p) => p.path), ['roles.titles']);
   assert.deepEqual(Object.keys(fix.change), ['roles.titles'], 'the page fills the same field');
-  assert.ok(saved.broad !== null && saved.broad > 0);
+  assert.ok(saved.broad !== null);
 
   // Accept it: what the user would save.
   const after = runPreview(w.ctx, { changes: fix.pref.map((p) => ({ segs: segs(p.path), value: p.value })) });
@@ -75,9 +82,11 @@ test('the text output: counts, reasons, near misses, examples, sources and fixes
   seedOwner(w.ctx, w.vault);
   const t = previewLines(runPreview(w.ctx)).join('\n');
   assert.match(t, /^1,480 postings from 9 sources \(last 14 days\)/);
-  assert.match(t, /Dropped, by first reason: title 1,\d{3} · only for other places 9\d/);
-  assert.match(t, /Only one thing stops them: title/);
-  assert.match(t, /Near misses on title: engineer → /);
+  assert.match(t, /Dropped, by first reason: only for other places \d{3}/);
+  assert.doesNotMatch(t, /Dropped, by first reason: .*\btitle \d/, 'a title is never a drop');
+  assert.match(t, /Other occupations \(not dropped: ranked last and not judged\): \d{3} of the 1,\d{3} that meet your rules/);
+  assert.match(t, /Only one thing stops them: occupation \(other occupations\)/);
+  assert.match(t, /Near your titles \(most alike first\): engineer → ML Engineer/);
   assert.match(t, /By source: .*LinkedIn 16\d → \d+/);
   assert.match(t, /crewdeck jobs pref set roles.titles --value-file <f> --because-file <f>/);
   assert.doesNotMatch(t, /pref set \S+ '\[/, 'posting text never goes on a command line');
@@ -110,7 +119,7 @@ test('read-only: a preview (in process, CLI and page) never writes the tracker, 
     assert.equal(cli.code, 0, cli.err);
     assert.ok(JSON.parse(cli.out).pass > 1);
     assert.equal(snapshot(w), before, 'the CLI');
-    const page = await s.call('POST', '/api/jobs/preview', s.page(), { search: { 'roles.titles': ['backend engineer', 'ai engineer', 'full stack engineer'] } });
+    const page = await s.call('POST', '/api/jobs/preview', s.page(), { search: { 'roles.titles': ['backend engineer', 'ai engineer', 'product designer'] } });
     assert.equal(page.status, 200, page.body);
     assert.equal(page.json.ok, true);
     assert.ok(page.json.pass > page.json.was);

@@ -8,7 +8,8 @@ import { runPrefilter } from '../../src/jobs/pipeline/prefilter.ts';
 import { judge, pick } from '../../src/jobs/pipeline/pick.ts';
 import { findFunnel } from '../../src/jobs/funnel.ts';
 import { seedOwner } from './owner-fixture.ts';
-import { jobs, world } from './helpers.ts';
+import { jobs, role, world } from './helpers.ts';
+import { setRoleStatus } from '../../src/jobs/pipeline/roles.ts';
 import { jobsServer } from './api-helpers.ts';
 import { render } from 'preact-render-to-string';
 import { html } from '../../web/jobs/lib.js';
@@ -32,13 +33,14 @@ test('the funnel adds up: fetched = rule drops + passed; passed = judged + waiti
   const f = findOnce(w);
   assert.equal(f.fetched, 1480);
   assert.equal(f.rules.reduce((a, r) => a + r.n, 0) + f.passed_rules, f.fetched);
-  assert.equal(f.judged + f.waiting + f.other, f.passed_rules);
+  assert.equal(f.other_occupations + f.judged + f.waiting + f.other, f.passed_rules);
   assert.equal(f.fits + f.no + f.unclear, f.judged);
-  assert.deepEqual([f.judged, f.fits, f.no, f.picked, f.need], [10, 1, 9, 1, 5]);
-  assert.equal(f.rules[0].rule, 'title_gate');
-  assert.equal(f.rules[0].label, 'title');
-  assert.equal(f.line, `1,480 fetched → ${f.passed_rules.toLocaleString('en-US')} passed your rules → 10 judged → 1 fits`);
-  assert.match(f.rules_line, /^Most went at your rules: title 1,\d{3} · only for other places 9\d/);
+  assert.deepEqual([f.judged, f.fits, f.fit_companies, f.no, f.picked, f.need], [10, 1, 1, 9, 1, 5]);
+  // Titles are never a drop (ADR-0003): other occupations are counted apart, not as a "title" rule.
+  assert.ok(!f.rules.some((r) => r.rule === 'title_gate'), JSON.stringify(f.rules));
+  assert.ok(f.other_occupations > 900, `${f.other_occupations} other occupations`);
+  assert.equal(f.line, `1,480 fetched → ${f.passed_rules.toLocaleString('en-US')} passed your rules (${f.other_occupations} other occupations set aside) → 10 judged → 1 fit from 1 company`);
+  assert.match(f.rules_line, /^Most went at your rules: only for other places \d{3}/);
   assert.deepEqual(f.judge_reasons[0], { text: 'requires US work authorisation', n: 6 });
   assert.equal(f.coverage, null, 'a big pool needs no coverage line');
   // The same counts straight from the tracker (nothing is counted during the Find).
@@ -53,16 +55,16 @@ test('stored with the run: candidates prints run.funnel, pick prints the funnel 
   const c = jobs(w.home, ['candidates', '--budget', '40', '--need', '5']);
   assert.equal(c.code, 0, c.err);
   const run = JSON.parse(c.out).run;
-  assert.match(run.funnel.line, /^1,480 fetched → [\d,]+ passed your rules → 10 judged → 1 fits$/);
+  assert.match(run.funnel.line, /^1,480 fetched → [\d,]+ passed your rules \([\d,]+ other occupations set aside\) → 10 judged → 1 fit from 1 company$/);
   const p = jobs(w.home, ['pick', '--n', '5']);
-  assert.match(p.out, /funnel: 1,480 fetched → .* → 1 fits\. Most went at your rules: title/);
+  assert.match(p.out, /funnel: 1,480 fetched → .* → 1 fit from 1 company\. Most went at your rules: only for other places/);
 });
 
 test('a small pool brings the coverage line (D42) and never names a source that does not exist', () => {
   const w = world('us-nurse');
   const f = findFunnel(w.ctx, 4);
   assert.equal(f.fetched, 0);
-  assert.equal(f.line, '0 fetched → 0 passed your rules → 0 judged → 0 fit');
+  assert.equal(f.line, '0 fetched → 0 passed your rules → 0 judged → 0 fits');
   assert.ok(f.coverage && f.coverage.length > 20, String(f.coverage));
 });
 
@@ -80,10 +82,10 @@ test('Today: "Why so few?" after a finished Find that picked fewer than asked; g
     const pv = (await s.call('POST', '/api/jobs/preview', s.page(), {})).json;
     const out = render(html`<${Today} data=${today} state=${(await s.get('state')).json} preview=${pv} />`).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
     assert.match(out, /Why so few\? Find 5 jobs: 1 picked/);
-    assert.match(out, /1,480 fetched → [\d,]+ passed your rules → 10 judged → 1 fits/);
-    assert.match(out, /Most went at your rules: title/);
+    assert.match(out, /1,480 fetched → [\d,]+ passed your rules \([\d,]+ other occupations set aside\) → 10 judged → 1 fit from 1 company/);
+    assert.match(out, /[\d,]+ of the 1,\d{3} that passed your rules are other occupations: set aside, not judged/);
     assert.match(out, /The judge's most common reasons: requires US work authorisation \(6\)/);
-    assert.match(out, /Add 5 title variants: \d+ more pass/);
+    assert.match(out, /Add 5 title variants: \d+ rank higher/);
     assert.match(out, /See the preview/);
     const loading = render(html`<${Today} data=${today} state=${(await s.get('state')).json} />`);
     assert.match(loading, /Checking what one change would bring back/);
@@ -117,4 +119,36 @@ test('sources that returned nothing on their last fetch are named in the funnel'
     by_key: { remotive: { at: '2026-11-19T09:01:00Z', ok: true, jobs: 0, new: 0, kept: 0, refused: 0 }, himalayas: { at: '2026-11-19T09:01:00Z', ok: false, jobs: 0, new: 0, kept: 0, refused: 0, error: 'needs keywords: they come from your job titles' }, jobicy: { at: '2026-11-19T09:01:00Z', ok: true, jobs: 40, new: 3, kept: 1, refused: 0 } } } as any);
   const f = findFunnel(w.ctx, 5);
   assert.deepEqual(f.sources, { total: 9, empty: 2, why: ['no postings', 'needs keywords'] });
+});
+
+test('honest counts: fits by company ("3 fits from 2 companies"); a fit set aside at Prepare is no longer a fit', () => {
+  const w = world('berlin-analyst');
+  const a1 = role(w.ctx, { company: 'Example Data' }), a2 = role(w.ctx, { company: 'Example Data', title: 'BI Analyst' });
+  const b = role(w.ctx, { company: 'Sample Insights', title: 'Data Analyst' });
+  runPrefilter(w.ctx);
+  judge(w.ctx, [a1, a2, b].map((id) => ({ role: id, eligible: 'yes', score: 80, evidence: 'from the posting' })) as any);
+  let f = findFunnel(w.ctx, 2);
+  assert.deepEqual([f.fits, f.fit_companies], [3, 2]);
+  assert.match(f.line, /→ 3 judged → 3 fits from 2 companies$/);
+  // Prepare reads one pick in full and it doesn't fit: by hand (status judged_out) or a "no" through judge.
+  const picked = pick(w.ctx, 2);
+  assert.equal(picked.length, 2);
+  setRoleStatus(w.ctx, picked[0], 'judged_out', 'needs a licence the user lacks');
+  assert.equal((w.ctx.db.prepare('select eligibility from roles where id=?').get(picked[0]) as any).eligibility, 'no');
+  judge(w.ctx, [{ role: picked[1], eligible: 'no', score: 10, evidence: 'requires relocation to Munich', reason: 'on-site in Munich only' }] as any);
+  assert.equal((w.ctx.db.prepare('select status from roles where id=?').get(picked[1]) as any).status, 'judged_out');
+  f = findFunnel(w.ctx, 2);
+  assert.equal(f.fits + f.no + f.unclear, f.judged);
+  assert.deepEqual([f.fits, f.no], [1, 2]);
+});
+
+test('coverage whenever fewer than 3 × N passed the rules, not only when the pool is small', () => {
+  const w = world('berlin-analyst');
+  for (let i = 0; i < 6; i++) role(w.ctx, { company: `Example Munich ${i}`, location: 'Munich, Germany' });
+  role(w.ctx, { company: 'Example Berlin 1' }); role(w.ctx, { company: 'Example Berlin 2' });
+  runPrefilter(w.ctx);
+  const f = findFunnel(w.ctx, 2);
+  assert.equal(f.fetched, 8, 'fetched ≥ 4 × need');
+  assert.equal(f.passed_rules, 2, 'passed < 3 × need');
+  assert.ok(f.coverage && f.coverage.length > 20, String(f.coverage));
 });

@@ -71,7 +71,7 @@ test('search is off unless the user switched it on', async () => {
 test('search: cards are prefiltered before any detail request; details stored with their apply kind; known roles skipped', async (t) => {
   const cards = CARD('4000000021', 'Senior Data Analyst', 'Example Co') + CARD('4000000022', 'Sales Data Analyst', 'Example Sales') // excluded title word
     + CARD('4000000023', 'Data Analyst', 'Example Agency GmbH') // excluded company
-    + CARD('4000000024', 'Backend Engineer', 'Sample AG') // title gate
+    + CARD('4000000024', 'Registered Nurse', 'Sample AG') // another occupation: not worth a request
     + CARD('4000000025', 'BI Analyst', 'Sample Retail', 'Munich, Germany') // elsewhere, on-site person
     + CARD('4000000026', 'Analytics Engineer', 'Example Closed');
   const li = await fakeLinkedin({ cards, details: { 4000000021: DETAIL({ company: 'Example Co' }), 4000000026: DETAIL({ title: 'Analytics Engineer', company: 'Example Closed', closed: true }) } });
