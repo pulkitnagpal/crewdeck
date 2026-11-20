@@ -53,3 +53,11 @@ export function CopyButton({ text, label = 'Copy', onCopied = noop }) {
   };
   return html`<button type="button" class="btn small" onClick=${copy} aria-label=${`${label}: ${text}`}>${label}</button>`;
 }
+
+/**
+ * Progressive disclosure (the UX pass): a one-line summary that opens to the details. A native <details>, so it is
+ * keyboard- and screen-reader-accessible with no script, and printable. Use it for "how it works", "why", long help.
+ */
+export function More({ summary = 'Details', children, open = false }) {
+  return html`<details class="more" open=${open}><summary>${summary}</summary><div class="more-body">${children}</div></details>`;
+}
