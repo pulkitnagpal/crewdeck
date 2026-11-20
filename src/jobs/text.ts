@@ -7,6 +7,8 @@ const ENTITIES: Record<string, string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>'
 
 /** The most of a page any text scan reads (≈400 KB): postings put their text, JSON-LD and meta tags well before it. */
 export const HTML_MAX = 400_000;
+/** What a stored posting description may hold (P1b: full text; a long posting is ~15k characters). */
+export const DESC_CAP = 60_000;
 
 /**
  * The end of the element opened at `from` (just after its open tag's name): the index after `</name>`, or -1 when it is

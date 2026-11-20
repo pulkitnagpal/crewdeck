@@ -10,7 +10,11 @@ import { addRole } from './pipeline/roles.ts';
 import { pickPasted } from './pipeline/pick.ts';
 import { HTML_MAX, elements, plainText } from './text.ts';
 
-export type Posting = { title?: string; company?: string; location?: string; description?: string; pay_text?: string; posted_at?: string; closed?: boolean; closed_reason?: string };
+export type Posting = {
+  title?: string; company?: string; location?: string; description?: string; pay_text?: string; posted_at?: string; closed?: boolean; closed_reason?: string;
+  /** From schema.org JobPosting (P1b): jobLocationType / jobLocation, applicantLocationRequirements, employmentType, validThrough. */
+  workplace?: 'remote' | 'hybrid' | 'onsite'; remote_countries?: string[]; employment_type?: string; valid_through?: string;
+};
 export type LinkInput = { url: string; force?: boolean };
 export type LinkResult = { id: string; company: string; title: string; apply_kind: ApplyKind; closed?: boolean; warnings: string[]; picked: boolean; needs?: string };
 export type LinkOptions = { net?: NetOptions; linkedin?: ClientOptions; day?: string };
@@ -85,10 +89,15 @@ export function readPostingPage(html: string, at = new Date()): Posting {
     const location = [remote ? `Remote${remoteFrom.length ? ` (${remoteFrom.join(', ')})` : ''}` : '', ...places].filter(Boolean).join(' · ');
     const until = Date.parse(str(n.validThrough));
     const expired = Number.isFinite(until) && until < at.getTime();
+    const hybrid = list(n.jobLocationType).some((t) => /hybrid/i.test(String(t)));
+    const workplace = hybrid ? 'hybrid' : remote ? 'remote' : places.length ? 'onsite' : undefined;
+    const employment = list(n.employmentType).map((t) => plainText(str(t))).filter(Boolean).slice(0, 5).join(', ');
     return {
       title: plainText(str(n.title ?? n.name)) || undefined, company: plainText(str(org)) || undefined, location: location || undefined,
       description: plainText(str(n.description)) || undefined, pay_text: payOf(n.baseSalary) || undefined, posted_at: iso(str(n.datePosted)),
       closed: expired || !!closedText, closed_reason: expired ? `the posting expired on ${str(n.validThrough).slice(0, 10)}` : closedText ? `the page says "${closedText}"` : undefined,
+      workplace, remote_countries: remoteFrom.length ? remoteFrom.map((x) => plainText(x).slice(0, 100)).slice(0, 60) : undefined,
+      employment_type: employment ? employment.slice(0, 100) : undefined, valid_through: iso(str(n.validThrough)),
     };
   }
   const meta = metas(page);
