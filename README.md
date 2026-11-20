@@ -54,7 +54,8 @@ back in any Claude session. The full walk-through is [docs/jobs/first-run.md](do
   vault's `CLAUDE.md` tells every agent the rules. Your files are listed on the left; the buttons at the top open
   **Today** (today's journal page with a To do list), make a **new page**, and add bold, a checkbox, a heading or a link
   to another page. Type `/` in a page for more. They are SilverBullet's own features, switched on by Crewdeck.
-- **Boards.** One kanban per project (To Do · In Progress · Needs you · Done). Tickets live in the project's repo.
+- **Boards.** One kanban per project (To Do · In Progress · Needs you · Done). Tickets live in the project's repo. To add
+  one, open a Claude Code session in the project's folder, type `/crewdeck` and click **Add this folder as a board**.
 - **Jobs.** A job search for any role in any country. Claude interviews you once and writes your notes; it finds roles
   within a token budget, reads a posting you paste, prepares every answer from your own words, and fills the form in a
   tab next to Crewdeck. **You click Submit. Crewdeck never submits.**
@@ -106,7 +107,8 @@ Then:
 `--preset <name>` (see Presets), `--vault <path>` puts the vault elsewhere, `--no-plugin` skips the plugin. It runs the same steps as `crewdeck init`, `crewdeck jobs init` and the plugin install below, each of which also
 works on its own (`jobs init` also takes `--home <dir>` for the tracker, `--workspace <dir>` for the jobs folder and
 `--no-providers` to skip the download). Running any of them again is safe.
-Add a project board with `crewdeck add-project <name> <path-to-git-repo>`.
+Add a project board: in a Claude Code session in the project's folder, type `/crewdeck` and click **Add this folder
+as a board** (or `crewdeck add-project <name> <path-to-git-repo>`).
 
 ## Install the plugin
 

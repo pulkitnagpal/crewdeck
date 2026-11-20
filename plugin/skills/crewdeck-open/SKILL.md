@@ -1,6 +1,6 @@
 ---
 name: crewdeck-open
-description: Open Crewdeck (the person's notes, jobs and project boards) from any Claude session, starting it if it isn't running, and show today's to-dos. Use when the person says "open Crewdeck", "start Crewdeck", "show my Crewdeck", "open my notes / jobs / board", or asks what is on their list for today.
+description: Open Crewdeck (the person's notes, jobs and project boards) from any Claude session, starting it if it isn't running, show today's to-dos, and add a project as a kanban board. Use when the person says "open Crewdeck", "start Crewdeck", "show my Crewdeck", "open my notes / jobs / board", "add this project to Crewdeck", or asks what is on their list for today.
 ---
 
 # Open Crewdeck from anywhere
@@ -22,7 +22,11 @@ yourself.
    - anywhere else, run `crewdeck open` (or `crewdeck open jobs`) to open it in the person's default browser.
 3. **The jobs session.** Jobs work happens in a Claude Code session opened in the jobs folder. `crewdeck open session`
    opens one in Claude desktop: tell the person to confirm the folder and press Enter on the hello it fills in.
-4. **Today's to-dos, asked in words.** They are the `- [ ]` lines of today's journal page in their vault,
+4. **A board for a project.** When the person wants their project (the folder this session is in, or one they name)
+   on Crewdeck as a kanban, run `crewdeck add-project <name> <folder>`: the name in lowercase letters, digits and
+   dashes, the folder the project's git root. It restarts Crewdeck's background service so the board appears. The
+   `/crewdeck` panel offers the same as **Add this folder as a board**.
+5. **Today's to-dos, asked in words.** They are the `- [ ]` lines of today's journal page in their vault,
    `journal/YYYY-MM-DD.md` (the vault folder is in `crewdeck jobs check`'s first lines, by default `~/Crewdeck/vault`).
    Read them from that file. To add one, add a `- [ ] <their words>` line under the page's `## To do` heading (create
    the page as `# YYYY-MM-DD`, a blank line, `## To do` if it doesn't exist). Change nothing else on the page.

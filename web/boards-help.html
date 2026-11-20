@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boards</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<main class="help">
+  <h1>Boards</h1>
+  <p>A kanban board for each of your projects: To Do, In Progress, Needs you, Done. The tickets live in the project's
+  own folder, so Claude works on them right where your code is.</p>
+  <h2>Add a project</h2>
+  <ol>
+    <li>In Claude desktop, open a Code session in your project's folder.</li>
+    <li>Type <code>/crewdeck</code> and click <b>Add this folder as a board</b>.</li>
+  </ol>
+  <p>Its board appears here in the rail a few seconds later. The folder must be a git project (Claude can make it one:
+  ask it to "set up git in this folder").</p>
+  <p class="soft">In Terminal instead: <code>~/.crewdeck/bin/crewdeck add-project &lt;name&gt; &lt;folder&gt;</code></p>
+</main>
+</body>
+</html>

@@ -21,7 +21,7 @@ export type Today = {
       }
   tickets: { project: string; id: string; title: string; status: string }[]
   more: number
-  projects: { name: string; label: string }[]
+  projects: { name: string; label: string; path?: string }[]
 }
 
 declare module 'claude-code' {
@@ -35,6 +35,7 @@ declare module 'claude-code' {
       todayNote: Shaped<string>
       paneOpen: Shaped<boolean>
       install: Shaped<Install>
+      here: Shaped<string>
     }
   }
 }

@@ -20,6 +20,8 @@
     ...(state.jobs ? [{ id: 'jobs', kind: 'Jobs', label: 'Jobs', short: 'Jobs', url: state.jobs.path, icon: ICON.jobs }] : []),
     'sep',
     ...state.projects.map((p) => ({ id: `board:${p.name}`, kind: 'Board', label: p.label, short: p.label, url: `${host}:${p.boardPort}/`, icon: ICON.board })),
+    // No project yet: a Boards item that says how to add one (from a Claude session in the project's folder).
+    ...(state.projects.length ? [] : [{ id: 'boards', kind: 'Boards', label: 'Add a project', short: 'Boards', url: '/boards-help.html', icon: ICON.board }]),
     ...(state.apps.length ? ['sep'] : []),
     ...state.apps.map((a) => ({ id: `app:${a.name}`, kind: 'App', label: a.label, short: a.label, url: withAppearance(sameHost(a.url)), icon: ICON[a.name] ?? ICON.app })),
   ];

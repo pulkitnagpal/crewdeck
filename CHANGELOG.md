@@ -20,6 +20,10 @@ Installing Crewdeck is now two steps inside the Claude desktop app, with nothing
 - **Set up my job search** in the panel opens the job-search chat with "Please set up my Crewdeck job search." ready to
   send, which starts the interview.
 - A fresh setup picks free ports when 4848/4849 are taken; the plugin reads the port from Crewdeck's config.
+- **Add this folder as a board** in the `/crewdeck` panel, in any Claude session whose folder is a git project that
+  isn't a board yet; **Open … board** buttons for each board; a **Boards** item in the rail that says how to add one
+  while there are none. `crewdeck add-project` restarts the background service so the board appears.
+- Crewdeck pages from the panel open in Claude desktop's own browser pane.
 - `scripts/release.sh` builds the release download and prints the checksum to pin.
 
 ### Changed

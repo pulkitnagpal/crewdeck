@@ -48,6 +48,8 @@ const laneAtom = atom({ plugin: 'crewdeck', key: 'lane' } as const, '', { shape:
 const todayAtom = atom({ plugin: 'crewdeck', key: 'today' } as const, null as Today | null, { shape: 'today-1' })
 const todayNote = atom({ plugin: 'crewdeck', key: 'todayNote' } as const, '', { shape: 'todayNote-1' })
 const paneOpen = atom({ plugin: 'crewdeck', key: 'paneOpen' } as const, false, { shape: 'paneOpen-1' })
+// This session's folder, when it is a git project that isn't a Crewdeck board yet: the panel offers to add it.
+const hereAtom = atom({ plugin: 'crewdeck', key: 'here' } as const, '', { shape: 'here-1' })
 // The one-click setup (docs/everywhere.md E13): where it is, for the panel.
 const installAtom = atom({ plugin: 'crewdeck', key: 'install' } as const, { phase: 'none', step: '', done: 0, lines: [] } as Install, { shape: 'install-1' })
 
@@ -280,6 +282,38 @@ async function refreshToday($: Dollar, port: number, body: Record<string, unknow
   if (got.error) { await update($, todayNote, () => String(got.error)); return }
   await update($, todayAtom, () => got)
   await update($, todayNote, () => '')
+  const root = await projectRoot($)
+  await update($, hereAtom, () => (root && !got.projects.some((p) => p.path === root) ? root : ''))
+}
+
+/** The git project this session's folder is in (the nearest folder up with a .git), found without running git: on a Mac
+ * without the developer tools, git itself would pop up Apple's install dialog. */
+async function projectRoot($: Dollar): Promise<string> {
+  let dir = await $.session.cwd().catch(() => '')
+  for (let i = 0; i < 12 && dir && dir !== '/'; i++) {
+    const r = await $.process.run(['test', '-e', `${dir}/.git`], { timeoutMs: 2000 }).catch(() => null)
+    if (r?.exitCode === 0) return dir
+    dir = dir.replace(/\/[^/]*$/, '') || '/'
+  }
+  return ''
+}
+
+/** The project's name for Crewdeck: its folder's name in lowercase letters, digits and dashes. */
+const slugOf = (path: string) => (path.split('/').pop() ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'project'
+
+/** Add this session's project as a board (`crewdeck add-project`, which restarts the background service). */
+async function addBoard($: Dollar, port: number, root: string): Promise<void> {
+  const home = await crewdeckHome($)
+  if (!home || !root.startsWith('/')) return
+  await update($, todayNote, () => `Adding ${slugOf(root)} as a board…`)
+  const r = await $.process.run([`${home}/bin/crewdeck`, 'add-project', slugOf(root), root], { timeoutMs: 60_000 }).catch(() => null)
+  token = '' // the restart wrote a new token
+  if (!r || r.exitCode !== 0) {
+    await update($, todayNote, () => `Could not add the board: ${(r?.stderr || r?.stdout || 'crewdeck did not run').trim().split('\n').pop()}`)
+    return
+  }
+  await refreshToday($, port)
+  $.ui.toast(`${slugOf(root)} is a board in Crewdeck now`)
 }
 
 /** What the jobs session's message box says (src/session-link.ts): the only texts the panel opens. */
@@ -386,6 +420,7 @@ export const register: Register = (on, options) => {
     }
     const open = t.todos.filter((x) => !x.done)
     const j = t.jobs
+    const here = await read($, hereAtom)
     if (glance) {
       return (
         <Box flexDirection="column">
@@ -427,12 +462,23 @@ export const register: Register = (on, options) => {
           </Box>
         ) : j && 'error' in j ? <Text color="warning">Jobs: {String(j.error)}</Text> : null}
 
+        {here ? (
+          <Box flexDirection="column">
+            <Text bold>This project</Text>
+            <Text dimColor>{here} isn't a Crewdeck board yet. Add it to see its tickets as a kanban next to your notes and jobs.</Text>
+            <Button key="add-board" label="Add this folder as a board" onPress={() => addBoard($, port, here)} />
+          </Box>
+        ) : null}
+
         {t.projects.length > 0 && (
           <Box flexDirection="column">
             <Text bold>Tickets</Text>
             {t.tickets.length === 0 && <Text dimColor>No open tickets.</Text>}
             {t.tickets.map((k) => <Text key={`t-${k.project}-${k.id}`}>{k.id} {k.title} · {k.status}{t.projects.length > 1 ? ` (${k.project})` : ''}</Text>)}
             {t.more > 0 && <Text dimColor>and {t.more} more on the boards</Text>}
+            <Box flexDirection="row" gap={1}>
+              {t.projects.map((p) => <Button key={`board-${p.name}`} label={`Open ${p.label === 'Board' ? p.name : p.label} board`} onPress={() => openUrl($, `${t.url}/#board:${p.name}`)} />)}
+            </Box>
           </Box>
         )}
 

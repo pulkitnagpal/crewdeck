@@ -34,6 +34,7 @@ function fakeCrewdeck(o: { running: boolean }) {
     todos: [{ line: 4, done: false, text: 'Tweet for the day' }] as Todo[],
     calls: [] as { path: string; body: any; token: boolean }[],
     opened: [] as string[],
+    added: [] as string[],
     started: 0,
   }
   const today = () => ({
@@ -46,7 +47,8 @@ function fakeCrewdeck(o: { running: boolean }) {
   const run = async (argv: readonly string[], init?: { stdin?: string }) => {
     const ok = (stdout: string) => res(0, stdout, '')
     if (argv[0] === 'sh') return ok(HOME)
-    if (argv[0] === 'test') return ok('')
+    if (argv[0] === 'test') return argv[1] === '-f' || argv[2] === '/work/flight-stack/.git' ? ok('') : res(1, '', '')
+    if (argv[0] === `${HOME}/bin/crewdeck` && argv[1] === 'add-project') { s.added.push(`${argv[2]} ${argv[3]}`); return ok('Added') }
     if (argv[0] === 'open') { s.opened.push(argv[1] ?? ''); return ok('') }
     if (argv[0] === `${HOME}/bin/crewdeck`) { s.started++; s.running = true; return ok('http://crewdeck.localhost:4848/') }
     if (argv[0] === 'curl') {
@@ -80,6 +82,7 @@ const PANE = {
 test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding go to Crewdeck with the token', async ($, on) => {
   const { s, run } = fakeCrewdeck({ running: true })
   mock.clock(on)
+  on('session.cwd', () => ({ value: '/work' }))
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -127,6 +130,7 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
 test('/crewdeck starts Crewdeck when it is not running; /crewdeck jobs opens the Jobs page', async ($, on) => {
   const { s, run } = fakeCrewdeck({ running: false })
   mock.clock(on)
+  on('session.cwd', () => ({ value: '/work' }))
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -144,6 +148,7 @@ test('not set up yet: /crewdeck shows Welcome with one Set up button; Set up run
   const { s, run } = fakeCrewdeck({ running: false })
   let installedNow = false
   mock.clock(on)
+  on('session.cwd', () => ({ value: '/work' }))
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -187,6 +192,7 @@ test('not set up yet: /crewdeck shows Welcome with one Set up button; Set up run
 
 test('a failed setup says why and offers Try again', async ($, on) => {
   mock.clock(on)
+  on('session.cwd', () => ({ value: '/work' }))
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -208,6 +214,7 @@ test('a failed setup says why and offers Try again', async ($, on) => {
 test('the panel opens only Crewdeck\'s own jobs-session link: any other text, folder or scheme from the server is refused', async ($, on) => {
   const { s, run } = fakeCrewdeck({ running: true })
   mock.clock(on)
+  on('session.cwd', () => ({ value: '/work' }))
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -227,5 +234,23 @@ test('the panel opens only Crewdeck\'s own jobs-session link: any other text, fo
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'jobs-session' })
   expect(s.opened).toEqual([])
+  await ui.unmount()
+})
+
+test('in a project folder that is not a board yet, the panel adds it with one click', async ($, on) => {
+  const { s, run } = fakeCrewdeck({ running: true })
+  mock.clock(on)
+  on('session.cwd', () => ({ value: '/work/flight-stack/site' }))
+  on('command.register', () => ({ value: { command: 'crewdeck' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('fs.read', () => ({ value: `${TOKEN}\n` }))
+  on('process.run', async (_, e) => ({ value: await run(e.argv, e.init) }))
+  await $.session.start({ cwd: '/work/flight-stack/site', surface: 'desktop', isInteractive: true })
+  await $.command.run(typed('crewdeck'))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /\/work\/flight-stack isn't a Crewdeck board yet/ })).toBeDefined()
+  await ui.press({ key: 'add-board' })
+  expect(s.added).toEqual(['flight-stack /work/flight-stack'])
   await ui.unmount()
 })

@@ -62,7 +62,7 @@ export function createShell(c: Config, requests = new Requests(), opts: ShellOpt
     return {
       date, url: pageUrl(c), notes_page: `journal/${date}`,
       todos: todosOf(c.vault, date), jobs, ...ticketsOf(c.projects),
-      projects: c.projects.map((p) => ({ name: p.name, label: p.label ?? p.name })),
+      projects: c.projects.map((p) => ({ name: p.name, label: p.label ?? p.name, path: p.path })),
     };
   }
 

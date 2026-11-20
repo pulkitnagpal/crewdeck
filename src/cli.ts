@@ -245,7 +245,7 @@ function loadConfigRaw(): Config {
   return { ...defaults(), ...(parse(readFileSync(CONFIG_PATH, 'utf8')) ?? {}) };
 }
 
-function addProject(args: string[]) {
+async function addProject(args: string[]) {
   const [name, path] = args;
   if (!name || !path) throw new Error('usage: crewdeck add-project <name> <path-to-git-repo>');
   const raw = loadConfig(); // validates
@@ -258,6 +258,10 @@ function addProject(args: string[]) {
   if (!existsSync(home)) writeFileSync(home, `---\ntags: project\n---\n# ${name}\n\nBoard: Crewdeck → Projects → ${name}. Notes for this project live in this folder.\n`);
   saveConfig(c);
   say(`Added ${name} → ${expand(path)}`);
+  // Its board appears once Crewdeck restarts: the background service does that now; a terminal run says how.
+  const svc = await import('./service.ts');
+  if (svc.serviceInstalled() && (await svc.whoAnswers(raw.port)) === 'this') { for (const l of svc.restartService()) say(l); say(`Its board is in Crewdeck's rail: ${pageUrl(raw, `/#board:${name}`)}`); }
+  else say('Restart Crewdeck (crewdeck up) to see its board.');
 }
 
 /** A page Crewdeck manages in the vault: written to a temp file and renamed over, so a link planted there is replaced, never
