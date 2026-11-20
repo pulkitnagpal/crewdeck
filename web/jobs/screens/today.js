@@ -154,15 +154,24 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onSour
 }
 
 export function Today({ data, state, preview = null, actions = {} }) {
-  const a = { onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onDryRun: null, ...actions };
+  const a = { onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onCancel: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onDryRun: null, ...actions };
   const setup = state?.setup?.needed;
-  if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} /></div>`;
+  if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} onCancel=${a.onCancel} /></div>`;
   const why = data.find ? html`<${WhySoFew} find=${data.find} preview=${preview} onFix=${a.onFix} onPreview=${a.onPreview} onSources=${a.onSources} />` : null;
   if (!data.queue.length) {
     return html`<div class="page">${why}<div class="empty">
       <span class="ico"><${Icon} name="briefcase" size=${22} /></span>
       <h2>Nothing to review</h2>
-      <p class="soft">Paste a job link above, or click <b>Find ${state?.quota ?? 5} jobs</b>: Claude judges the best candidates and prepares each pick. Roles you applied to are in Applications.</p>
+      ${(() => {
+        // Nothing fetched waiting to be judged yet (a new user right after setup): Find would have nothing to read.
+        const src = state?.sources;
+        const empty = src?.ready && !src.running && (src.waiting ?? 0) === 0;
+        return empty && src.listed === 0
+          ? html`<p class="soft">No sources yet: add some on the <a href="#sources">Sources</a> tab (or ask Claude), or paste a job link above. Roles you applied to are in Applications.</p>`
+          : empty
+            ? html`<p class="soft">No fetched roles are waiting to be judged. <b>Refresh sources</b> at the top fetches now (no Claude needed), or paste a job link above; then <b>Find ${state?.quota ?? 5} jobs</b> has something to judge. Roles you applied to are in Applications.</p>`
+            : html`<p class="soft">Paste a job link above, or click <b>Find ${state?.quota ?? 5} jobs</b>: Claude judges the best candidates and prepares each pick. Roles you applied to are in Applications.</p>`;
+      })()}
     </div></div>`;
   }
   return html`<div class="todaycol">${why}<div class="today">

@@ -122,7 +122,10 @@ test('applications, what Claude knows, preferences, settings', async () => {
   }
   const p = (await s.get('preferences')).json;
   const pref = render(html`<${Preferences} data=${p} />`);
-  assert.match(pref, /<textarea id="p-roles\.titles"[^>]*>product designer\nUX designer\ndesign lead<\/textarea>/);
+  // The example is a v0.4 note: one kind of job with its titles (v1 roles.titles stays as "More job titles").
+  assert.match(pref, /<input class="field" aria-label="Name of kind of job 1"[^>]*value="Product design"\/>/);
+  assert.match(pref, /<textarea class="field" rows="4">product designer\nUX designer\ndesign lead\ninteraction designer<\/textarea>/);
+  assert.match(pref, /<textarea id="p-roles\.titles"[^>]*><\/textarea>/);
   assert.match(text(pref), /Remote.*Hybrid.*On-site/);
   assert.match(pref, /<label for="p-pay\.floor">Floor<\/label>/);
   assert.match(text(render(html`<${Preferences} data=${{ ...p, exists: false }} />`)), /jobs\/search\.md is missing/);
@@ -208,4 +211,19 @@ test('no innerHTML (or anything like it) with data in the Jobs page', () => {
     assert.doesNotMatch(src, /innerHTML|outerHTML|dangerouslySetInnerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/, f);
     assert.doesNotMatch(src, /\sstyle=/, `${f}: inline styles are blocked by the page's CSP`);
   }
+});
+
+test('Today with nothing to review says what to do next: sources to add, a fetch to run, or Find (P9i rehearsal)', () => {
+  const data = { queue: [], detail: null, find: null };
+  const text = (sources: object) => render(html`<${Today} data=${data} state=${{ quota: 5, sources, setup: { needed: false } }} />`).replace(/<[^>]+>/g, '');
+  assert.match(text({ ready: true, listed: 0, waiting: 0 }), /No sources yet: add some on the Sources tab \(or ask Claude\)/);
+  assert.match(text({ ready: true, listed: 2, waiting: 0 }), /No fetched roles are waiting to be judged\. Refresh sources at the top fetches now/);
+  assert.match(text({ ready: true, listed: 2, waiting: 12 }), /Paste a job link above, or click Find 5 jobs/);
+  // The setup card's request: no session yet says so, and a cancel is not shown as a failure.
+  const card = (request: object, connected: boolean) => render(html`<${SetupCard} state=${{ setup: { needed: true, files: [], request }, agent: { connected, workspace: '/x' } }} />`).replace(/<[^>]+>/g, '');
+  assert.match(card({ id: 1, status: 'new' }, false), /Waiting for a Claude session.*No Claude session is connected yet/);
+  assert.match(card({ id: 1, status: 'new' }, true), /Waiting for Claude to start the setup/);
+  assert.match(card({ id: 1, status: 'new' }, true), />?Cancel/);
+  assert.doesNotMatch(card({ id: 1, status: 'failed', result: 'Cancelled on the page' }, true), /Setup stopped/);
+  assert.match(card({ id: 1, status: 'failed', result: 'the session ended' }, true), /Setup stopped.*the session ended/);
 });

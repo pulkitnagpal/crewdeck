@@ -3,6 +3,67 @@
 What changed for people using Crewdeck. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Crewdeck is not released yet: versions below name the `crewdeck` plugin's version and the state of `main`.
 
+## [Unreleased] — Jobs v0.4: Jobs for anyone
+
+The owner's first run as a new user found 1 role in 1,480 postings: the search had been built around one person. v0.4
+walks every step as nine fictional people (a nurse on nights, an accountant in Berlin, a store manager in Pune, a new
+graduate in Manila, a warehouse worker without a resume, a freelance translator…) and fixes what each of them hit
+([the audit](docs/jobs/impl/09-generic-audit.md), [design §24](docs/jobs/design.md)).
+
+### Added
+
+- **Where to look, from your notes.** A catalog of every source Crewdeck can fetch (kind, regions, fields, limits,
+  confidence), `crewdeck jobs sources list|suggest|add|remove|move|enable|disable|resolve|set-url`, and a coverage line
+  that says plainly when no job board covers your field where you live, and what still works. Employers are added by
+  their careers page and checked in the provider sandbox; Claude can find a company's real jobs page for you.
+- **The Sources tab**: your list in priority order (Move up / Move down, on/off, remove, last fetch), the catalog with
+  filters, Add a company, Add a web address, and LinkedIn's row (placed like any source; switching it on stays yours).
+- **Title matching for every field**: kinds of job (`roles.targets`) with the titles postings use in any language;
+  every word of a title in any order, plurals, gendered and compound forms (Finanzbuchhalter, Traductor/a), abbreviations
+  (RN, SRE), seniority words apart, and `roles.level` (entry, experienced, senior).
+- **Preview before saving**: `crewdeck jobs preview` and the Preferences **Preview** show what a change would catch on
+  postings already fetched, with near misses and suggested fixes. **Why so few?** on Today explains a small Find: the
+  funnel from fetched to picked, the rule that dropped most, and fixes to try.
+- **Setup v2**: the interview works with or without a resume, for people starting out, changing field or coming back
+  after a break; it proposes sources, fetches once and previews until you are happy.
+- **How you work and what you earn**: shifts and hours (`work_pattern`), pay per hour, day, week, month or year with
+  your hours, per-word or per-project pay kept for the judge, moving (`relocate_to`), right to work (`authorized_in`),
+  CEFR language levels, licences with where, more employment types, a cooldown per role or per company.
+- **Forms in any language**: form terms in English, German, French, Spanish, Portuguese, Italian, Dutch and Indian and
+  Philippine English; answers drafted in the form's language, citing your facts through translations you approved; the
+  resume in your chosen language and conventions; referees, employment history blocks and availability grids; walk-in,
+  email, document and account-needed apply methods; `crewdeck jobs letter` for a cited cover letter.
+- **"Let Claude install it"** in the README: one prompt a non-developer pastes into Claude desktop.
+- `crewdeck doctor` says when another Crewdeck (another home) answers on this one's port.
+
+### Changed
+
+- **The whole Jobs page meets a 14 px minimum and AA contrast** in light and dark (rem sizes that follow the browser's
+  text size), with every control labelled and reachable by keyboard; checked by headless browser tests on every screen.
+  At 1440 px and narrower the top bar takes two rows.
+- A new user's page says what to do next: "No sources yet" with **Open Sources** instead of "0 new roles waiting";
+  Today's empty state points at the Sources tab or **Refresh sources**; the setup card says when no Claude session is
+  connected yet and lets you cancel the request (a cancel no longer shows as "Setup stopped").
+- `crewdeck setup` on a new vault says the job notes are "ready for setup to fill in", not "kept your …".
+- `jobs/sources.md` is one ordered `sources:` list (v2). Notes written before keep working: `boards:` and `watchlist:`
+  are read in that order and merged on the first change.
+- A resume upload labelled with an accent ("Currículum", "Currículo", "Résumé") is offered the resume PDF.
+- The example notes in `examples/jobs/` are v0.4 notes (a kind of job, level, work pattern, sources v2).
+- `docs/jobs/first-run.md` v2: the exact first run on a Mac, from install to Submit, what's stored where, starting over
+  safely, and known gotchas.
+
+### Deprecated
+
+- `--preset` on `crewdeck setup` and `crewdeck jobs init`: it now runs the catalog's query for the preset and says
+  so. The four preset `sources.md` files are gone. It goes in the next release.
+
+### Security
+
+- ID, bank and tax numbers (social security, National Insurance, Aadhaar, PAN, Steuer-ID, DNI/NIE…) are never filled,
+  stored, drafted or remembered, in any language; `crewdeck jobs check` refuses them in your notes. Sensitive answers
+  (salary expectations, date of birth, nationality…) fill only from your explicit answer, kept per company unless you
+  say "use this everywhere".
+
 ## [Unreleased] — 0.3.0
 
 ### Breaking changes

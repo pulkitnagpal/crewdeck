@@ -66,7 +66,7 @@ const plural_ = (n, w) => `${Number(n).toLocaleString('en-US')} ${w}${n === 1 ? 
 export function PreviewPanel({ pv, busy, dirty, onApply = noop }) {
   if (!pv) return html`<section class="card pv" aria-label="Preview"><h2>Preview</h2><p class="soft small" role="status">${busy ? 'Checking your postings…' : 'Change a field to see what it catches on the postings already fetched.'}</p></section>`;
   if (pv.ok === false) return html`<section class="card pv" aria-label="Preview"><h2>Preview</h2><p class="err" role="status">Can't preview: ${pv.issues.map((i) => `${i.path ? `${i.path}: ` : ''}${i.message}`).join('; ')}</p></section>`;
-  if (!pv.pool) return html`<section class="card pv" aria-label="Preview"><h2>Preview</h2><p class="soft">No postings fetched in the last ${pv.days} days yet: use Refresh sources at the top, then preview.</p></section>`;
+  if (!pv.pool) return html`<section class="card pv" aria-label="Preview"><h2>Preview</h2><p class="soft">No postings fetched in the last ${pv.days} days yet. Once your sources are fetched (Refresh sources at the top; add sources on the Sources tab) or you paste job links, this shows what your choices catch.</p></section>`;
   const fixes = pv.suggestions.filter((x) => x.more > 0 && Object.keys(x.change).length);
   return html`<section class="card pv" aria-label="Preview" aria-busy=${busy ? 'true' : 'false'}>
     <h2>Preview <span class="small soft">${plural_(pv.pool, 'posting')} from the last ${pv.days} days</span></h2>

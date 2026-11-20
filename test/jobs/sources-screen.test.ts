@@ -233,7 +233,7 @@ test('Preferences Save keeps what the form doesn\'t show on a target: hand-writt
   const s = await jobsServer();
   try {
     const file = join(s.w.vault, 'jobs', 'search.md');
-    const text0 = readFileSync(file, 'utf8').replace('  titles: [product designer, UX designer, design lead]\n', `  titles: [product designer]
+    const text0 = readFileSync(file, 'utf8').replace(/  # One kind of job[^\n]*\n  targets:\n    - \{[^\n]*\}\n/, `  titles: [product designer]
   # Two kinds of job; the second has a note of mine.
   targets:
     - name: Product designer   # what I'd call it

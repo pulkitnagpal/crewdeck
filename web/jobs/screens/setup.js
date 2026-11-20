@@ -11,7 +11,7 @@ function fileState(f) {
   return html`<span class="chip ok">ok</span>`;
 }
 
-export function SetupCard({ state, onSetup = noop, onNotes = noop, onToast = noop }) {
+export function SetupCard({ state, onSetup = noop, onNotes = noop, onToast = noop, onCancel = noop }) {
   const [editing, setEditing] = useState(false);
   const s = state.setup;
   const a = state.agent ?? {};
@@ -33,9 +33,12 @@ export function SetupCard({ state, onSetup = noop, onNotes = noop, onToast = noo
         <span class="small soft">If no job board covers your field where you live, it says so and what still works: employers' pages, LinkedIn if you switch it on, links you paste.</span></div></li>
       <li><span>Review what Claude wrote: on the <b>Sources</b> and <b>Preferences</b> tabs, or in Notes. Nothing is used until you are happy with it.</span></li>
     </ol>
-    ${req ? html`<div class="state info" role="status"><span class="title"><span class=${`dot ${req.status === 'picked' ? 'busy' : 'wait'}`}></span>${req.status === 'picked' ? 'Claude is setting up Jobs with you in the chat' : 'Waiting for Claude to start the setup'}</span>
-        ${req.last ? html`<span class="small soft">${req.last.text}</span>` : null}</div>` : null}
-    ${s.request?.status === 'failed' ? html`<div class="state bad"><span class="title">Setup stopped</span><span class="small">${s.request.result}</span></div>` : null}
+    ${req ? html`<div class="state info" role="status"><span class="title"><span class=${`dot ${req.status === 'picked' ? 'busy' : 'wait'}`}></span>${req.status === 'picked' ? 'Claude is setting up Jobs with you in the chat' : a.connected ? 'Waiting for Claude to start the setup' : 'Waiting for a Claude session'}</span>
+        ${req.last ? html`<span class="small soft">${req.last.text}</span>`
+          : req.status === 'new' && !a.connected ? html`<span class="small soft">No Claude session is connected yet. Start one in your jobs folder (step 1) and say hello: the setup starts there by itself.</span>`
+          : req.status === 'new' ? html`<span class="small soft">It starts in the chat as soon as Claude finishes what it is doing.</span>` : null}
+        ${req.status === 'new' ? html`<div class="row-flex"><button type="button" class="btn small" onClick=${() => onCancel(req.id)}>Cancel</button></div>` : null}</div>` : null}
+    ${s.request?.status === 'failed' && s.request.result !== 'Cancelled on the page' ? html`<div class="state bad"><span class="title">Setup stopped</span><span class="small">${s.request.result}</span></div>` : null}
     <div class="row-flex">
       <button type="button" class="btn primary" onClick=${onSetup} disabled=${!!req}>Set up with Claude</button>
       <button type="button" class="btn" aria-expanded=${editing} onClick=${() => setEditing(!editing)}>I'll edit the files</button>

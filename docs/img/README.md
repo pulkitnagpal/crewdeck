@@ -11,6 +11,7 @@ Settings and setup screens are shown as the defaults a new user sees (`~/.crewde
 | `jobs-preferences-dark.png` | Preferences (jobs/search.md) |
 | `jobs-applications-light.png` | Applications |
 | `jobs-settings-light.png` | The risky switches, all off |
-| `jobs-setup-light.png` | The first-run setup card on a new install |
+| `jobs-setup-light.png` | The first-run setup card on a new install (v0.4: a fresh `crewdeck setup`, before the interview; the jobs folder shown as `/Users/you/Crewdeck/jobs`) |
+| `jobs-sources-light.png` | Sources (v0.4): the coverage line, LinkedIn placed first and off, a board not fetched yet (an engineer in India after a scripted setup) |
 | `notes-light.png` | Notes (SilverBullet through its proxy) |
 | `board-dark.png` | A project board (Backlog.md, themed) |

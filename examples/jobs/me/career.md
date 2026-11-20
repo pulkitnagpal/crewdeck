@@ -1,10 +1,11 @@
 ---
 tags: me
-resume: { file_name: "{first_name} {last_name} Resume.pdf", paper: A4, max_pages: 2 }
+language: en
+resume: { file_name: "{first_name} {last_name} Resume.pdf", paper: A4, max_pages: 2, language: en, word: resume }
 sections:
   - { id: summary, kind: summary }
-  - { id: example-studio, kind: experience, title: Senior Product Designer, org: Example Studio, where: Lisbon, dates: "2021 – now", max_bullets: 5, required: true }
-  - { id: sample-labs, kind: experience, title: Product Designer, org: Sample Labs, where: Remote, dates: "2016 – 2021", max_bullets: 4 }
+  - { id: example-studio, kind: experience, title: Senior Product Designer, org: Example Studio, where: Lisbon, start: "2021-03", dates: "2021 – now", max_bullets: 5, required: true }
+  - { id: sample-labs, kind: experience, title: Product Designer, org: Sample Labs, where: Remote, start: "2016-09", end: "2021-02", dates: "2016 – 2021", max_bullets: 4 }
   - { id: talks, kind: list, title: Talks }
   - { id: skills, kind: skills }
   - { id: education, kind: education }

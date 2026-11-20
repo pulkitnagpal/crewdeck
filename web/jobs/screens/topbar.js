@@ -32,6 +32,8 @@ export function AgentStrip({ agent }) {
 export function sourcesLine(src, now = Date.now()) {
   if (!src) return null;
   if (!src.ready) return { text: 'Job boards not set up', title: 'Run crewdeck jobs providers install (pasted links work without them)', refresh: false };
+  // No source switched on yet (a new user before setup): nothing to fetch, so say where they come from instead.
+  if (src.listed === 0 && !src.running) return { text: 'No sources yet', title: 'Setup with Claude proposes sources; or add them on the Sources tab', refresh: false, sources: true };
   const since = src.since ? `since ${new Date(src.since).toDateString() === new Date(now).toDateString() ? clock(src.since) : new Date(src.since).toLocaleDateString([], { day: 'numeric', month: 'short' })}` : 'waiting';
   const head = src.running ? 'Fetching roles…' : `${plural(src.new_since ?? 0, 'new role')} ${since}`;
   const last = src.last?.finished ? ` · fetched ${ago(src.last.finished, now)}${src.last.ok ? '' : ' (with errors)'}` : src.running ? '' : ' · not fetched yet';
@@ -39,12 +41,13 @@ export function sourcesLine(src, now = Date.now()) {
   return { text: `${head}${last}`, title, refresh: !src.running };
 }
 
-export function SourcesStrip({ sources, onRefresh = noop }) {
+export function SourcesStrip({ sources, onRefresh = noop, onSources = noop }) {
   const l = sourcesLine(sources);
   if (!l) return null;
-  return html`<div class="sources" role="status" title=${l.title}>
+  return html`<div class=${`sources${l.sources ? ' short' : ''}`} role="status" title=${l.title}>
     <span class="txt">${l.text}</span>
     ${l.refresh ? html`<button type="button" class="linkbtn" onClick=${onRefresh}>Refresh sources</button>` : null}
+    ${l.sources ? html`<button type="button" class="linkbtn" onClick=${onSources}>Open Sources</button>` : null}
   </div>`;
 }
 
@@ -75,7 +78,7 @@ export function TopBar({ screen, onNav = noop, agent, quota = 5, onFind = noop, 
     <span class="grow"></span>
     <span class="break"></span>
     <${AgentStrip} agent=${agent} />
-    <${SourcesStrip} sources=${sources} onRefresh=${onRefresh} />
+    <${SourcesStrip} sources=${sources} onRefresh=${onRefresh} onSources=${() => onNav('sources')} />
     <${AddLink} onAdd=${onLink} />
     <button type="button" class="btn primary find" onClick=${onFind} disabled=${setupNeeded} title=${setupNeeded ? 'Set up Jobs first' : `Claude judges the best candidates and picks ${quota}`}>
       Find ${quota} jobs

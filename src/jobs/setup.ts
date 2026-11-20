@@ -354,7 +354,11 @@ export async function jobsInit(o: { preset?: string; home?: string; workspace?: 
   const notes = seedNotes(c.vault, o.preset);
   for (const n of notes.created) lines.push(`✓ created ${n}${o.preset && n === NOTES.search ? ` from the ${o.preset} preset` : o.preset && n === NOTES.sources ? ` from the catalog for the ${o.preset} preset` : ''}${notes.replaced.includes(n) ? ' (it was still the empty template)' : ''}`);
   if (o.preset && notes.created.includes(NOTES.sources)) lines.push(`  ${presetSources(o.preset, c.vault).coverage}`);
-  if (notes.kept.length) lines.push(`✓ kept your ${notes.kept.join(', ')}`);
+  // A note still exactly the template (crewdeck init copied it a moment ago) is not "yours" yet: say it is ready to fill.
+  const blank = notes.kept.filter((n) => untouchedTemplate(c.vault, n));
+  const yours = notes.kept.filter((n) => !blank.includes(n));
+  if (blank.length) lines.push(`✓ job notes ready for setup to fill in: ${blank.join(', ')}`);
+  if (yours.length) lines.push(`✓ kept your ${yours.join(', ')}`);
   if (notes.presetSkipped.length) lines.push(`  the ${o.preset} preset was not applied to ${notes.presetSkipped.join(' and ')}: ${notes.presetSkipped.length > 1 ? 'they exist' : 'it exists'} (move it away and run this again to start from the preset)`);
 
   const ws = writeWorkspaceFiles(c);

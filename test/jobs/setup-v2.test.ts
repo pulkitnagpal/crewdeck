@@ -9,47 +9,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { jobs, tempSetup, textFile } from './helpers.ts';
+import { jobs } from './helpers.ts';
 import { splitNote } from '../../src/jobs/notes.ts';
-
-type Persona = ReturnType<typeof tempSetup> & { n: number };
-
-function start(): Persona { return { ...tempSetup('template'), n: 0 }; }
-/** One command as the skill runs it; values and the user's words come from files. */
-function ok(p: Persona, args: string[]) {
-  const r = jobs(p.home, args);
-  assert.equal(r.code, 0, `crewdeck jobs ${args.join(' ')}\n${r.err}${r.out}`);
-  return r.out;
-}
-const file = (p: Persona, text: string) => textFile(p.root, `v${++p.n}.txt`, text);
-const me = (p: Persona, path: string, value: string) => ok(p, ['me', 'set', path, '--value-file', file(p, value)]);
-const pref = (p: Persona, path: string, value: string, words: string) => ok(p, ['pref', 'set', path, '--value-file', file(p, value), '--because-file', file(p, words)]);
-function posting(p: Persona, r: { title: string; company: string; location: string; pay_text?: string; description?: string }) {
-  const f = textFile(p.root, `role${++p.n}.json`, JSON.stringify({ url: `https://jobs.example.com/${encodeURIComponent(r.company)}/${p.n}`, source: 'pasted', description: '', ...r }));
-  ok(p, ['add-role', '--role-file', f]);
-}
-const preview = (p: Persona, change?: string) => JSON.parse(ok(p, ['preview', '--json', ...(change ? ['--search-file', file(p, change)] : [])]));
-const search = (p: Persona) => parse(splitNote(readFileSync(join(p.vault, 'jobs', 'search.md'), 'utf8')).front!);
-const sources = (p: Persona) => readFileSync(join(p.vault, 'jobs', 'sources.md'), 'utf8');
-
-/** The end of every setup: a clean check and each target passing at least one posting. */
-function finish(p: Persona, targets: string[]) {
-  const check = jobs(p.home, ['check']);
-  assert.equal(check.code, 0, check.out + check.err);
-  assert.doesNotMatch(check.out, /✗/, check.out);
-  assert.match(check.out, /^0 errors, 0 warnings$/m, check.out);
-  const pv = preview(p);
-  assert.deepEqual(pv.by_target.map((t: any) => t.name), targets);
-  for (const t of pv.by_target) assert.ok(t.pass >= 1, `${t.name}: ${t.pass} pass\n${JSON.stringify(pv, null, 1)}`);
-  return pv;
-}
-
-/** Setup's fetch step on a fresh home: it says plainly why nothing ran (no providers, or Node < 25), never crashes. */
-function fetchOnce(p: Persona) {
-  const r = jobs(p.home, ['source', '--only-new-sources']);
-  assert.ok(r.code === 0 || r.code === 1, r.err);
-  assert.match(r.out + r.err, /not installed|Node 25|no new sources|LinkedIn search is off/i);
-}
+import { fetchOnce, file, finish, me, ok, posting, pref, preview, search, sources, start } from './setup-helpers.ts';
 
 test('E: backend engineer in India, remote, from a resume: targets checked on postings, variants from the preview loop, boards from the catalog, LinkedIn placed first', () => {
   const p = start();

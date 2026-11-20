@@ -146,6 +146,8 @@ test('German form: Anrede, Geburtsdatum, Staatsangehörigkeit and Gehaltsvorstel
   assert.equal(plan['Lebenslauf *'].action, 'upload');
   assert.match(plan['Anschreiben'].reason!, /crewdeck jobs letter/);
   assert.equal(plan['Bewerbung absenden'].action, 'skip');
+  // Resume uploads in other languages, accents and all (a Spanish "Currículum" was read as an ordinary file before P9i).
+  for (const l of ['Currículum *', 'Currículo (PDF)', 'Résumé', 'Curriculum vitae']) assert.equal(by(fillPlan([{ label: l, type: 'file' }], {}, p))[l].action, 'upload', l);
   // With a letter rendered, the Anschreiben upload is offered.
   assert.equal(by(fillPlan(fields, {}, p, { career: c, letter: true }))['Anschreiben'].action, 'upload');
 });

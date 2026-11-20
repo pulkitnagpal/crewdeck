@@ -243,7 +243,9 @@ export function Sources({ data, state = null, onAct = async () => null, onFeatur
         <p class="soft">Use Move up and Move down to change the order. Switching a source off keeps it in the list without fetching it.</p></header>
       ${rows.length ? html`<ol class="slist" aria-label="Your sources, in priority order">${rows.map((r, i) => html`<${Row} key=${r.key} r=${r} i=${i} count=${rows.length} data=${data} asked=${asking[r.key]}
           onMove=${move} onToggle=${toggle} onRemove=${remove} onCheck=${check} onAsk=${ask} onFeature=${onFeature} />`)}</ol>`
-        : html`<p>No sources yet. Add the suggested ones from the catalog below, or a company's careers page.</p>`}
+        : html`<p>${data.coverage.unset ? 'No sources yet. Setup with Claude proposes some from your notes; you can also add one from the catalog below, or a company\'s careers page.'
+          : data.suggested.length ? 'No sources yet. Add the suggested ones from the catalog below, or a company\'s careers page.'
+          : 'No sources yet. Add one from the catalog below, or a company\'s careers page.'}</p>`}
       ${data.linkedin.in_list ? null : html`<div class="row-flex"><span class="soft">LinkedIn isn't in your list. Placing it here orders it; switching it on stays yours.</span>
         <button type="button" class="btn small" onClick=${addLinkedIn}>Place LinkedIn in your list</button></div>`}
     </section>

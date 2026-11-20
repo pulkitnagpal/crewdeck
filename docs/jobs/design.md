@@ -786,7 +786,7 @@ front of the user. A phase may start once the one before it is committed.
 | P9f | `09f-setup-v2.md` | **Setup interview v2** (§24.4, §24.10): `jobs-setup` rewritten (where to look, employers, coverage line, fetch once, preview loop, targets and variants, work pattern, level, relocation and right to work, no-resume / entry-level / switcher / break paths), setup card copy, `jobs-daily-run` (priority, funnel close), `crewdeck-memory` (targets, sources) | Skill command lines linted against the CLI (existing lint). A scripted setup through commands for three personas (E, N, W) ends with `jobs check` clean and a preview that passes ≥ 1 fixture posting per target |
 | P9g | `09g-work-pay-rules.md` | **Work pattern, pay and rules data** (§24.8, D29–D31, D36–D38): pay periods and hours, per-unit text, `work_pattern`, employment types and the structured drop, CEFR, licences with `where`, `relocate_to`, `authorized_in`, cooldown scope and `per_company`, per-language rule words and new states/regions, the judge brief updates, `exclude.travel: off` | Rule and pay tests per persona: N's nights and hourly floor; W's 24 h/week and a monthly-posted wage; F's day rate and a per-word posting kept for the judge; A's "Deutsch C1" and "Homeoffice"; T's term-time; R's monthly INR and LPA; refilter round trips |
 | P9h | `09h-forms-any-language.md` | **Forms and answers in any language** (§24.9, D32–D35): `form-terms.yaml` (profile fields, sensitive, never_fill; en, de, fr, es, pt, it, nl, plus the India and Philippines English variants), Claude-raised sensitivity, never-fill skip, answers in the form's language, `facts[].tr`, `resume.language`/headings/`personal`, `resume.word`, references, experience `start`/`end`, fill-plan `add`, apply method, `crewdeck jobs letter` | Form fixtures: a German form (Anrede, Geburtsdatum, Gehaltsvorstellung, Steuer-ID → sensitive/never_fill), an Indian form (Aadhaar, PAN, Father's name, Current/Expected CTC), a US hourly form (availability grid, EEO, SSN), a UK school form (references, employment history with "Add another"). Citation check green on German answers citing English facts with an approved translation |
-| P9i | `09i-journeys-docs.md` | **Journeys and docs** (§24.12, §24.13): persona journey tests, README (who it's for, the storage split, Sources, "Claude installs it"), first-run.md v2, examples, accessibility pass (D41), visual check | All persona journeys green with captured outputs; leak scan; owner's acceptance re-run as the engineer from the audit |
+| P9i | `09i-journeys-docs.md` | **Journeys and docs** (§24.12, §24.13): persona journey tests, README (who it's for, the storage split, Sources, "Claude installs it"), first-run.md v2, examples, accessibility pass (D41), visual check | All persona journeys green with captured outputs; leak scan; owner's acceptance re-run as the engineer from the audit. **Done** (2026-11-20), awaiting the owner's first run as a new user |
 
 ## 23. Open questions for the owner
 
@@ -834,7 +834,7 @@ Principles:
 | The user's choice: which sources, in which order, their employers and custom URLs, the LinkedIn row's position | Vault note `jobs/sources.md` (readable and editable in Notes) | The user (Sources screen, Notes) and Claude, through `crewdeck jobs sources …` |
 | What happened at the last fetches: count, new, kept after the rules, errors, when, how long | `<jobs home>/state/sources.json` (0600) | Crewdeck's fetch run |
 
-The README says this in one paragraph under "Where your knowledge lives".
+The README says this in one paragraph under "What's stored where".
 
 **The catalog (D18).** One entry per provider (137 runnable plus 8 that can't run in the sandbox, marked
 `runnable: false` with the reason), plus Crewdeck's own `linkedin` entry. The fields:
@@ -1321,6 +1321,15 @@ placeable first, the preview shows the near misses, and Find returns N or explai
   career-ops; any provider is added only through the reviewed re-pin (§15), after checking the site's terms.
 
 ## Changelog
+- **P9i built (2026-11-20):** the seven persona journeys of §24.12 through the CLI on temp homes, with captured outputs
+  (`test/jobs/journeys.test.ts`); the owner's acceptance re-run from zero as the engineer from the audit (16 → 202
+  passing after his yes to the variants, every posting limited to another country still dropped, LinkedIn's position
+  changing order and never drops, Find picking 5 with its funnel); D41 for the whole Jobs page (rem type, nothing under
+  14 px, AA in both themes, labelled and keyboard-reachable controls; `test/jobs/a11y-ui.test.ts`); README (who it's
+  for, "Let Claude install it", what's stored where, Sources), first-run.md v2, v0.4 example notes, CHANGELOG, the PR
+  text; fixes from a fresh-user rehearsal (the setup line for a new vault, "No sources yet", the setup card without a
+  session, Today's empty state, the top bar's two rows, an accented resume label, doctor and another Crewdeck on the
+  port). Details: [impl/09i-journeys-docs.md](impl/09i-journeys-docs.md).
 - **P9h built (2026-11-20):** form terms per language (`form-terms.yaml`: profile fields, sensitive, never_fill for en,
   de, fr, es, pt, it, nl and Indian and Philippine English); ID, bank and tax numbers never filled or stored; Claude may
   raise a field to sensitive; sensitive answers kept per company unless "everywhere"; answers in the form's language

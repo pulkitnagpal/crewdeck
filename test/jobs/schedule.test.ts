@@ -121,4 +121,18 @@ test('the sources line on the page', () => {
   const out = render(html`<${SourcesStrip} sources=${{ ready: true, running: false, new_since: 1, waiting: 1, last: { finished: '2026-11-19T13:00:00Z', ok: false } }} />`);
   assert.match(out, /1 new role waiting · fetched .* \(with errors\)/);
   assert.match(out, />Refresh sources</);
+  // A new user before setup: no source switched on, so nothing to refresh; the line points at the Sources tab.
+  const none = sourcesLine({ ready: true, running: false, listed: 0, new_since: 0, waiting: 0, last: { finished: '2026-11-19T13:00:00Z', ok: true } }, now)!;
+  assert.equal(none.text, 'No sources yet');
+  assert.equal(none.refresh, false);
+  const bare = render(html`<${SourcesStrip} sources=${{ ready: true, running: false, listed: 0, new_since: 0, waiting: 0, last: null }} />`);
+  assert.match(bare, />Open Sources</);
+  assert.doesNotMatch(bare, /Refresh sources/);
+});
+
+test('the state says how many sources are switched on (none for a new user, so the page says "No sources yet")', async () => {
+  for (const [person, listed] of [['template', 0], ['berlin-analyst', 3]] as const) {
+    const s = await jobsServer(person, { api: { sources: { run: async () => ({ code: 0 }), firstDelayMs: 3_600_000 } } });
+    try { assert.equal((await s.get('state')).json.sources.listed, listed, person); } finally { await s.close(); }
+  }
 });

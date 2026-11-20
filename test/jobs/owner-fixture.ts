@@ -113,6 +113,14 @@ export function ownerRoles(): OwnerRole[] {
 export function seedOwner(ctx: Ctx, vault: string, now = new Date('2026-11-19T10:00:00Z')): { ids: string[]; roles: OwnerRole[] } {
   writeFileSync(join(vault, 'jobs', 'search.md'), OWNER_SEARCH);
   writeFileSync(join(vault, 'jobs', 'sources.md'), OWNER_SOURCES);
+  return seedOwnerPool(ctx, now);
+}
+
+/**
+ * Only the pool, as nine sources' fetches would store it (each row with its source key): for a journey whose notes come
+ * from the setup interview instead (P9i's acceptance re-run).
+ */
+export function seedOwnerPool(ctx: Ctx, now = new Date('2026-11-19T10:00:00Z')): { ids: string[]; roles: OwnerRole[] } {
   const roles = ownerRoles();
   const ids: string[] = [];
   const insert = ctx.db.prepare('update roles set first_seen=?, updated_at=? where id=?');

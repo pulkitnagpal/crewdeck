@@ -338,8 +338,11 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const waiting = Number((db.prepare(`select count(*) n from roles where status='new' and eligibility is null`).get() as any).n);
     const fresh = since ? Number((db.prepare(`select count(*) n from roles where status='new' and eligibility is null and first_seen >= ?`).get(since) as any).n) : waiting;
     const p = last?.providers as any;
+    // How many sources the user has switched on (LinkedIn counts only when its switch is on): none means "set up first".
+    let listed = 0;
+    try { listed = notesOf(ctx).sources.data.items.filter((it) => (it.linkedin ? ctx.features.linkedin_search : it.enabled)).length; } catch {}
     return {
-      ready: canSource(), providers: providersReady.ready, linkedin: !!ctx.features.linkedin_search, every: c.jobs.fetch_every,
+      ready: canSource(), listed, providers: providersReady.ready, linkedin: !!ctx.features.linkedin_search, every: c.jobs.fetch_every,
       ...scheduler.status(), waiting, new_since: fresh, since,
       last: last ? { started: last.started, finished: last.finished ?? null, ok: last.ok, new: last.new, error: last.error ?? null,
         failed: Array.isArray(p?.entries) ? p.entries.filter((e: any) => !e.ok).length : 0, entries: Array.isArray(p?.entries) ? p.entries.length : 0 } : null,

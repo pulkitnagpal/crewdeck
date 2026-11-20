@@ -109,7 +109,8 @@ export function fillPlan(fields: PageField[], answers: Record<string, string>, p
     if (type === 'file') {
       if (/autofill|auto-fill|parse/i.test(label)) return { ...base, action: 'skip', reason: 'resume-parsing uploader: it would overwrite the answers' };
       if (isLetterLabel(label)) return o.letter ? { ...base, action: 'upload', value: 'cover letter PDF', reason: 'the user attaches it with the upload button' } : { ...base, action: 'skip', reason: 'cover letter or statement: crewdeck jobs letter makes a cited one' };
-      return /resume|\bcv\b|curriculum|curriculo|lebenslauf/i.test(label)
+      // Accents folded first: "Currículum", "Currículo" and "Résumé" are resume uploads too.
+      return /resume|\bcv\b|curriculum|curriculo|lebenslauf/i.test(label.normalize('NFD').replace(/\p{M}/gu, ''))
         ? { ...base, action: 'upload', value: 'tailored resume PDF', reason: 'the user attaches it with the upload button' }
         : { ...base, action: 'skip', reason: /cover/i.test(label) ? 'cover letter (optional)' : 'file upload' };
     }

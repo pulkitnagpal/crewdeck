@@ -209,7 +209,9 @@ async function jobsPresence(c: Config) {
     if (r.status === 404) return { jobs: false as const };
     if (r.status !== 200) return null;
     const s = r.json;
-    return { jobs: true as const, connected: !!s?.agent?.connected, seen: s?.agent?.seen ?? null };
+    // Another Crewdeck (another CREWDECK_HOME) on this port answers for its own Jobs, not this one's.
+    const other = typeof s?.home === 'string' && s.home !== c.jobs.home ? String(s.vault ?? s.home) : undefined;
+    return { jobs: true as const, connected: !!s?.agent?.connected, seen: s?.agent?.seen ?? null, ...(other ? { other } : {}) };
   } catch { return null; }
 }
 

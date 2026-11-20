@@ -11,6 +11,7 @@ import type { Browser, Page } from 'playwright-core';
 import { findBrowser } from '../../src/jobs/browser.ts';
 import { jobsServer } from './api-helpers.ts';
 import { REPO, world } from './helpers.ts';
+import { audit } from './ui-audit.ts';
 
 const found = findBrowser();
 const noBrowser = found ? false : 'no Chromium-based browser on this machine';
@@ -89,31 +90,6 @@ test('LinkedIn\'s row: placed like any source, switched on only through the conf
   assert.equal(asked.length, 1);
   await page.close();
 });
-
-/** Every visible text in the screen: its computed size and its contrast with the first opaque background behind it. */
-async function audit(page: Page, root = '.srcs') {
-  return page.evaluate((root) => {
-    const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
-    const lum = ([r, g, b]: number[]) => { const f = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
-    const bg = (el: Element | null): number[] => {
-      for (let e = el; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor); if (c.length >= 3 && (c.length < 4 || c[3] > 0.5)) return c.slice(0, 3); }
-      return [255, 255, 255];
-    };
-    const out: { text: string; size: number; ratio: number }[] = [];
-    const walker = document.createTreeWalker(document.querySelector(root)!, NodeFilter.SHOW_TEXT);
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      const el = n.parentElement!;
-      const t = n.textContent!.trim();
-      if (!t || el.closest('.sr, option, button:disabled, [disabled]')) continue;
-      const r = el.getBoundingClientRect();
-      if (!r.width || !r.height) continue;
-      const cs = getComputedStyle(el);
-      const a = lum(rgb(cs.color)), b = lum(bg(el));
-      out.push({ text: t.slice(0, 40), size: parseFloat(cs.fontSize), ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) });
-    }
-    return out;
-  }, root);
-}
 
 for (const scheme of ['light', 'dark'] as const) {
   test(`D41 in ${scheme}: no text under 14 px, AA contrast for every text, labelled controls`, { skip: noBrowser, timeout: 60_000 }, async () => {

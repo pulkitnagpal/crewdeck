@@ -18,6 +18,42 @@ Crewdeck builds as little as it can. It wires together mature open-source tools:
 
 Everything runs on your machine, bound to `127.0.0.1`. No accounts, no cloud, no telemetry.
 
+## Who it's for
+
+**Anyone looking for work**, in any field and any country: a nurse on nights, an accountant in Berlin, a store manager
+in Pune, a new graduate, a warehouse worker without a resume, a freelance translator, an engineer who wants remote work.
+Claude talks with you in your own language; the page itself is in English for now.
+
+What you need today:
+- **A desktop or laptop computer** with macOS or Linux. Crewdeck runs on your own computer, and Claude fills forms in a
+  browser next to it, so it doesn't work on a phone or tablet. (Windows: not yet.)
+- **The [Claude desktop app](https://claude.ai/download)** with a plan that includes Claude Code (its **Code** tab).
+- **About 30 minutes** with Claude for the first setup: an interview about your work and what you're looking for.
+  A resume helps but isn't needed.
+- Claude can install it for you (below). You don't need to know how to program.
+
+## Let Claude install it
+
+Open the Claude desktop app, start a new session in the **Code** tab (any folder, for example your home folder), and
+paste this:
+
+```text
+Please install Crewdeck for me from https://github.com/pulkitnagpal/crewdeck and get it running.
+I am not a developer: explain each step in plain words and ask me before you run anything.
+1. Check that git and Node.js are installed. `node --version` must be 22.18 or newer (25 or newer to fetch jobs from
+   job boards). If something is missing or too old, tell me exactly how to install it on my computer and wait for me.
+2. If ~/.crewdeck or ~/Crewdeck already exists, stop and ask me what to do. Never delete or move my files.
+3. Clone the repository into ~/crewdeck, then run `npm ci` in it.
+4. Run `node src/cli.ts setup` there and tell me what each line of its output means. If installing the plugin fails,
+   tell me how to add it in the app instead (+ → Plugins → Add marketplace, with the path of ~/crewdeck).
+5. Run `node src/cli.ts doctor` and explain anything marked ✗.
+6. Start Crewdeck with `node src/cli.ts up` in the background, leave it running, and open http://localhost:4848 in the
+   browser pane. Then tell me the next step from docs/jobs/first-run.md: a new Code session in ~/Crewdeck/jobs.
+```
+
+Claude runs the commands with your approval, one by one. The full walk-through, with what you should see at each step,
+is [docs/jobs/first-run.md](docs/jobs/first-run.md).
+
 ## What's in it
 
 - **Notes.** Your vault: what Claude knows about you (`me/`), a wiki Claude keeps, a journal, notes per project. The
@@ -35,6 +71,9 @@ Everything runs on your machine, bound to `127.0.0.1`. No accounts, no cloud, no
 | ![Notes](docs/img/notes-light.png) | ![A project board](docs/img/board-dark.png) |
 
 ## Requirements
+
+In plain words: a Mac or Linux computer, the Claude desktop app, Node.js (a free program that runs Crewdeck), git (to
+download it) and a Chrome-like browser. In detail:
 
 - macOS or Linux. (Windows: not yet, see the [roadmap](docs/roadmap.md).)
 - **Node.js 22.18 or newer.** Crewdeck runs its TypeScript directly; there is no build step.
@@ -110,10 +149,19 @@ claude plugin marketplace remove crewdeck
 
 `claude plugin list` shows what is installed; `claude plugin validate /path/to/crewdeck` checks the manifests.
 
-## Where your knowledge lives
+## What's stored where
 
-Everything Claude knows about you is a note in your vault. You can read and change any of it in Notes; Claude changes
-it only through `crewdeck jobs …` commands that validate what they write and keep your own words.
+Two kinds of things, kept apart:
+
+- **Your knowledge is notes in your vault** (`~/Crewdeck/vault`): who you are, your work, what you want, where to
+  look, what Claude learned. They are plain Markdown files you can read, edit, copy or back up; nothing about you lives
+  anywhere else. You can change any of it in Notes; Claude changes it only through `crewdeck jobs …` commands that
+  validate what they write and keep your own words.
+- **Crewdeck's machine state is in `~/.crewdeck/`** (private to you): the roles it found, the form questions and
+  answers it prepared, resume PDFs, the job-board code, your risky switches. You never need to edit it; it can be
+  rebuilt from the notes.
+- **Your jobs folder** (`~/Crewdeck/jobs`) is only where you open the Claude session that works on Jobs. Crewdeck
+  writes its rules there (`CLAUDE.md`, `.claude/settings.json`) and rewrites them on every start.
 
 | Note | What |
 |---|---|
@@ -137,8 +185,23 @@ Machine state is in `~/.crewdeck/jobs/` (private, 0700): `jobs.db` (roles, answe
 
 The list is ordered: the first source is fetched first and its roles rank first (pasted links still come before
 everything). Order never changes what your rules drop. LinkedIn can sit in your list like any other source, but switching
-it on stays yours alone (Jobs → Settings, with your computer's confirmation dialog). Design v0.4 adds a Sources screen
-over these: see [docs/jobs/design.md](docs/jobs/design.md) §24.
+it on stays yours alone (Jobs → Settings, with your computer's confirmation dialog).
+
+## Sources
+
+Jobs → **Sources** shows your list in order, with each source's last fetch, and lets you reorder it (Move up / Move
+down), switch a source off without removing it, remove it, add one from the catalog (filter by region, field and kind),
+add a company by its careers page (Crewdeck checks which system runs it, in the provider sandbox) or add any other jobs
+page. The line at the top says plainly what is covered for you and what isn't: if no job board covers your field where
+you live (nursing in the US, retail in India, logistics in Texas…), it says so, and what still works: employers'
+careers pages, LinkedIn if you switch it on, and links you paste. Crewdeck never invents a source.
+
+During setup, Claude proposes sources from your notes (`crewdeck jobs sources suggest`), fetches once, and shows you
+how many real postings your choices catch before anything is used (`crewdeck jobs preview`). When a Find returns fewer
+jobs than you asked for, Today shows **Why so few?**: the funnel from fetched to picked, the rule that dropped most, and
+one-click changes to try, each previewed first.
+
+![Sources: the coverage line and your list in order](docs/img/jobs-sources-light.png)
 
 ## Presets (deprecated)
 

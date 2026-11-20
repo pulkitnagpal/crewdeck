@@ -1,6 +1,7 @@
 // `crewdeck jobs init` from an empty temp home, its managed workspace files, and doctor's Jobs section.
 // A temp CREWDECK_HOME only; the config is written by hand (crewdeck init would download SilverBullet).
 import { test } from 'node:test';
+import { jobsServer } from './api-helpers.ts';
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -64,7 +65,9 @@ test('jobs init from an empty home: Jobs on, private jobs.home and tracker, the 
     assert.equal(readFileSync(join(s.vault, n), 'utf8'), readFileSync(join(REPO, 'vault-template', n), 'utf8'), `${n} from the template`);
   }
   assert.match(r.out, /created jobs\/search\.md/);
-  assert.match(r.out, /kept your me\/profile\.md/);
+  // A note still the template isn't "yours": a new user is told it is ready to fill in; one they changed is kept.
+  assert.match(r.out, /job notes ready for setup to fill in: me\/profile\.md/);
+  assert.doesNotMatch(r.out, /kept your/);
   assert.match(r.out, /providers not downloaded \(--no-providers\)/);
   assert.match(r.out, /browser for reading forms|no Chromium-based browser/);
 
@@ -134,6 +137,8 @@ test('jobs init again: idempotent, never touches a note, rewrites the managed fi
   assert.equal(r.code, 0, r.err);
   for (const n of NOTE_FILES) assert.equal(readFileSync(join(s.vault, n), 'utf8'), before[n], `${n} untouched`);
   assert.match(r.out, /preset was not applied to jobs\/search\.md and jobs\/sources\.md/);
+  assert.match(r.out, /kept your jobs\/search\.md\n/, 'the note the user changed is theirs');
+  assert.match(r.out, /job notes ready for setup to fill in: me\/profile\.md, me\/career\.md, jobs\/memory\.md, jobs\/sources\.md/);
   assert.equal(readFileSync(md, 'utf8'), good.md, 'managed CLAUDE.md rewritten');
   assert.equal(readFileSync(st, 'utf8'), good.st, 'settings rewritten');
   assert.ok(!existsSync(`${md}.before-crewdeck`), 'an edited managed file is not "foreign"');
@@ -246,6 +251,19 @@ test('doctor: a Jobs section (off, then on with every check), never reaching a r
   assert.match(bad.out, /✗ jobs\/search\.md: 1 error \(crewdeck jobs check\)/);
   assert.match(bad.out, /✗ jobs workspace .*: CLAUDE\.md out of date/);
   assert.match(bad.out, /✗ tracker jobs\.db is missing: run crewdeck jobs init/);
+
+  // Another Crewdeck (its own home and vault) on this one's port: never reported as this one's session (P9i rehearsal).
+  const other = await jobsServer('example');
+  other.c.port = other.port; // the Host check expects the port it listens on, as crewdeck up has it
+  try {
+    const cfg = join(s.home, 'config.yaml');
+    writeFileSync(cfg, readFileSync(cfg, 'utf8').replace(`port: ${s.port}`, `port: ${other.port}`));
+    // Spawned without blocking: the other Crewdeck runs in this process and must answer.
+    const { execFile } = await import('node:child_process');
+    const mixed = await new Promise<{ out: string }>((ok) => execFile(process.execPath, [join(REPO, 'src', 'cli.ts'), 'doctor'], { env: { ...process.env, CREWDECK_HOME: s.home } }, (_e, out) => ok({ out })));
+    assert.match(mixed.out, new RegExp(`✗ another Crewdeck answers on port ${other.port} \\(its notes: ${other.w.vault}\\), not this one`));
+    assert.doesNotMatch(mixed.out, /a Claude session works the jobs lane/);
+  } finally { await other.close(); }
 });
 
 test('a workspace in the hidden jobs home (before 0.3.0) moves to the visible folder; --workspace picks one; --help runs nothing', async () => {

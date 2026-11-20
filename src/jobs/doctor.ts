@@ -10,7 +10,7 @@ import { isPrivate, workspaceStatus } from './setup.ts';
 
 export type Line = { ok: boolean | null; text: string };
 /** What the running Crewdeck says about the jobs lane: null = not running; jobs false = running with Jobs off. */
-export type Presence = null | { jobs: false } | { jobs: true; connected: boolean; seen: string | null };
+export type Presence = null | { jobs: false } | { jobs: true; connected: boolean; seen: string | null; /** another Crewdeck's vault */ other?: string };
 
 export async function jobsDoctor(c: Config, presence: Presence): Promise<Line[]> {
   if (!c.jobs.enabled) return [{ ok: null, text: 'Jobs is off: crewdeck jobs init switches it on' }];
@@ -54,6 +54,7 @@ export async function jobsDoctor(c: Config, presence: Presence): Promise<Line[]>
   if (p.ready && !node.ok) out.push({ ok: false, text: node.why });
 
   if (presence === null) out.push({ ok: false, text: `Crewdeck isn't running on port ${c.port} (crewdeck up), so no Claude session can pick up Jobs requests yet` });
+  else if (presence.jobs && presence.other) out.push({ ok: false, text: `another Crewdeck answers on port ${c.port} (its notes: ${presence.other}), not this one: stop it, or set another port in this Crewdeck's config.yaml` });
   else if (!presence.jobs) out.push({ ok: false, text: 'Crewdeck is running without Jobs: restart it (crewdeck up) to load Jobs' });
   else if (presence.connected) out.push({ ok: true, text: 'a Claude session works the jobs lane (crewdeck plugin connected)' });
   else out.push({ ok: false, text: `no Claude session works Jobs${presence.seen ? ` (last seen ${presence.seen})` : ''}: install the crewdeck plugin and open a session in ${c.jobs.workspace}` });

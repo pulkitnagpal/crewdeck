@@ -38,7 +38,8 @@ async function open(width: number) {
 }
 
 test('wide window: one row, the long status ellipsized, Find beside Add link', { skip: noBrowser, timeout: 60_000 }, async () => {
-  const page = await open(1368);
+  // Wider than 1440 px: one row (D41's 14 px type needs it; at 1440 and below the bar takes two rows).
+  const page = await open(1600);
   const [find, add, agent, tabs] = await Promise.all(['.top .find', '.addlink', '.agent', '.tabsnav'].map((x) => box(page, x)));
   assert.ok(Math.abs(find.y - add.y) < 8 && Math.abs(agent.y - tabs.y) < 16, `one row: ${JSON.stringify({ find, add, agent, tabs })}`);
   assert.ok(agent.width <= 360, 'the status shrinks rather than wrapping the row');
@@ -47,8 +48,9 @@ test('wide window: one row, the long status ellipsized, Find beside Add link', {
   await page.close();
 });
 
-test('the browser pane beside the chat: Find stays on the first row, the status gets its own', { skip: noBrowser, timeout: 60_000 }, async () => {
-  const page = await open(900);
+for (const width of [900, 720]) test(`the browser pane beside the chat (${width} px): Find stays on the first row, the status gets its own`, { skip: noBrowser, timeout: 60_000 }, async () => {
+  // 720: the Jobs frame inside Crewdeck's rail in a narrow pane, with D41's 14 px tabs (P9i's rehearsal).
+  const page = await open(width);
   const [find, tabs, agent] = await Promise.all(['.top .find', '.tabsnav', '.agent'].map((x) => box(page, x)));
   assert.ok(Math.abs(find.y - tabs.y) < 16, 'Find on the tabs row');
   assert.ok(agent.y > tabs.y + 20, 'the status on the next row');
