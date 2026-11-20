@@ -194,7 +194,14 @@ const USAGE = `usage: crewdeck jobs <command>
   pref set <field.path> <value> --because-file <f>   jobs/search.md, logged under ## Changes
   remember --kind <kind> --text-file <f> --quote-file <f> [--key k] [--scope all|company --company-file <f>]
            [--title-words-file <f>] [--supersedes m-N]  |  remember --retire m-N
-  features [<name> <on|off|number>]       risky switches (changing needs your own terminal)`;
+  features [<name> <on|off|number>]       risky switches (changing needs your own terminal)
+tell crewdeck (text and JSON only from files):
+  tell --text-file <f>                    queue what the person said as a tell request (a Jobs chat handles it)
+  propose --file <f.json>                 intake's proposal: { origin, summary, request?, items: [{ kind, payload, reason, evidence? }] }
+  proposals list [--json] | approve <id> [item] --quote-file <f> | reject <id> [item]`;
+
+/** P3's commands (Tell Crewdeck): they talk to the running server, which stores and applies proposals. */
+const P3 = ['tell', 'propose', 'proposals'];
 
 /** P2a's commands, loaded only when one of them runs (they open the tracker). */
 const P2 = ['prefilter', 'refilter', 'candidates', 'judge', 'pick', 'status', 'event', 'question', 'applied', 'not-interested', 'add-role', 'role',
@@ -202,7 +209,7 @@ const P2 = ['prefilter', 'refilter', 'candidates', 'judge', 'pick', 'status', 'e
   'link', 'linkedin', 'resume', 'letter', 'request', 'source', 'providers', 'sources', 'preview'];
 
 /** Every `crewdeck jobs` command (the skills lint checks commands against this). */
-export const JOBS_COMMANDS = ['init', 'check', 'rules', 'judge-brief', 'me', 'pref', 'remember', 'features', ...P2];
+export const JOBS_COMMANDS = ['init', 'check', 'rules', 'judge-brief', 'me', 'pref', 'remember', 'features', ...P2, ...P3];
 
 export async function main(args: string[]) {
   const [cmd, ...rest] = args;
@@ -212,6 +219,10 @@ export async function main(args: string[]) {
     say(USAGE); say((await import('./commands.ts')).USAGE); return;
   }
   const run: Record<string, (a: string[]) => unknown> = { init, check, rules: rulesCmd, 'judge-brief': briefCmd, me, pref, remember: rememberCmd, features };
+  if (cmd && P3.includes(cmd)) {
+    const m = await import('./proposals-cmd.ts');
+    return await ({ tell: m.tell, propose: m.propose, proposals: m.proposals } as Record<string, (a: string[]) => Promise<void>>)[cmd](rest);
+  }
   if (cmd && P2.includes(cmd)) {
     const m = await import('./commands.ts');
     return await m.COMMANDS[cmd](rest);

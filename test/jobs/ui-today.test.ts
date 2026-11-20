@@ -125,7 +125,10 @@ test('Today inside the shell at 870×800 (the rail narrows the frame): Apply in 
   const page = await newPage(870, 800);
   await page.goto(`http://localhost:${s.port}/#jobs`);
   await page.locator('iframe.on').waitFor({ timeout: 15_000 });
-  const frame = page.frames().find((f) => f.url().includes('/jobs/'))!;
+  // The frame's address is set just after the rail marks it on: wait for it (a busy machine took longer than one tick).
+  let frame: Frame | undefined;
+  for (let i = 0; i < 150 && !frame; i++) { frame = page.frames().find((f) => f.url().includes('/jobs/')); if (!frame) await page.waitForTimeout(100); }
+  assert.ok(frame, 'the Jobs frame loaded');
   await frame.locator('.qitem').first().waitFor({ timeout: 15_000 });
   await checkToday(frame, 'shell-870x800', page);
   await frame.evaluate(() => { document.querySelectorAll('*').forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }); window.scrollTo(0, 0); });

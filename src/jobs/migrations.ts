@@ -96,6 +96,19 @@ alter table roles add column form_lang text;
 PRAGMA user_version = 4;
 `;
 
+// Additive tables (no user_version step): created if missing on every open, so they never collide with the numbered steps
+// other phases add. Each is `create table if not exists` and never alters an existing table.
+// proposals (Jobs v2 §8.7, §11, P3): what intake suggests changing in the person's notes, each item approved, rejected
+// or (the person's own words, low-risk kinds only) applied at once and undoable. items_json holds the items and their status.
+const PROPOSALS = `
+create table if not exists proposals (
+  id integer primary key, created text not null, origin text not null check (origin in ('person','quoted','fetched')),
+  summary text not null default '', request_id integer, items_json text not null default '[]',
+  status text not null default 'pending' check (status in ('pending','done')), updated text not null);
+create index if not exists proposals_status on proposals(status);
+`;
+export const ADDITIVE: { name: string; sql: string }[] = [{ name: 'proposals', sql: PROPOSALS }];
+
 /** Every schema step, in order; step N leaves user_version = N. */
 export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }, { version: 2, sql: V2 }, { version: 3, sql: V3 }, { version: 4, sql: V4 }];
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -118,5 +131,6 @@ export function migrate(db: DatabaseSync): number {
       throw e;
     }
   }
+  for (const step of ADDITIVE) db.exec(step.sql);
   return version(db);
 }

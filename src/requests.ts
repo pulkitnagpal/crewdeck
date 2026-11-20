@@ -8,7 +8,8 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFil
 import { dirname, join, resolve, sep } from 'node:path';
 import { HOME, type Config } from './config.ts';
 
-export const JOB_KINDS = ['setup', 'find', 'link', 'apply', 'improve', 'source'] as const;
+// tell (P3): what the person told Crewdeck (the Tell box, the panel, `crewdeck jobs tell`): intake turns it into a proposal.
+export const JOB_KINDS = ['setup', 'find', 'link', 'apply', 'improve', 'source', 'tell'] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 export type Progress = { at: string; text: string };
 
