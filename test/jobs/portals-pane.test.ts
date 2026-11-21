@@ -304,7 +304,8 @@ test('portals plan, script, ingest and mark from the command line (a temp home, 
   const script = jobs(s.home, ['portals', 'script', 'naukri']);
   assert.equal(script.code, 0, script.err);
   assert.match(script.out, /^\(\(\)=>\{/);
-  assert.ok(script.out.includes('jobapi'), 'the Naukri adapter is embedded');
+  assert.ok(script.out.includes('srp-jobtuple-wrapper'), 'the Naukri card selectors are embedded');
+  assert.ok(!script.out.includes('jobapi'), 'Naukri\'s search API (reCAPTCHA-protected) is never re-requested');
   const plan = JSON.parse(jobs(s.home, ['portals', 'plan', '--json']).out);
   assert.equal(plan.mode, 'pane');
   assert.deepEqual(plan.pages, []);

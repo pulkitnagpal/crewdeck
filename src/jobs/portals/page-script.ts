@@ -19,6 +19,7 @@ export function pageConfig(p: Portal, o: { settleMs?: number } = {}) {
     hosts: p.hosts,
     job: { pattern: p.job_url.pattern, ...(p.job_url.keep_params?.length ? { keep_params: p.job_url.keep_params } : {}), ...(p.job_url.canonical ? { canonical: p.job_url.canonical } : {}) },
     json: p.json.map((j) => ({ ...(j.url ? { url: j.url } : {}), ...(j.state ? { state: j.state } : {}), list: j.list, fields: j.fields, ...(j.where ? { where: j.where } : {}), ...(j.url_template ? { url_template: j.url_template } : {}) })),
+    ...(p.cards ? { cards: p.cards } : {}),
     wall: p.sign_in_wall,
     max: PAGE_JOBS, budget: PAGE_BUDGET, settle_ms: o.settleMs ?? 1000,
   };

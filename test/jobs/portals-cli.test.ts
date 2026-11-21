@@ -25,7 +25,8 @@ test('portals list: every portal and where it stands (text and JSON)', () => {
   updatePortal(s.jobsHome, 'cutshort', () => ({ connected: true, last_scan: '2026-11-21T08:00:00.000Z', last_found: 7 }));
   const t = jobs(s.home, ['portals', 'list']);
   assert.match(t.out, /^cutshort\s+Cutshort\s+connected, last scan 2026-11-21 08:00 \(7 found\)/m);
-  assert.match(t.out, /^naukri\s+Naukri\s+not connected\s+\[in\]\s+\(URLs unverified\)/m);
+  assert.match(t.out, /^naukri\s+Naukri\s+not connected\s+\[in\]\s*$/m);
+  assert.match(t.out, /^instahyre\s+Instahyre\s+not connected\s+\[in\]\s+\(URLs unverified\)/m);
 });
 
 test('portals on/off: only a connected portal is switched on; the note gets the row and a Changes line', () => {

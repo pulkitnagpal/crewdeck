@@ -38,8 +38,9 @@ test('paths and dates: filters, regex groups, epochs and "3 days ago"', () => {
   assert.equal(postedAt('whenever', NOW), undefined);
 });
 
-test('layer json: Naukri\'s search response (fixture), off-site items dropped', () => {
-  const naukri = loadPortals().byId.get('naukri')!;
+test('layer json: a search response in Naukri\'s shape (fixture), off-site items dropped', () => {
+  // The shipped Naukri entry reads cards (its API wants a reCAPTCHA token); the JSON layer is tested with its old adapter.
+  const naukri = { ...loadPortals().byId.get('naukri')!, json: [{ url: '/jobapi/v3/search', list: 'jobDetails', fields: { url: 'jdURL', title: 'title', company: 'companyName', location: 'placeholders[type=location].label', description: 'jobDescription', posted_at: 'createdDate' } }] };
   const got = fromJson([{ url: 'https://www.naukri.com/jobapi/v3/search?noOfResults=20&keyword=data', body: fixture('naukri-jobapi.json') }, { url: 'https://www.naukri.com/other', body: '{}' }], naukri, 'https://www.naukri.com/data-analyst-jobs', NOW);
   assert.equal(got.length, 2);
   assert.deepEqual(got[0], {

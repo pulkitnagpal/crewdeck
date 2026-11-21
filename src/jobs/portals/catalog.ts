@@ -24,6 +24,8 @@ export type Portal = {
   };
   job_url: { pattern: string; keep_params?: string[]; canonical?: string };
   json: JsonAdapter[];
+  /** Pane mode: the page's own job cards, read by CSS selectors (the page's text, no extra request). */
+  cards?: { item: string; title: string; company?: string; location?: string; posted_at?: string; experience?: string };
   limits: Limits; headful: boolean; risk: string; verified: boolean; notes?: string;
 };
 export type PortalCatalog = { portals: Portal[]; byId: Map<string, Portal> };
@@ -55,6 +57,7 @@ function normalise(e: any, d: any): Portal {
       ...(s.place_aliases ? { place_aliases: rec(s.place_aliases) } : {}), ...(s.country_hosts ? { country_hosts: rec(s.country_hosts) } : {}),
     },
     job_url: { pattern: String(e?.job_url?.pattern ?? ''), ...(e?.job_url?.keep_params ? { keep_params: strs(e.job_url.keep_params) } : {}), ...(e?.job_url?.canonical ? { canonical: String(e.job_url.canonical) } : {}) },
+    ...(e?.cards && typeof e.cards === 'object' ? { cards: Object.fromEntries(['item', 'title', 'company', 'location', 'posted_at', 'experience'].filter((k) => typeof e.cards[k] === 'string').map((k) => [k, String(e.cards[k])])) as Portal['cards'] } : {}),
     json: (Array.isArray(e?.json) ? e.json : []).map((j: any) => ({ url: String(j?.url ?? ''), ...(j?.state ? { state: String(j.state) } : {}), list: String(j?.list ?? ''), fields: rec(j?.fields), ...(j?.where ? { where: rec(j.where) } : {}), ...(j?.url_template ? { url_template: String(j.url_template) } : {}) })),
     limits: { searches_per_run: Number(lim.searches_per_run), pages_per_search: Number(lim.pages_per_search), delay_ms: Array.isArray(lim.delay_ms) ? [Number(lim.delay_ms[0]), Number(lim.delay_ms[1])] : Number(lim.delay_ms), min_hours: Number(lim.min_hours), pages_per_day: Number(lim.pages_per_day) },
     headful: e?.headful === true, risk: String(e?.risk ?? ''), verified: e?.verified === true, ...(e?.notes ? { notes: String(e.notes) } : {}),
@@ -106,6 +109,7 @@ export function portalIssues(p: Portal): string[] {
   for (const d of Object.keys(p.search.recency ?? {})) if (!/^\d{1,3}$/.test(d)) out.push(`${at}: recency key ${d} is not a number of days`);
   if (p.search.page && !(p.search.page.step > 0 && p.search.page.start >= 0)) out.push(`${at}: search.page needs start ≥ 0 and step > 0`);
   if (!p.job_url.pattern || !regexOk(p.job_url.pattern)) out.push(`${at}: job_url.pattern is missing or not a regex`);
+  if (p.cards && (!p.cards.item || !p.cards.title)) out.push(`${at}: cards needs item and title selectors`);
   for (const j of p.json) {
     if (!j.url && !j.state) out.push(`${at}: json needs a url (a response pattern) or a state path`);
     if (j.url && !regexOk(j.url)) out.push(`${at}: json url is not a regex`);

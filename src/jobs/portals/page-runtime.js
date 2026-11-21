@@ -134,6 +134,20 @@ export async function scanPage(C, G) {
       } catch (e) { }
     }
   }
+  // The portal's own job cards (catalog `cards`): read from the page as shown, before JSON-LD and the link heuristics.
+  if (C.cards) {
+    const q = (root, sel) => { try { return sel ? root.querySelector(sel) : null; } catch (e) { return null; } };
+    let items = [];
+    try { items = Array.from(d.querySelectorAll(C.cards.item)).slice(0, 200); } catch (e) {}
+    for (const it of items) {
+      const t = q(it, C.cards.title);
+      if (!t) continue;
+      const txt = (sel) => { const el = q(it, sel); return el ? (el.getAttribute('title') || el.innerText || el.textContent || '') : ''; };
+      const href = t.getAttribute('href') || (q(t, 'a[href]') || q(it, 'a[href]') || { getAttribute: () => '' }).getAttribute('href');
+      const loc = txt(C.cards.location);
+      job(href, { title: t.getAttribute('title') || t.innerText || t.textContent, company: txt(C.cards.company), location: loc, posted_at: txt(C.cards.posted_at), workplace: loc });
+    }
+  }
   const types = (n) => [].concat(n && n['@type']).map((t) => String(t == null ? '' : t).toLowerCase());
   const ld = (v, depth, out) => {
     if (!v || typeof v !== 'object' || depth > 6 || out.length > 500) return out;
