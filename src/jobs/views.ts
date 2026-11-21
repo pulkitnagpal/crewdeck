@@ -9,6 +9,7 @@ import type { Db } from './db.ts';
 import { type JobNotes, NOTES } from './notes.ts';
 import type { Career, MemoryItem, Profile } from './schema.ts';
 import { copyOnlyHost, hostOf, isLinkedinHost, profileValues } from './fields.ts';
+import { chipFor as kindChip, detectApplyKind } from './apply-kind.ts';
 import { currentAnswers } from './kb/ops.ts';
 import { targetsOf } from './titles.ts';
 import { isActive } from './memory.ts';
@@ -109,14 +110,17 @@ const METHOD_COPY: Record<string, string> = {
   chatbot: 'This employer applies through a chat assistant: copy these answers into the chat',
 };
 
-export function applyMode(ctx: Ctx, r: { url: string; apply_url?: string | null; apply_method?: string | null; apply_note?: string | null }, profile: Profile): ApplyMode {
+export function applyMode(ctx: Ctx, r: { url: string; apply_url?: string | null; apply_kind?: string | null; apply_method?: string | null; apply_note?: string | null }, profile: Profile): ApplyMode {
   const method = r.apply_method ?? null, note = r.apply_note ?? null;
   if (method === 'walk_in') return { mode: 'walk_in', reason: 'Apply in person', method, note };
   if (method && METHOD_COPY[method]) return { mode: 'copy', reason: METHOD_COPY[method], method, note };
   const urls = [r.apply_url, r.url].filter(Boolean) as string[];
   const host = urls.map((u) => copyOnlyHost(u, profile.copy_only_hosts)).find(Boolean);
   if (host) return { mode: 'copy', reason: `${host} doesn't allow automated filling` };
-  if (isLinkedinHost(hostOf(r.apply_url ?? r.url))) {
+  // Easy Apply (or a LinkedIn posting not looked at yet) is filled only with the switch on; a posting whose Apply leaves
+  // LinkedIn is applied to on the employer's site.
+  const how = detectApplyKind(r);
+  if (isLinkedinHost(hostOf(r.apply_url ?? r.url)) && (how.kind === 'linkedin_easy' || !how.sure)) {
     if (!ctx.features.easy_apply) return { mode: 'copy', reason: 'Easy Apply filling is off (Jobs → Settings)' };
     // On, but allowed 0 forms a day: say so, rather than "off" (review C11).
     if (!(ctx.features.daily_quick_apply > 0)) return { mode: 'copy', reason: 'Easy Apply filling is on, but its forms per day is 0 (Jobs → Settings)' };
@@ -132,7 +136,8 @@ export function todayView(ctx: Ctx, selected?: string) {
   const roles = (ctx.db.prepare(`select r.*, c.name company from roles r join companies c on c.id=r.company_id
       where r.status in ('picked','prepared','applied') order by (r.status='applied'), r.picked_on desc, r.score desc, r.id`).all() as any[])
     .filter((r) => r.status !== 'applied' || today.has(r.id));
-  const queue = roles.map((r) => ({ id: r.id, company: r.company, title: r.title, chip: chipFor(ctx.db, r, tz, locale) }));
+  // `apply`: how it is applied to, as a quiet chip (Easy Apply, Lever, Naukri one-click, Company site).
+  const queue = roles.map((r) => { const k = detectApplyKind(r); return { id: r.id, company: r.company, title: r.title, chip: chipFor(ctx.db, r, tz, locale), apply: { kind: k.kind, text: kindChip(k) } }; });
   const r = roles.find((x) => x.id === selected) ?? roles[0];
   if (!r) return { queue, selected: null, detail: null };
   const memory = notes.memory.data.items;
@@ -147,7 +152,7 @@ export function todayView(ctx: Ctx, selected?: string) {
   return {
     queue, selected: r.id,
     detail: {
-      id: r.id, company: r.company, title: r.title, url: r.apply_url ?? r.url, status: r.status,
+      id: r.id, company: r.company, title: r.title, url: r.apply_url ?? r.url, status: r.status, kind: queue.find((q) => q.id === r.id)!.apply,
       meta: [r.location, payLine(r, locale)].filter(Boolean).join(' · '), why,
       apply: applyMode(ctx, r, notes.profile.data), approvable: canApprove(ctx.db, r.id),
       counts: { total: answers.length, known: answers.filter((a) => a.status === 'approved').length, drafted: answers.filter((a) => a.status === 'drafted').length, first: answers.filter((a) => a.status === 'first_time' && a.required).length },

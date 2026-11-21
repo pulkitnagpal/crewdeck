@@ -72,9 +72,9 @@ test('a pasted posting becomes a role picked for today; a second one at the same
   const r = await link(w.ctx, { url: s.at('/jobs/analyst#apply') }, { net });
   assert.equal(r.picked, true);
   assert.deepEqual(r.warnings, []);
-  assert.deepEqual([r.company, r.title, r.apply_kind], ['Example Mobility GmbH', 'Senior Data Analyst', 'external']);
+  assert.deepEqual([r.company, r.title, r.apply_kind], ['Example Mobility GmbH', 'Senior Data Analyst', 'generic']);
   const row = w.ctx.db.prepare('select url, source, status, picked_on, location, pay_text, posted_at, apply_kind from roles where id=?').get(r.id) as any;
-  assert.deepEqual({ ...row }, { url: s.at('/jobs/analyst'), source: 'pasted', status: 'picked', picked_on: '2026-11-19', location: 'Berlin, DE', pay_text: 'EUR 60000–75000 per year', posted_at: '2026-11-15T00:00:00.000Z', apply_kind: 'external' });
+  assert.deepEqual({ ...row }, { url: s.at('/jobs/analyst'), source: 'pasted', status: 'picked', picked_on: '2026-11-19', location: 'Berlin, DE', pay_text: 'EUR 60000–75000 per year', posted_at: '2026-11-15T00:00:00.000Z', apply_kind: 'generic' });
   // Pasting it again finds the same role.
   assert.equal((await link(w.ctx, { url: s.at('/jobs/analyst') }, { net })).id, r.id);
   const second = await link(w.ctx, { url: s.at('/jobs/second') }, { net });
@@ -142,7 +142,7 @@ test('LinkedIn links: off unless switched on; then read through the guest page (
   const w = world('berlin-analyst', { features: { linkedin_links: true } });
   await assert.rejects(link(w.ctx, { url: 'https://www.linkedin.com/in/someone' }, opts), /not a job posting/);
   const r = await link(w.ctx, { url: 'https://de.linkedin.com/jobs/view/senior-data-analyst-at-example-4000000061?trk=x' }, opts);
-  assert.deepEqual([r.picked, r.company, r.apply_kind], [true, 'Example Li Co', 'easy']);
+  assert.deepEqual([r.picked, r.company, r.apply_kind], [true, 'Example Li Co', 'linkedin_easy']);
   assert.equal((w.ctx.db.prepare('select url, source from roles where id=?').get(r.id) as any).url, 'https://www.linkedin.com/jobs/view/4000000061');
   const closed = await link(w.ctx, { url: 'https://www.linkedin.com/jobs/collections/recommended/?currentJobId=4000000062' }, opts);
   assert.equal(closed.closed, true);

@@ -85,7 +85,7 @@ test('search: cards are prefiltered before any detail request; details stored wi
   const details = li.hits.filter((h) => h.includes('/jobPosting/'));
   assert.deepEqual(details.sort(), ['/jobs-guest/jobs/api/jobPosting/4000000021', '/jobs-guest/jobs/api/jobPosting/4000000026']);
   const row = w.ctx.db.prepare('select url, apply_kind, source, posted_at from roles').get() as any;
-  assert.deepEqual({ ...row }, { url: canonicalJobUrl('4000000021'), apply_kind: 'easy', source: 'linkedin', posted_at: '2026-11-16T00:00:00.000Z' });
+  assert.deepEqual({ ...row }, { url: canonicalJobUrl('4000000021'), apply_kind: 'linkedin_easy', source: 'linkedin', posted_at: '2026-11-16T00:00:00.000Z' });
   // Every request after the first waited for the pace.
   assert.ok(waits.length >= r.requests - 1 && waits.every((ms) => ms > 2000 && ms <= 2500), JSON.stringify(waits));
   // The search URL carries the plan's filters.

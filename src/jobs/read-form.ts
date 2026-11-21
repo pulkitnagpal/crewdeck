@@ -6,6 +6,7 @@
 import type { Frame, Page } from 'playwright-core';
 import { type Ctx, notesOf } from './ctx.ts';
 import { getRole } from './db.ts';
+import { detectApplyKind } from './apply-kind.ts';
 import { applyUrl, checkRoleUrl, copyOnlyHost, isLinkedinHost, hostOf } from './fields.ts';
 import { launchGuarded } from './browser.ts';
 import type { NetOptions } from './net/netguard.ts';
@@ -144,7 +145,10 @@ export async function readForm(ctx: Ctx, roleId: string, o: ReadOptions = {}): P
   const url = o.url ? setApplyUrl(ctx, roleId, o.url) : r.apply_url ? checkRoleUrl(r.apply_url, ctx.features, 'apply URL') : applyUrl(r.url);
   const base: FormRead = { role: roleId, url, stored: 0, questions: [], notes: [], blocked: [] };
   const profile = notesOf(ctx).profile.data;
-  if (isLinkedinHost(hostOf(url)) || r.apply_kind === 'easy') return { ...base, needs: `LinkedIn forms are read in the user's own signed-in browser, not headless. ${LIVE}` };
+  if (isLinkedinHost(hostOf(url)) || detectApplyKind(r).kind === 'linkedin_easy') return { ...base, needs: `LinkedIn forms are read in the user's own signed-in browser, not headless. ${LIVE}` };
+  // Naukri's Apply sends the person's Naukri profile in one click: there is no form before it to read, and any recruiter
+  // questions appear only after the person clicks it (the Apply playbook fills those then).
+  if (detectApplyKind(r).kind === 'naukri') return { ...base, needs: 'Naukri applies in one click with the user\'s Naukri profile: there is no form to read before it. Prepare the summary (why it fits, profile gaps to fix on Naukri first) and the answers to likely recruiter questions; never click its Apply.' };
   const copy = copyOnlyHost(url, profile.copy_only_hosts);
   if (copy) return { ...base, needs: `${copy} forbids automated use: the user fills it by hand with the answers to copy. Ask the user for the questions, or record the ones they read out with crewdeck jobs learn.` };
   const g = await launchGuarded({ setting: o.browser, net: o.net });

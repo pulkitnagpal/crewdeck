@@ -5,6 +5,15 @@ Crewdeck is not released yet: versions below name the `crewdeck` plugin's versio
 
 ## [Unreleased] — Jobs v2 P1a: titles are a score
 
+- **Apply knows the site** (plugin 0.10.0): each role carries how it is applied to (Easy Apply, a LinkedIn posting
+  that leaves LinkedIn, Lever, Greenhouse, Ashby, Workday, Naukri, or a company site), shown as a quiet chip on Today.
+  Claude follows that site's playbook in the browser pane and stops where you click: "Submit application" on Easy
+  Apply and Lever, the Review step on Workday, and on Naukri before its one-click **Apply** (you click it; Claude fills
+  any recruiter questions after). Claude never clicks a submit button (in any of a dozen languages) and marks a role
+  applied only when the page confirms it or you say so.
+- **Quick apply (N)** on Today and in the panel (Easy Apply filling on, forms per day above 0): one Jobs chat walks
+  today's prepared Easy Apply picks whose questions are all answered, stopping at each Submit for your click; never more
+  than your daily number.
 - **Signed-in portals in Claude's browser pane** (plugin 0.9.0, ADR-0008 amended; `jobs.portals_mode: pane`, the
   default): Connect or Sign in on Sources → Portals opens a Jobs chat where you sign in to the site in the pane (or
   import its cookies with the pane's ⋮ menu); Claude reads the portals' search pages there during Find, slowly, and

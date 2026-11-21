@@ -112,6 +112,11 @@ a.btn.primary { color: var(--accent-ink); }
 .qitem .co { font-weight: 600; font-size: 0.875rem; }
 .qitem .ti { font-size: 0.875rem; color: var(--soft); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .qitem .chip { margin-top: 6px; font-weight: 500; padding: 1px 8px; }
+.qitem .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+/* How a pick is applied to (Easy Apply, Lever, Naukri one-click, Company site): quieter than the status chip. */
+.chip.kind { background: transparent; border: 1px solid var(--line); color: var(--soft); font-weight: 400; }
+.meta .chip.kind { vertical-align: middle; font-size: 0.875rem; padding: 0 6px; }
+.queue .quickapply { margin: 0 8px 8px; align-self: flex-start; }
 .detail { flex: 1; min-width: 0; overflow: auto; padding: 24px 24px 48px; display: flex; flex-direction: column; gap: 16px; }
 /* Nothing in the role shrinks to fit: it scrolls (a tab row with overflow hidden would otherwise squash to nothing). */
 .detail > * { flex-shrink: 0; }

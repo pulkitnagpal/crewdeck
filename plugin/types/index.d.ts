@@ -32,6 +32,8 @@ export type Today = {
         /** Today's picks nobody is applying to yet, best first (P4): the panel's "N jobs ready", Apply on each. */
         picks?: { id: string; company: string; title: string; prepared: boolean }[]
         ready_total?: number
+        /** Easy Apply picks a Quick apply would walk now (0: no button). */
+        quick_apply?: number
         /** Proposals waiting for Approve or Reject (P3). */
         proposals?: number
         /** Connected portals whose sign-in ran out (ADR-0008): the panel says so, with Sign in (op connectPortal). */

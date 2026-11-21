@@ -9,6 +9,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { ensureHome } from '../config.ts';
 import { companyKey } from './rules.ts';
 import { migrate } from './migrations.ts';
+import { storedKind } from './apply-kind.ts';
 
 export type Db = DatabaseSync;
 export type RoleInput = {
@@ -117,6 +118,10 @@ export function upsertRole(db: Db, r: RoleInput): { id: string; isNew: boolean }
       .run(id, cid, r.title, r.url, r.apply_url ?? null, r.apply_kind ?? null, r.location ?? '', r.description ?? '', r.source, r.pay_text ?? null, r.posted_at ?? null, t, t,
         r.source_key ?? null, r.language ?? null, r.visa_text ?? null, r.employment_type ?? null,
         typeof r.company_country === 'string' && /^[a-z]{2}$/i.test(r.company_country.trim()) ? r.company_country.trim().toLowerCase() : null);
+    // The apply kind (src/jobs/apply-kind.ts) from the stored addresses, with the incoming hint or the stored one.
+    const row = db.prepare('select url, apply_url, apply_kind from roles where id = ?').get(id) as any;
+    const kind = storedKind({ url: row.url, apply_url: row.apply_url, apply_kind: r.apply_kind ?? row.apply_kind });
+    if (kind && kind !== row.apply_kind) db.prepare('update roles set apply_kind=? where id=?').run(kind, id);
     return { id, isNew: !exists };
   });
 }

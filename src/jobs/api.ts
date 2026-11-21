@@ -27,6 +27,8 @@ import { runPreview } from './preview.ts';
 import { findFunnel, funnelSummary } from './funnel.ts';
 import { readFindRun } from './pipeline/rank.ts';
 import { checkRoleUrl, isLinkedinHost, isXHost } from './fields.ts';
+import { applyContext } from './apply-kind.ts';
+import { quickApplyView } from './quick-apply.ts';
 import { canonicalJobUrl, linkedinJobId } from './linkedin.ts';
 import { answerFirstTime, currentAnswers, editAnswer } from './kb/ops.ts';
 import { learnField } from './kb/learn.ts';
@@ -80,6 +82,8 @@ export type JobsGlance = {
   ready_total: number;
   /** ADR-0008: connected portals whose sign-in ran out; the panel offers Sign in (op connectPortal). */
   portals_sign_in: { id: string; name: string }[];
+  /** Easy Apply picks a Quick apply would walk now (0: no button). */
+  quick_apply: number;
 };
 export type JobsApiOptions = {
   configPath?: string; pollMs?: number; platform?: string;
@@ -122,7 +126,7 @@ export type JobsApiOptions = {
 const LANE = 'jobs';
 /** Careers pages checked at once from the Sources screen (each is a sandboxed child of ≤ 35 s). */
 const MAX_RESOLVING = 2;
-const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page', tell: 'Tell Crewdeck', prepare: 'Prepare a role', connect: 'Connect a portal' };
+const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page', tell: 'Tell Crewdeck', prepare: 'Prepare a role', connect: 'Connect a portal', quick_apply: 'Quick apply' };
 /** A request kept for the Jobs chat opened for it; after this, any Jobs chat may take it (the person closed the dialog). */
 const CHAT_HOLD_MS = 10 * 60_000;
 const MAX_CLIENTS = 20;
@@ -517,6 +521,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       const r = applyReq(q.id);
       // P4: a pick Find didn't prepare ahead waits for the person's Prepare click (no tokens spent on opening it).
       if (q.chip.kind === 'muted' && q.chip.text === 'Preparing' && !openPrepare(q.id)) return { ...q, chip: { kind: 'muted', text: 'Not prepared yet' } };
+      if (q.chip.kind !== 'applied' && inQuickApply(q.id) && (!r || !isOpen(r))) return { ...q, chip: { kind: 'info', text: 'In Quick apply' } };
       if (!r || q.chip.kind === 'applied') return q;
       const p = applyPanel({ status: 'picked', apply: { mode: 'fill' }, request: r, connected });
       const chip = { waiting: { kind: 'info', text: 'Waiting for Claude' }, filling: { kind: 'info', text: 'Claude is applying' }, needs_you: { kind: 'first', text: 'Needs you' },
@@ -527,7 +532,12 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const proposals = proposalsView();
     // The Not interested dialog previews what skipping more title words drops (§24.6): it adds to these.
     const exclude_title_words = notesOf(ctx).search.data.roles.exclude_title_words;
-    if (!v.detail) return { ...v, queue, panel: null, asking: [], find, exclude_title_words, proposals };
+    // Quick apply (N): eligible Easy Apply picks, within today's daily_quick_apply; shown only when there is one.
+    // While one runs, its button says so (disabled) instead of offering another.
+    const qa = quickView(), running = openQuickApply();
+    const quick_apply = running ? { n: Array.isArray(running.payload?.roles) ? running.payload!.roles.length : 0, cap: qa.cap, used: qa.used, request: running.id }
+      : qa.on && qa.roles.length ? { n: qa.roles.length, cap: qa.cap, used: qa.used, request: null } : null;
+    if (!v.detail) return { ...v, queue, panel: null, asking: [], find, exclude_title_words, proposals, quick_apply };
     const d = v.detail;
     const notes = notesOf(ctx);
     const pdf = d.resume ? resumePath(ctx, d.id, notes) : null;
@@ -539,7 +549,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       ...v, queue,
       detail: { ...d, resume: pdf ? { file: basename(pdf), url: `/api/jobs/resume/${d.id}`, note: d.resume!.note } : null, copy: d.apply.mode !== 'fill' ? copyModel(db, d.id).answers : null },
-      panel, asking, find, exclude_title_words, proposals, prepare,
+      panel, asking, find, exclude_title_words, proposals, prepare, quick_apply,
     };
   }
 
@@ -621,12 +631,13 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   /** The task prompt for an open jobs request (the page's Open in Claude on a waiting request reopens its chat). */
   const taskOf = (r: Request): JobsTask | null =>
     r.kind === 'connect' && r.ref && PORTAL_TASK_ID.test(r.ref) ? { kind: 'connect', portal: r.ref, request: r.id }
-    : r.kind === 'find' || r.kind === 'tell' ? { kind: r.kind, request: r.id }
+    : r.kind === 'find' || r.kind === 'tell' || r.kind === 'quick_apply' ? { kind: r.kind, request: r.id }
       : (r.kind === 'apply' || r.kind === 'prepare') && r.ref && ROLE_ID.test(r.ref) ? { kind: r.kind, role: r.ref, request: r.id }
         : null;
   /** Picked, never prepared (Find prepares only the top few): nothing has read its form yet. */
   const unprepared = (role: string) => statusOf(role) === 'picked' && !db.prepare('select 1 from form_fields where role_id=? limit 1').get(role);
   const openPrepare = (role: string) => requests.ofLane(LANE, 'prepare').find((r) => r.ref === role && isOpen(r));
+  const openQuickApply = () => requests.ofLane(LANE, 'quick_apply').find((r) => isOpen(r));
   /**
    * Work for Jobs with no Jobs chat connected: Crewdeck opens one in Claude desktop (docs/everywhere.md E14), at most
    * once every 10 minutes so a closed dialog isn't reopened at every click. Claude desktop asks to confirm the folder.
@@ -645,6 +656,11 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     ? queue('prepare', role, { role }, { task: (id) => ({ kind: 'prepare', role, request: id }), fresh: false })
     : { ok: true, prepared: true });
   const queueApply = (role: string, fresh = true) => queue('apply', role, { role }, { task: (id) => ({ kind: 'apply', role, request: id }), fresh });
+  /** The roles of an open Quick apply (one chat walking them one by one). */
+  const inQuickApply = (role: string) => requests.ofLane(LANE, 'quick_apply').some((r) => isOpen(r) && Array.isArray(r.payload?.roles) && (r.payload!.roles as unknown[]).includes(role));
+  /** An Apply or a Quick apply is under way for this role: Quick apply leaves it out. */
+  const applyBusy = (role: string) => { const a = requests.latest(LANE, 'apply', role); return (!!a && isOpen(a)) || inQuickApply(role); };
+  const quickView = () => quickApplyView(ctx, applyBusy);
 
 
   // ---- Tell Crewdeck and proposals (P3) ----
@@ -767,6 +783,19 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       if (mode.mode !== 'fill') return { ok: true, mode: mode.mode, reason: mode.reason, answers: copyModel(db, r.id).answers };
       if (!canApprove(db, r.id)) throw new HttpError(400, 'Answer the required first-time questions first');
       return { ...queueApply(r.id), mode: 'fill' };
+    },
+    /**
+     * Quick apply: one fresh Jobs chat walks today's eligible Easy Apply picks one by one, filling each and stopping at
+     * its Submit for the person's click. Never more than what is left of daily_quick_apply; never submits.
+     */
+    quickApply: () => {
+      const open = openQuickApply();
+      if (open) return { ok: true, request: open.id, status: open.status, already: true };
+      const qa = quickView();
+      if (!qa.on) throw new HttpError(400, 'Quick apply needs Easy Apply filling on, with forms per day above 0 (Jobs → Settings)');
+      if (!qa.roles.length) throw new HttpError(400, qa.eligible ? `today's Easy Apply limit (${qa.cap}) is used: Quick apply again tomorrow` : 'no prepared Easy Apply pick has every question answered yet');
+      const roles = qa.roles.map((r) => r.id);
+      return { ...queue('quick_apply', undefined, { roles }, { task: (id) => ({ kind: 'quick_apply', request: id }), fresh: true }), roles: roles.length };
     },
     improve: (b) => {
       const r = roleArg(b.role);
@@ -1094,11 +1123,26 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       const v = p ? portalsView(ctx, [p], portalsMode()).portals[0] : undefined;
       return { mode: portalsMode(), portal: p && v ? { id: p.id, name: p.name, login_url: p.login_url, signup_url: p.signup_url, hosts: p.hosts, state: v.state, enabled: v.enabled, risk: p.risk } : null };
     }
+    if (r.kind === 'quick_apply') {
+      // Each role with its playbook, in the order to walk them; today's Easy Apply number as it stands.
+      const ids = (Array.isArray(r.payload?.roles) ? r.payload!.roles : []).map(String).filter((id) => ROLE_ID.test(id));
+      const qa = quickApplyView(ctx);
+      const roles = ids.flatMap((id) => {
+        let role; try { role = getRole(db, id); } catch { return []; }
+        const how = applyContext(role);
+        return [{ id: role.id, company: role.company, title: role.title, status: role.status, url: role.url, apply_url: role.apply_url ?? null, apply_kind: how.kind,
+          apply: applyMode(ctx, role, notesOf(ctx).profile.data), playbook: { kind: how.kind, known: how.sure, stop_at: how.stop_at, submitted: how.submitted, never_click: how.never_click } }];
+      });
+      return { roles, daily_quick_apply: { cap: qa.cap, used: qa.used } };
+    }
     if ((r.kind !== 'apply' && r.kind !== 'improve' && r.kind !== 'prepare') || !r.ref || !ROLE_ID.test(r.ref)) return {};
     let role;
     try { role = getRole(db, r.ref); } catch { return { role: null }; }
+    const how = applyContext(role);
     const out: any = {
-      role: { id: role.id, company: role.company, title: role.title, status: role.status, url: role.url, apply_url: role.apply_url ?? null, apply_kind: role.apply_kind ?? null, apply: applyMode(ctx, role, notesOf(ctx).profile.data) },
+      role: { id: role.id, company: role.company, title: role.title, status: role.status, url: role.url, apply_url: role.apply_url ?? null, apply_kind: how.kind, apply: applyMode(ctx, role, notesOf(ctx).profile.data) },
+      // The playbook for this kind (jobs-workspace → Apply): where it stops, what proves a submit, what is never clicked.
+      playbook: { kind: how.kind, known: how.sure, stop_at: how.stop_at, submitted: how.submitted, never_click: how.never_click },
     };
     if (r.kind === 'improve' && r.payload) {
       const f = currentAnswers(db, role.id).find((a) => a.field_id === Number(r.payload!.field_id));
@@ -1130,13 +1174,14 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       proposals: pendingCount(db),
       queue: v.queue.filter((q: any) => q.chip?.kind !== 'applied').slice(0, 6).map((q: any) => ({ id: String(q.id), company: String(q.company), title: String(q.title), chip: String(q.chip?.text ?? ''), kind: String(q.chip?.kind ?? '') })),
       ...readyPicks(v.queue),
+      quick_apply: (v as any).quick_apply && !(v as any).quick_apply.request ? (v as any).quick_apply.n : 0,
       portals_sign_in: (() => { try { return portalsNeedingSignIn(ctx); } catch { return []; } })(),
     };
   }
 
   /** Picks not applied and with no Apply under way, in the page's order (best first): the panel's "N jobs ready". */
   function readyPicks(queue: any[]) {
-    const ready = queue.filter((q) => q.chip?.kind !== 'applied' && !requests.latest(LANE, 'apply', q.id));
+    const ready = queue.filter((q) => q.chip?.kind !== 'applied' && !requests.latest(LANE, 'apply', q.id) && !inQuickApply(q.id));
     return { ready_total: ready.length, picks: ready.slice(0, 3).map((q) => ({ id: String(q.id), company: String(q.company), title: String(q.title), prepared: !unprepared(q.id) })) };
   }
 
@@ -1146,13 +1191,14 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const op = String(b?.op ?? '');
     try {
       if (op === 'find') return await actions.find({});
+      if (op === 'quickApply') return await actions.quickApply({});
       if (op === 'connectPortal' && Object.hasOwn(actions, 'connectPortal')) return await actions.connectPortal({ id: String(b.id ?? '') }); // portals UI (ADR-0008): the panel's Sign in
       if (op === 'apply') {
         const role = String(b.role ?? '');
         if (!ROLE_ID.test(role) || !todayView(ctx).queue.some((q) => q.id === role)) throw new HttpError(400, 'not one of today\'s picks');
         return await actions.approve({ role });
       }
-      throw new HttpError(400, 'op is find, apply or connectPortal');
+      throw new HttpError(400, 'op is find, apply or connectPortal, or quickApply');
     } catch (e) {
       if (e instanceof RequestError) throw new HttpError(400, e.message);
       throw e;

@@ -205,6 +205,7 @@ const TASK_REQUEST = [
   /^Crewdeck: apply to role [A-Za-z0-9]{1,64} \(request ([1-9][0-9]{0,9})\)$/,
   /^Crewdeck: prepare role [A-Za-z0-9]{1,64} \(request ([1-9][0-9]{0,9})\)$/,
   /^Crewdeck: handle tell request ([1-9][0-9]{0,9})$/,
+  /^Crewdeck: quick apply \(request ([1-9][0-9]{0,9})\)$/,
   /^Crewdeck: connect portal [a-z0-9-]{1,40} \(request ([1-9][0-9]{0,9})\)$/,
 ]
 function taskRequestOf(text: string): number | null {
@@ -355,14 +356,15 @@ async function tellCrewdeck($: Dollar, port: number, text: string): Promise<void
 }
 
 /** The panel's Jobs buttons: Crewdeck queues the work and opens a Jobs chat in front for it (never the panel itself). */
-async function jobsAct($: Dollar, port: number, body: { op: 'find' } | { op: 'apply'; role: string }): Promise<void> {
+async function jobsAct($: Dollar, port: number, body: { op: 'find' } | { op: 'quickApply' } | { op: 'apply'; role: string }): Promise<void> {
   const got = (await post($, port, '/api/today/jobs', body)) as (Today & { error?: string; done?: { opened?: boolean; preparing?: boolean; mode?: string } }) | null
   if (!got) { await update($, todayNote, () => 'That did not reach Crewdeck: is it running?'); return }
   if (got.error) { await update($, todayNote, () => String(got.error)); return }
   await update($, todayAtom, () => got)
   await update($, todayNote, () => '')
   const d = got.done ?? {}
-  $.ui.toast(d.mode === 'copy' ? 'This site takes answers you copy in: open Jobs'
+  $.ui.toast(body.op === 'quickApply' && d.opened ? 'A Jobs chat is opening for Quick apply: confirm the folder, then press Enter. You click each Submit.'
+    : d.mode === 'copy' ? 'This site takes answers you copy in: open Jobs'
     : d.opened ? `A Jobs chat is opening in front of you${d.preparing ? ' to prepare it first (about 1 min)' : ''}: confirm the folder, then press Enter`
       : d.preparing ? 'Preparing it first (about 1 min) in your Jobs chat' : 'Sent to your Jobs chat')
 }
@@ -579,6 +581,7 @@ export const register: Register = (on, options) => {
               <Text>{[j.counts.needs_you ? `${j.counts.needs_you} need you` : '', j.counts.ready ? `${j.counts.ready} ready to submit` : '', j.counts.in_progress ? `${j.counts.in_progress} in progress` : '', j.counts.applied_today ? `${j.counts.applied_today} applied today` : ''].filter(Boolean).join(' · ') || 'Nothing waiting'}</Text>
             )}
             {!j.setup_needed && (j.picks ?? []).length ? <Text key="ready" bold>{j.ready_total ?? (j.picks ?? []).length} job{(j.ready_total ?? 0) === 1 ? '' : 's'} ready</Text> : null}
+            {!j.setup_needed && (j.quick_apply ?? 0) > 0 ? <Button key="quick-apply" label={`Quick apply (${j.quick_apply})`} onPress={() => jobsAct($, port, { op: 'quickApply' })} /> : null}
             {(j.picks ?? []).map((p) => (
               <Box key={`pick-${p.id}`} flexDirection="row" columnGap={1}>
                 <Text>{p.company} · {p.title}{(() => { const chip = j.queue.find((q) => q.id === p.id)?.chip; return chip ? ` (${chip})` : p.prepared ? '' : ' (not prepared yet)' })()}</Text>

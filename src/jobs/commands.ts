@@ -15,7 +15,8 @@ import { learnField } from './kb/learn.ts';
 import type { Claim } from './kb/cite.ts';
 import { applyDraft, prepareDraft } from './draft/draft.ts';
 import { planForRole } from './plan.ts';
-import { APPLY_METHODS, addQuestion, addRole, addRoleEvent, setApplyMethod, setApplyUrl, setFormLang, setRoleStatus } from './pipeline/roles.ts';
+import { APPLY_METHODS, addQuestion, addRole, addRoleEvent, setApplyKind, setApplyMethod, setApplyUrl, setFormLang, setRoleStatus } from './pipeline/roles.ts';
+import { APPLY_KINDS, detectApplyKind } from './apply-kind.ts';
 import { refilter, runPrefilter } from './pipeline/prefilter.ts';
 import { candidates, cleanVerdict, dailyPicks, judge, pick, pickPasted } from './pipeline/pick.ts';
 import { markApplied, notInterested } from './pipeline/apply.ts';
@@ -289,11 +290,14 @@ const cmds: Record<string, (args: string[]) => unknown> = {
   }),
 
   role: (args) => withCtx((ctx) => {
-    const usage = `usage: crewdeck jobs role <id> [--apply-url-file <f>] [--apply-method ${APPLY_METHODS.join('|')} [--apply-note-file <f>]] [--lang <xx>]`;
+    const usage = `usage: crewdeck jobs role <id> [--apply-url-file <f>] [--apply-kind ${APPLY_KINDS.join('|')}] [--apply-method ${APPLY_METHODS.join('|')} [--apply-note-file <f>]] [--lang <xx>]`;
     const role = roleArg(positional(args)[0], usage);
-    const url = flag(args, 'apply-url-file'), method = flag(args, 'apply-method'), lang = flag(args, 'lang');
-    if (!url && !method && !lang) throw new Error(usage);
+    const url = flag(args, 'apply-url-file'), method = flag(args, 'apply-method'), lang = flag(args, 'lang'), kind = flag(args, 'apply-kind');
+    if (!url && !method && !lang && !kind) throw new Error(usage);
     if (url) say(`apply URL set: ${setApplyUrl(ctx, role, text(url, usage).trim())}`);
+    // What Claude saw on the page (Easy Apply, or the ATS under a careers page); the addresses still decide first.
+    if (kind) say(`apply kind: ${setApplyKind(ctx, role, kind)}`);
+    if (url || kind) say(`apply kind now: ${detectApplyKind(getRole(ctx.db, role)).kind}`);
     // D35: how the employer takes applications; the note (where and when to walk in, the address to email) from a file.
     if (method) say(`apply method: ${setApplyMethod(ctx, role, method, optText(args, 'apply-note-file'))}`);
     if (lang) say(`form language: ${setFormLang(ctx, role, lang)}`);
@@ -471,7 +475,7 @@ tracker and pipeline (text from postings and the user's words only through files
   judge --results-file f                  store verdicts [{ role, eligible: yes|no|unclear, score, evidence, reason? }]
   pick [--n N] [--day D] | pick --role <id> [--request <link request id>]   ("Add it anyway" only from the request)
   add-role --role-file f | status <role> <status> [--reason-file f]
-  role <id> [--apply-url-file f] [--apply-method form|email|document|walk_in|chatbot|account_needed [--apply-note-file f]] [--lang xx]
+  role <id> [--apply-url-file f] [--apply-kind k] [--apply-method form|email|document|walk_in|chatbot|account_needed [--apply-note-file f]] [--lang xx]
   event add <role> --kind k --detail-file f | question add <role> --text-file f
   applied <role> | not-interested <role> --reason-file f [--title-words-file f]
 page requests (the payload comes from Crewdeck by id, never through the shell):

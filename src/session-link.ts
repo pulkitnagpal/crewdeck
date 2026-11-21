@@ -20,6 +20,8 @@ export type JobsTask =
   | { kind: 'find'; request: number }
   | { kind: 'apply'; role: string; request: number }
   | { kind: 'prepare'; role: string; request: number }
+  /** Quick apply: today's eligible Easy Apply picks, one by one, each stopping at Submit for the person's click. */
+  | { kind: 'quick_apply'; request: number }
   | { kind: 'tell'; request: number }
   /** ADR-0008 pane mode: sign in to a portal in Claude's browser pane (or test it), in a Jobs chat in front. */
   | { kind: 'connect'; portal: string; request: number };
@@ -46,6 +48,7 @@ export function taskPrompt(t: JobsTask): string {
     case 'apply': return `Crewdeck: apply to role ${role(t.role)} (request ${req(t.request)})`;
     case 'prepare': return `Crewdeck: prepare role ${role(t.role)} (request ${req(t.request)})`;
     case 'tell': return `Crewdeck: handle tell request ${req(t.request)}`;
+    case 'quick_apply': return `Crewdeck: quick apply (request ${req(t.request)})`;
     case 'connect':
       if (!PORTAL_TASK_ID.test(t.portal)) throw new Error('a portal id is lowercase letters, digits and dashes');
       return `Crewdeck: connect portal ${t.portal} (request ${req(t.request)})`;
@@ -60,6 +63,7 @@ const TASK_PROMPTS: [RegExp, (m: RegExpExecArray) => JobsTask][] = [
   [/^Crewdeck: apply to role ([A-Za-z0-9]{1,64}) \(request ([1-9][0-9]{0,9})\)$/, (m) => ({ kind: 'apply', role: m[1]!, request: Number(m[2]) })],
   [/^Crewdeck: prepare role ([A-Za-z0-9]{1,64}) \(request ([1-9][0-9]{0,9})\)$/, (m) => ({ kind: 'prepare', role: m[1]!, request: Number(m[2]) })],
   [/^Crewdeck: handle tell request ([1-9][0-9]{0,9})$/, (m) => ({ kind: 'tell', request: Number(m[1]) })],
+  [/^Crewdeck: quick apply \(request ([1-9][0-9]{0,9})\)$/, (m) => ({ kind: 'quick_apply', request: Number(m[1]) })],
   [/^Crewdeck: connect portal ([a-z0-9-]{1,40}) \(request ([1-9][0-9]{0,9})\)$/, (m) => ({ kind: 'connect', portal: m[1]!, request: Number(m[2]) })],
 ];
 

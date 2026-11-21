@@ -98,6 +98,7 @@ function App() {
     onSkip: (role, reason, titleWords) => run('notInterested', { role, reason, titleWords }, 'Skipped. Your reason is remembered.').then(() => setSelected(null)),
     onApply: (role) => run('approve', { role }, (r) => (r.mode === 'copy' ? 'This site takes answers you copy in' : sent(r))),
     onPrepare: (role) => run('prepare', { role }, (r) => (r.prepared ? 'Already prepared' : sent(r))),
+    onQuickApply: () => run('quickApply', {}, (r) => (r.already ? 'Quick apply is already running in your Jobs chat' : sent(r))),
     onMarkApplied: (role) => run('markApplied', { role }, 'Marked applied'),
     onCancel: (request) => run('cancel', { request }, 'Cancelled'),
     onReveal: (role) => run('reveal', { role }),

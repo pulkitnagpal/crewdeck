@@ -46,7 +46,7 @@ function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: 
     date: '2026-11-20', url: 'http://crewdeck.localhost:4848', notes_page: 'journal/2026-11-20', todos: s.todos,
     jobs: { setup_needed: s.setupNeeded, connected: false, session_link: `claude://code/new?folder=%2Ffake%2Fjobs&q=${encodeURIComponent(s.setupNeeded ? 'Hello! Please set up my Crewdeck job search.' : 'Hello! This is my Crewdeck Jobs session.')}`, counts: { needs_you: 1, ready: 2, in_progress: 0, applied_today: 0 },
       queue: [{ id: 'a1b2c3d4e5f6', company: 'Acme', title: 'Backend Engineer', chip: 'Needs you', kind: 'first' }, { id: 'bbbbbbbbbbbb', company: 'Initech', title: 'Data Analyst', chip: 'Applying', kind: 'info' }],
-      picks: [{ id: 'a1b2c3d4e5f6', company: 'Acme', title: 'Backend Engineer', prepared: true }, { id: 'c0ffee000001', company: 'Globex', title: 'Platform Engineer', prepared: false }], ready_total: 2, ...(s.proposals === undefined ? {} : { proposals: s.proposals }), ...(s.portalsSignIn ? { portals_sign_in: s.portalsSignIn } : {}) },
+      picks: [{ id: 'a1b2c3d4e5f6', company: 'Acme', title: 'Backend Engineer', prepared: true }, { id: 'c0ffee000001', company: 'Globex', title: 'Platform Engineer', prepared: false }], ready_total: 2, quick_apply: 2, ...(s.proposals === undefined ? {} : { proposals: s.proposals }), ...(s.portalsSignIn ? { portals_sign_in: s.portalsSignIn } : {}) },
     tickets: [{ project: 'app', id: 'TASK-2', title: 'Fix login', status: 'In Progress' }], more: 0,
     projects: [{ name: 'app', label: 'Board' }],
   })
@@ -131,6 +131,8 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
     expect(await ui.find({ type: 'Text', text: /Initech · Data Analyst \(Applying\)/ })).toBeDefined()
     expect((await ui.find({ key: 'apply-c0ffee000001' }))?.props.label).toBe('Apply')
     expect((await ui.find({ key: 'find-now' }))?.props.label).toBe('Find now')
+    // Quick apply (N): eligible Easy Apply picks; it opens one Jobs chat that stops at each Submit for the person.
+    expect((await ui.find({ key: 'quick-apply' }))?.props.label).toBe('Quick apply (2)')
     expect(await ui.find({ key: 'jobs-session' })).toBeUndefined()
     expect(await ui.find({ key: 'review' })).toBeUndefined()
     await ui.unmount()
@@ -153,6 +155,9 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
   // Apply and Find now go to Crewdeck, which queues the work and opens the Jobs chat in front: the panel opens nothing itself.
   await ui.press({ key: 'apply-c0ffee000001' })
   expect(s.calls.at(-1)).toEqual({ path: '/api/today/jobs', body: { op: 'apply', role: 'c0ffee000001' }, token: true })
+  await ui.press({ key: 'quick-apply' })
+  expect(s.calls.at(-1)).toEqual({ path: '/api/today/jobs', body: { op: 'quickApply' }, token: true })
+  expect(toasts.at(-1)).toMatch(/Quick apply: confirm the folder, then press Enter\. You click each Submit\./)
   await ui.press({ key: 'find-now' })
   expect(s.calls.at(-1)).toEqual({ path: '/api/today/jobs', body: { op: 'find' }, token: true })
   expect(toasts.at(-1)).toMatch(/A Jobs chat is opening in front of you: confirm the folder, then press Enter/)

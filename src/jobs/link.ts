@@ -4,9 +4,11 @@
 // is picked only when the user overrides them (force). LinkedIn links go through its guest page, only when switched on.
 import { type Ctx, todayOf } from './ctx.ts';
 import { checkRoleUrl, applyUrl, atsOf, cleanHost, isLinkedinHost, isXHost } from './fields.ts';
-import { type ApplyKind, type ClientOptions, LinkedinClient, LinkedinStop, fetchDetail, linkedinJobId, storeLinkedinRole } from './linkedin.ts';
+import { type ApplyKind, detectApplyKind } from './apply-kind.ts';
+import { type ClientOptions, LinkedinClient, LinkedinStop, fetchDetail, linkedinJobId, storeLinkedinRole } from './linkedin.ts';
 import { type NetOptions, NetError, guardedFetch } from './net/netguard.ts';
 import { addRole } from './pipeline/roles.ts';
+import { getRole } from './db.ts';
 import { pickPasted } from './pipeline/pick.ts';
 import { HTML_MAX, elements, plainText } from './text.ts';
 
@@ -16,6 +18,7 @@ export type Posting = {
   workplace?: 'remote' | 'hybrid' | 'onsite'; remote_countries?: string[]; employment_type?: string; valid_through?: string;
 };
 export type LinkInput = { url: string; force?: boolean };
+/** `apply_kind`: how it is applied to (src/jobs/apply-kind.ts). */
 export type LinkResult = { id: string; company: string; title: string; apply_kind: ApplyKind; closed?: boolean; warnings: string[]; picked: boolean; needs?: string };
 export type LinkOptions = { net?: NetOptions; linkedin?: ClientOptions; day?: string };
 
@@ -127,29 +130,31 @@ export async function link(ctx: Ctx, input: LinkInput, o: LinkOptions = {}): Pro
     try { d = await fetchDetail(new LinkedinClient({ ...o.linkedin, net: o.linkedin?.net ?? o.net, maxRequests: 1 }), lid); }
     catch (e: any) { throw new Error(e instanceof LinkedinStop ? e.message : `LinkedIn could not be read: ${e.message}`); }
     if (!d) throw new Error('LinkedIn does not show that posting (removed, or it needs sign-in). Paste the company\'s own posting instead.');
-    if (d.closed) return { id: '', company: d.company, title: d.title, apply_kind: d.apply_kind, closed: true, warnings: ['the posting is closed: LinkedIn says it is no longer accepting applications'], picked: false };
+    const lkind = detectApplyKind({ url: raw, apply_kind: d.apply_kind }).kind;
+    if (d.closed) return { id: '', company: d.company, title: d.title, apply_kind: lkind, closed: true, warnings: ['the posting is closed: LinkedIn says it is no longer accepting applications'], picked: false };
     const { id } = storeLinkedinRole(ctx, d, 'pasted');
     const warnings = pickPasted(ctx, id, day, force);
-    return { id, company: d.company, title: d.title, apply_kind: d.apply_kind, warnings, picked: !warnings.length };
+    return { id, company: d.company, title: d.title, apply_kind: lkind, warnings, picked: !warnings.length };
   }
 
   const url = checkRoleUrl(raw, ctx.features);
+  const kind = detectApplyKind({ url }).kind;
   let page;
   try { page = await guardedFetch(url, o.net); }
   catch (e: any) { throw new Error(e instanceof NetError ? `The page could not be read: ${e.message}` : e.message); }
-  if (page.status === 404 || page.status === 410) return { id: '', company: '', title: '', apply_kind: 'external', closed: true, warnings: [`the page answered HTTP ${page.status}: the posting was probably removed`], picked: false };
+  if (page.status === 404 || page.status === 410) return { id: '', company: '', title: '', apply_kind: kind, closed: true, warnings: [`the page answered HTTP ${page.status}: the posting was probably removed`], picked: false };
   if (page.status < 200 || page.status > 299) throw new Error(`The page answered HTTP ${page.status}. If it opens in your browser, read it in the pane and use crewdeck jobs add-role.`);
   const p = readPostingPage(page.body, ctx.clock());
   // Greenhouse sends closed postings back to the board with ?error=true.
   const final = new URL(page.url);
   if (!p.closed && final.searchParams.get('error') === 'true' && atsOf(page.url) === 'greenhouse') Object.assign(p, { closed: true, closed_reason: 'the job board says the posting is gone' });
-  if (p.closed) return { id: '', company: p.company ?? '', title: p.title ?? '', apply_kind: 'external', closed: true, warnings: [`the posting is closed: ${p.closed_reason}`], picked: false };
-  if (!p.title || !p.company) return { id: '', company: p.company ?? '', title: p.title ?? '', apply_kind: 'external', warnings: [], picked: false, needs: NEEDS };
+  if (p.closed) return { id: '', company: p.company ?? '', title: p.title ?? '', apply_kind: kind, closed: true, warnings: [`the posting is closed: ${p.closed_reason}`], picked: false };
+  if (!p.title || !p.company) return { id: '', company: p.company ?? '', title: p.title ?? '', apply_kind: kind, warnings: [], picked: false, needs: NEEDS };
   const ats = atsOf(url);
   const { id } = addRole(ctx, {
     url, title: p.title, company: p.company, location: p.location, description: p.description, pay_text: p.pay_text, posted_at: p.posted_at,
-    source: 'pasted', apply_kind: 'external', apply_url: ats === 'ashby' || ats === 'lever' ? applyUrl(url) : undefined,
+    source: 'pasted', apply_url: ats === 'ashby' || ats === 'lever' ? applyUrl(url) : undefined,
   });
   const warnings = pickPasted(ctx, id, day, force);
-  return { id, company: p.company, title: p.title, apply_kind: 'external', warnings, picked: !warnings.length };
+  return { id, company: p.company, title: p.title, apply_kind: detectApplyKind(getRole(ctx.db, id)).kind, warnings, picked: !warnings.length };
 }

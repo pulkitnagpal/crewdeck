@@ -3,10 +3,11 @@
 import { type Ctx, nowIso } from '../ctx.ts';
 import { type RoleInput, type Status, STATUSES, addEvent, getRole, setStatus, upsertRole, tx } from '../db.ts';
 import { checkRoleUrl } from '../fields.ts';
+import { APPLY_KINDS as KINDS, LEGACY_KINDS, type ApplyKind, detectApplyKind, isApplyKind, storedKind } from '../apply-kind.ts';
 
 const SOURCES = ['manual', 'pasted', 'alert', 'linkedin', 'board'];
-/** easy = LinkedIn Easy Apply; external = the company's own form; unknown = not known yet. */
-const APPLY_KINDS = ['easy', 'external', 'unknown'];
+/** The apply kinds (src/jobs/apply-kind.ts), and the older easy | external | unknown (LinkedIn's own mark). */
+const APPLY_KINDS: string[] = [...KINDS, ...LEGACY_KINDS];
 const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 /** Add (or refresh) a role from a checked address; text fields are data, trimmed and capped. */
@@ -62,8 +63,27 @@ export function setApplyUrl(ctx: Ctx, id: string, url: string) {
   tx(ctx.db, () => {
     ctx.db.prepare('update roles set apply_url=?, updated_at=? where id=?').run(clean, nowIso(ctx), id);
     addEvent(ctx.db, id, 'apply_url', clean, nowIso(ctx));
+    // The form is on another site now (a LinkedIn posting's Apply led to Lever): its kind follows the form.
+    const r = getRole(ctx.db, id);
+    const kind = storedKind({ url: r.url, apply_url: clean, apply_kind: r.apply_kind });
+    if (kind && kind !== r.apply_kind) ctx.db.prepare('update roles set apply_kind=? where id=?').run(kind, id);
   });
   return clean;
+}
+
+/**
+ * What Claude saw on the page (Easy Apply on a LinkedIn posting, Workday under a careers page): recorded as the role's
+ * apply kind, then checked against its addresses (a Lever address stays Lever whatever was said).
+ */
+export function setApplyKind(ctx: Ctx, id: string, kind: string): ApplyKind {
+  const r = getRole(ctx.db, id);
+  if (!isApplyKind(kind)) throw new Error(`--apply-kind must be one of ${KINDS.join(', ')}`);
+  const d = detectApplyKind({ url: r.url, apply_url: r.apply_url, apply_kind: kind });
+  tx(ctx.db, () => {
+    ctx.db.prepare('update roles set apply_kind=?, updated_at=? where id=?').run(d.kind, nowIso(ctx), id);
+    addEvent(ctx.db, id, 'apply_kind', d.kind, nowIso(ctx));
+  });
+  return d.kind;
 }
 
 /** A question for the user about a role (not a form field): shown on the role until answered. */

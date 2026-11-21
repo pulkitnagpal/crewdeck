@@ -9,7 +9,7 @@ import { TellArea } from './tell.js';
 function QueueItem({ item, active, onSelect }) {
   return html`<button type="button" class="qitem" aria-current=${active ? 'true' : undefined} onClick=${() => onSelect(item.id)}>
     <span class="co">${item.company}</span><span class="ti">${item.title}</span>
-    <span class=${cls('chip', item.chip.kind)}>${item.chip.text}</span>
+    <span class="chips"><span class=${cls('chip', item.chip.kind)}>${item.chip.text}</span>${item.apply?.text ? html`<span class="chip kind" title="How it is applied to">${item.apply.text}</span>` : null}</span>
   </button>`;
 }
 
@@ -98,7 +98,7 @@ function Detail({ d, asking, actions, exclude = [], panel = null }) {
     <div class="dhead">
       <div>
         <h1 id="role-title">${d.company}</h1>
-        <p class="meta">${d.title}${d.meta ? ` · ${d.meta}` : ''}</p>
+        <p class="meta">${d.title}${d.meta ? ` · ${d.meta}` : ''}${d.kind?.text ? html` <span class="chip kind" title="How it is applied to">${d.kind.text}</span>` : null}</p>
         ${d.why ? html`<p class="why">${d.why}</p>` : null}
       </div>
       <div class="acts">
@@ -166,7 +166,7 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onSour
 }
 
 export function Today({ data, state, preview = null, actions = {} }) {
-  const a = { onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onCancel: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onDryRun: null, ...actions };
+  const a = { onQuickApply: noop, onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onCancel: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onDryRun: null, ...actions };
   const setup = state?.setup?.needed;
   if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onOpenSession=${a.onOpenSession} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} onCancel=${a.onCancel} /></div>`;
   const tell = html`<${TellArea} proposals=${data.proposals} actions=${a} />`;
@@ -191,6 +191,9 @@ export function Today({ data, state, preview = null, actions = {} }) {
   return html`<div class="todaycol">${tell}${why}<div class="today">
     <nav class="queue" aria-label="Today's roles">
       <span class="label">Today · ${data.queue.length}</span>
+      ${data.quick_apply?.n ? html`<button type="button" class="btn small quickapply" disabled=${!!data.quick_apply.request}
+        title=${`Claude fills each Easy Apply form in one Jobs chat and stops at Submit for your click (${data.quick_apply.used} of ${data.quick_apply.cap} today)`}
+        onClick=${() => a.onQuickApply()}>${data.quick_apply.request ? 'Quick apply running' : `Quick apply (${data.quick_apply.n})`}</button>` : null}
       ${data.queue.map((q) => html`<${QueueItem} key=${q.id} item=${q} active=${q.id === data.selected} onSelect=${a.onSelect} />`)}
     </nav>
     ${data.detail ? html`<${Detail} d=${data.detail} asking=${data.asking ?? []} exclude=${data.exclude_title_words ?? []} actions=${a}
