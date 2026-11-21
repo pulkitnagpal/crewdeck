@@ -201,7 +201,7 @@ test('portals in the skills (ADR-0008): setup recommends, says the risk once, co
     /sites may not allow automation and could limit your account/, /once/, /create nothing without a clear yes in this\s+chat/,
     /\*\*They\*\* type passwords, one-time codes and CAPTCHAs/, /non-secret fields/, /only after they say yes to using them/, /Switched-on portals are scanned/, /crewdeck jobs portals on <id>/]) assert.match(portals, re);
   // In order: list, risk, connect, sign up, test, switch on.
-  const at = ['portals list', 'Say the risk', 'portals connect <id>`', '--signup', 'portals test', 'switched on'].map((x) => portals.indexOf(x));
+  const at = ['portals list', 'Say the risk', 'portals connect <id>`', '--signup', 'portals test', 'portals on <id>'].map((x) => portals.indexOf(x));
   assert.ok(at.every((x, i) => x >= 0 && (i === 0 || x > at[i - 1])), `the order: ${at}`);
   const daily = read('plugin', 'skills', 'jobs-daily-run', 'SKILL.md');
   const ws = read('plugin', 'skills', 'jobs-workspace', 'SKILL.md');
