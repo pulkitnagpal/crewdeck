@@ -118,6 +118,8 @@ export const NEVER_CLICK: { label: string; re: RegExp; kinds?: ApplyKind[] }[] =
   { label: 'Confirm and submit', re: /^confirm( and| &) (submit|send|apply)/i },
   { label: 'Apply now (Naukri)', re: /^apply( now)?$/i, kinds: ['naukri'] },
   { label: 'I am interested (Naukri)', re: /^i am interested$/i, kinds: ['naukri'] },
+  // Naukri TopTier (signed in, checked 2026-11-21): its one-click button reads "Quick apply".
+  { label: 'Quick apply (Naukri)', re: /^quick apply$/i, kinds: ['naukri'] },
   { label: 'Save (Naukri questions)', re: /^save$/i, kinds: ['naukri'] },
   { label: 'Envoyer', re: /^envoyer\b/i },
   { label: 'Soumettre', re: /^soumettre\b/i },
