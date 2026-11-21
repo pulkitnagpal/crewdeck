@@ -1,7 +1,7 @@
 // Schema v1 of the notes Claude and the user share (design §7.2–7.6): validators whose messages name the note, the
 // field path and the fix; unknown keys are warnings ("did you mean …"), never errors, so users can keep their own
 // frontmatter; normalise() gives typed values with defaults.
-import { lookupPlace } from './places.ts';
+import { lookupPlace, place } from './places.ts';
 import { CURRENCIES } from './pay.ts';
 import { LEVELS_WANTED, MATCH_MODES, type LevelWanted, type MatchMode } from './titles.ts';
 import { keyClass } from './form-terms.ts';
@@ -66,6 +66,12 @@ export const SOURCE_KEY = /^[a-z0-9][a-z0-9-]{0,59}$/;
 /** A key from a name: lowercase ASCII letters and digits joined by -. */
 export const slugOf = (s: string) => s.normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'source';
 const SECTION_ID = /^[a-z0-9][a-z0-9_-]*$/;
+/** A country as a two-letter ISO 3166 code in lowercase (in, us, de), as the gazetteer names it. */
+export const ISO2 = /^[a-z]{2}$/;
+const ISO2_HINT = 'a two-letter country code in lowercase (in, us, de …)';
+const countryCheck = (v: string) => (place(v)?.kind === 'country' ? null : 'is not a country code Crewdeck knows');
+/** A job portal's id (ADR-0008): lowercase letters, digits and -. */
+export const PORTAL_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const FACT_ID = /^[a-z0-9][a-z0-9_-]*\.[a-z0-9][a-z0-9_.-]*$/;
 const emailCheck = (v: string) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'is not an email address');
 const phoneCheck = (v: string) => (/^\+?[\d\s().-]{5,25}$/.test(v) ? null : 'is not a phone number (digits, spaces, + ( ) - . only)');
@@ -146,6 +152,12 @@ export const SCHEMAS: Record<string, Schema> = {
       shifts: list(oneOf(SHIFTS)), shifts_avoid: list(oneOf(SHIFTS)), term_time_only: bool(),
     }),
     exclude: obj({ companies: list(str()), industries: list(str()), travel: oneOf([...TRAVEL, 'none']) }),
+    // ADR-0008 §8: the countries the companies themselves are from (headquartered in), as ISO codes. A role whose
+    // company's country is known and not allowed drops; unknown passes and the judge decides from the posting.
+    companies: obj({ countries: obj({
+      only: list(str({ required: true, pattern: ISO2, hint: ISO2_HINT, check: countryCheck })),
+      exclude: list(str({ required: true, pattern: ISO2, hint: ISO2_HINT, check: countryCheck })),
+    }) }),
     pay: obj({
       currency: str({ check: currencyCheck }), floor: num({ min: 0 }), period: oneOf(PAY_PERIODS),
       // D29: the hours and days that convert between periods (a day rate, a monthly wage for part-time hours).
@@ -179,6 +191,8 @@ export const SCHEMAS: Record<string, Schema> = {
       key: str({ pattern: SOURCE_KEY, hint: 'lowercase letters, digits and - (e.g. example-health)' }), name: str({ required: true }),
       provider: str(), careers_url: str({ check: urlCheck }), url: str({ check: urlCheck }), fetch: oneOf(['auto', 'none']), why: str(),
       employer: bool(), added: { t: 'date' }, enabled: bool(), linkedin: oneOf(['search']),
+      // ADR-0008 §7: a signed-in job portal Crewdeck scans in its own browser profile (on/off and order live here).
+      portal: str({ pattern: PORTAL_ID, hint: 'a portal id: lowercase letters, digits and - (e.g. example-portal)' }),
     }, { required: ['name'], open: true })),
     // v1: still read when sources: is absent; the first save moves them into sources:.
     boards: list(obj({ name: str({ required: true }), provider: str(), careers_url: str({ check: urlCheck }), enabled: bool() }, { required: ['name'], open: true })),
@@ -362,6 +376,9 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
       if (k === pay.currency) add('warning', `pay.fx.${k}`, 'is your own currency (always 1)', 'remove it');
       else if (/^[A-Z]{3}$/.test(k) && !(CURRENCIES as readonly string[]).includes(k)) add('warning', `pay.fx.${k}`, `${k} is not recognised in postings`, 'remove it or check the code');
     }
+    const cc = o(o(d.companies).countries);
+    const twice = arr(cc.only).filter((x) => typeof x === 'string' && arr(cc.exclude).includes(x));
+    if (twice.length) add('error', 'companies.countries.exclude', `${twice.join(', ')} is both in only and in exclude`, 'keep each country in one list');
     for (const k of Object.keys(o(d.rules))) if (!(RULE_NAMES as readonly string[]).includes(k)) {
       const near = didYouMean(k, RULE_NAMES);
       add('error', `rules.${k}`, 'is not a rule name', near ? `did you mean "${near}"?` : `use one of ${RULE_NAMES.join(', ')}`);
@@ -388,6 +405,7 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
     const lists = v2 ? [['sources', arr(d.sources)] as const] : (['boards', 'watchlist'] as const).map((k) => [k, arr(d[k])] as const);
     const keys = new Map<string, number>();
     let mirrors = 0;
+    const portals = new Set<string>();
     for (const [k, list] of lists) list.forEach((e, i) => {
       if (!isObj(e)) return;
       const p = `${k}[${i}]`;
@@ -400,6 +418,12 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
         if (++mirrors > 1) add('error', `${p}.linkedin`, 'LinkedIn is listed twice', 'keep one LinkedIn row');
         if ('enabled' in e) add('warning', `${p}.enabled`, 'LinkedIn is switched in Jobs → Settings; this note only orders it', 'remove enabled: from the LinkedIn row');
         if (e.provider || e.careers_url || e.url) add('error', p, 'the LinkedIn row takes no provider, careers_url or url', 'remove them');
+        return;
+      }
+      if (e.portal !== undefined) {
+        if (typeof e.portal === 'string' && portals.has(e.portal)) add('error', `${p}.portal`, `the portal ${e.portal} is listed twice`, 'keep one row per portal');
+        if (typeof e.portal === 'string') portals.add(e.portal);
+        if (e.provider || e.careers_url || e.url) add('error', p, 'a portal row takes no provider, careers_url or url', 'remove them');
         return;
       }
       const targets = ['provider', 'careers_url', 'url'].filter((t) => typeof e[t] === 'string' && e[t]);
@@ -457,6 +481,8 @@ export type Search = {
   needs_sponsorship: boolean | null;
   work_pattern: { hours_per_week: { min: number | null; max: number | null }; shifts: Shift[]; shifts_avoid: Shift[]; term_time_only: boolean };
   exclude: { companies: string[]; industries: string[]; travel: (typeof TRAVEL)[number] };
+  /** ADR-0008 §8: the companies' own countries (ISO codes); empty lists = any. */
+  companies: { countries: CompanyCountries };
   pay: {
     currency: string; floor: number; period: (typeof PAY_PERIODS)[number]; hours_per_week: number | null; days_per_week: number | null; per_unit: string;
     rule: 'top_of_range' | 'bottom_of_range'; unlisted: 'keep' | 'drop'; locale: string; fx: Record<string, number>; fx_updated: string;
@@ -465,6 +491,7 @@ export type Search = {
   judge_notes: string;
   rules: Record<string, string[]>;
 };
+export type CompanyCountries = { only: string[]; exclude: string[] };
 export type MemoryItem = {
   id: string; kind: (typeof MEMORY_KINDS)[number]; key?: string; text: string; quote: string; scope: 'all' | 'company';
   company?: string; created: string; superseded_by?: string; title_words?: string[];
@@ -475,6 +502,7 @@ export type SourceEntry = { name: string; provider?: string; careers_url?: strin
 export type SourceItem = {
   key: string; name: string; provider?: string; careers_url?: string; url?: string; fetch: 'auto' | 'none'; why?: string;
   employer: boolean; enabled: boolean; linkedin: boolean; added?: string;
+  /** A signed-in portal's id (ADR-0008): scanned by the portals engine, never by the providers. */ portal?: string;
   /** The entry as written (provider option blocks included). */ entry: SourceEntry;
 };
 export type Sources = { items: SourceItem[]; version: 1 | 2 };
@@ -485,6 +513,7 @@ export const licenceText = (l: Licence) => (l.where ? `${l.name} (${l.where})` :
 export const levelWord = (l: string | undefined) => (l && (CEFR as readonly string[]).includes(l) ? CEFR_LEVEL[l as (typeof CEFR)[number]] : l);
 const strs = (v: unknown) => arr(v).filter((x) => typeof x === 'string' && x.trim()).map((x: string) => x.trim());
 const s_ = (v: unknown, d = '') => (typeof v === 'string' ? v : d);
+const isoList = (v: unknown) => [...new Set(strs(v).map((c) => c.toLowerCase()).filter((c) => ISO2.test(c)))];
 
 export const normalise = {
   profile(d: unknown): Profile {
@@ -542,6 +571,7 @@ export const normalise = {
       work_pattern: { hours_per_week: { min: n_(hrs.min), max: n_(hrs.max) }, shifts: shifts(wp.shifts), shifts_avoid: shifts(wp.shifts_avoid), term_time_only: wp.term_time_only === true },
       // v1's travel: none meant "no travel rules a job out": off.
       exclude: { companies: strs(ex.companies), industries: strs(ex.industries), travel: (TRAVEL as readonly string[]).includes(ex.travel) ? ex.travel : 'off' },
+      companies: { countries: { only: isoList(o(o(x.companies).countries).only), exclude: isoList(o(o(x.companies).countries).exclude) } },
       pay: p,
       schedule: {
         timezone: s_(sch.timezone), daily_picks: typeof sch.daily_picks === 'number' ? sch.daily_picks : 5, cooldown_days: typeof sch.cooldown_days === 'number' ? sch.cooldown_days : 60,
@@ -594,9 +624,10 @@ export function sourceItems(d: unknown): Sources {
   const items: SourceItem[] = [];
   for (const [e, watch] of raw) {
     const linkedin = e.linkedin !== undefined;
+    const portal = !linkedin && typeof e.portal === 'string' && PORTAL_ID.test(e.portal) ? e.portal : undefined;
     let key = typeof e.key === 'string' && SOURCE_KEY.test(e.key) ? e.key : '';
     if (!key) {
-      const base = linkedin ? 'linkedin' : slugOf(String(e.name || e.provider || hostOf(e.careers_url ?? e.url) || 'source'));
+      const base = linkedin ? 'linkedin' : portal ? `portal-${portal}` : slugOf(String(e.name || e.provider || hostOf(e.careers_url ?? e.url) || 'source'));
       key = base;
       for (let n = 2; taken.has(key); n++) key = `${base}-${n}`;
       taken.add(key);
@@ -606,6 +637,7 @@ export function sourceItems(d: unknown): Sources {
       key, name: String(e.name ?? (linkedin ? 'LinkedIn' : key)), provider: linkedin ? undefined : t('provider'), careers_url: linkedin ? undefined : t('careers_url'),
       url: linkedin ? undefined : t('url'), fetch: e.fetch === 'none' || (!!t('url') && !t('careers_url') && !t('provider')) ? 'none' : 'auto', why: t('why'),
       employer: e.employer === true || (watch && e.employer !== false), enabled: linkedin ? true : e.enabled !== false, linkedin, added: t('added'), entry: e as SourceEntry,
+      ...(portal ? { portal } : {}),
     });
   }
   return { items, version: v2 ? 2 : 1 };

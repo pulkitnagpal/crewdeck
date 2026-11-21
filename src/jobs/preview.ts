@@ -3,6 +3,7 @@
 // Read-only: nothing here writes the tracker, the notes or any state (a test hashes them before and after).
 import { join } from 'node:path';
 import { type Ctx, notesOf, nowIso } from './ctx.ts';
+import { companyCountry } from './company-country.ts';
 import { overlayChanges, overlayFields } from './edit.ts';
 import { type JobNotes, NOTES } from './notes.ts';
 import { type Compiled, type Drop, allDrops, compileRules, titleFitOf } from './rules.ts';
@@ -18,14 +19,15 @@ export const BUDGET_MS = 1000;
 /** How a drop reason reads to the user (by rule), and a group's name. */
 export const REASON_LABEL: Record<string, string> = {
   title_gate: 'title', title_exclude: 'title words you excluded', level: 'level', company_excluded: 'company you excluded',
-  company_rule: 'company rule', employment_type: 'employment type', workplace_excluded: 'workplace', location_elsewhere: 'place', place_excluded: 'place excluded',
+  company_rule: 'company rule', company_country: 'company country', employment_type: 'employment type', workplace_excluded: 'workplace', location_elsewhere: 'place', place_excluded: 'place excluded',
   other_only: 'only for other places', industry: 'industry', travel: 'travel', pay: 'pay', cooldown: 'cooldown', active_pick: 'company already picked',
   other_occupation: 'other occupations',
 };
 export const GROUP_LABEL: Record<string, string> = { occupation: 'occupation (other occupations)', title: 'title', company: 'company', employment: 'employment type', workplace: 'workplace', place: 'place', industry: 'industry', travel: 'travel', pay: 'pay', tracker: 'cooldown or a pick at that company' };
 export const fmt = (n: number) => n.toLocaleString('en-US');
 
-export type PoolRow = { id: string; title: string; company: string; company_id: number; location: string; description: string; pay_text: string | null; language: string | null; employment_type?: string | null; source: string; source_key: string | null; status: string };
+export type PoolRow = { id: string; title: string; company: string; company_id: number; location: string; description: string; pay_text: string | null; language: string | null; employment_type?: string | null; source: string; source_key: string | null; status: string;
+  /** the company's own country when known (company-country.ts), for companies.countries */ company_country?: string | null };
 /** A change to preview: a form value (`raw`, typed by the schema) or a typed value (from a YAML search file). */
 export type PreviewChange = { segs: (string | number)[]; raw: string } | { segs: (string | number)[]; value: unknown };
 export type Suggestion = {
@@ -65,11 +67,18 @@ export function previewPool(ctx: Ctx, days: number, source?: string): { rows: Po
   const since = new Date(ctx.clock().getTime() - days * 86_400_000).toISOString();
   const rows = (source
     ? ctx.db.prepare(`select r.id, r.title, c.name company, r.company_id, coalesce(r.location,'') location, coalesce(r.description,'') description, r.pay_text,
-        r.language, r.employment_type, r.source, r.source_key, r.status from roles r join companies c on c.id=r.company_id
+        r.language, r.employment_type, r.company_country, r.source, r.source_key, r.status from roles r join companies c on c.id=r.company_id
         where r.first_seen >= ? and r.status <> 'applied' and r.source_key = ? order by r.first_seen desc, r.id limit ?`).all(since, source, POOL_MAX + 1)
     : ctx.db.prepare(`select r.id, r.title, c.name company, r.company_id, coalesce(r.location,'') location, coalesce(r.description,'') description, r.pay_text,
-        r.language, r.employment_type, r.source, r.source_key, r.status from roles r join companies c on c.id=r.company_id
+        r.language, r.employment_type, r.company_country, r.source, r.source_key, r.status from roles r join companies c on c.id=r.company_id
         where r.first_seen >= ? and r.status <> 'applied' order by r.first_seen desc, r.id limit ?`).all(since, POOL_MAX + 1)) as PoolRow[];
+  // The company's own country (directory, then the role's metadata), for companies.countries; one lookup per company.
+  const seen = new Map<string, string | null>();
+  for (const r of rows) {
+    const k = `${r.company_id}|${r.company_country ?? ''}`;
+    if (!seen.has(k)) seen.set(k, companyCountry(null, r.company, { company_country: r.company_country }));
+    r.company_country = seen.get(k)!;
+  }
   return { rows: rows.slice(0, POOL_MAX), capped: rows.length > POOL_MAX };
 }
 
@@ -81,7 +90,7 @@ export function trackerDrops(ctx: Ctx, rows: PoolRow[], search: Search = notesOf
   return out;
 }
 
-const post = (r: PoolRow) => ({ title: r.title, company: r.company, location: r.location, description: r.description, pay_text: r.pay_text, language: r.language, employment_type: r.employment_type });
+const post = (r: PoolRow) => ({ title: r.title, company: r.company, location: r.location, description: r.description, pay_text: r.pay_text, language: r.language, employment_type: r.employment_type, company_country: r.company_country ?? null });
 /** The soft "drop" the preview counts apart: a posting outside every target (ranked last and never judged, not dropped). */
 export const OTHER_OCCUPATION = 'other_occupation';
 /**

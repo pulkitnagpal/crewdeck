@@ -11,6 +11,8 @@
 #   name         company name
 #   url          careers URL when it isn't derivable from ats + board
 #   regions      where it mostly hires: place ids from places.yaml (countries or regions)
+#   hq           where it is headquartered: a country code (in, us …). The company-country preference (ADR-0008 §8) reads
+#                it; without it, a curated entry whose regions name one country counts as from that country
 #   families     field families from sources-catalog.yaml it hires for
 #   remote       true when the employer is known to hire remote (remote-first or a large remote share)
 #   size         small | mid | large (market knowledge)
@@ -27,17 +29,17 @@
 
 companies:
   # ---------------------------------------------------------------- (a) India tech employers
-  - { ats: greenhouse, board: groww, name: Groww, regions: [in], families: [engineering-it, data, product-project, finance-accounting], size: large, status: verified, evidence: "https://boards.greenhouse.io/groww", checked: 2026-08-01, note: "seed row (crawled 2026-08-01); HQ Bengaluru" }
-  - { ats: greenhouse, board: razorpaysoftwareprivatelimited, name: Razorpay, regions: [in], families: [engineering-it, data, product-project, finance-accounting, sales], size: large, status: verified, evidence: "https://boards.greenhouse.io/razorpaysoftwareprivatelimited", checked: 2026-07-17, note: "seed row; HQ Bengaluru" }
+  - { ats: greenhouse, board: groww, name: Groww, regions: [in], hq: in, families: [engineering-it, data, product-project, finance-accounting], size: large, status: verified, evidence: "https://boards.greenhouse.io/groww", checked: 2026-08-01, note: "seed row (crawled 2026-08-01); HQ Bengaluru" }
+  - { ats: greenhouse, board: razorpaysoftwareprivatelimited, name: Razorpay, regions: [in], hq: in, families: [engineering-it, data, product-project, finance-accounting, sales], size: large, status: verified, evidence: "https://boards.greenhouse.io/razorpaysoftwareprivatelimited", checked: 2026-07-17, note: "seed row; HQ Bengaluru" }
   - { ats: greenhouse, board: postman, name: Postman, regions: [in, us], families: [engineering-it, product-project, design, sales], size: large, status: verified, evidence: "https://boards.greenhouse.io/postman", checked: 2026-07-17, note: "seed row; engineering hub in Bengaluru" }
   - { ats: greenhouse, board: phonepe, name: PhonePe, regions: [in], families: [engineering-it, data, product-project], size: large, status: quarantine, evidence: "https://boards-api.greenhouse.io/v1/boards/phonepe", checked: 2026-11-20, note: "board returned 404 on 2026-11-20: moved off this Greenhouse board" }
-  - { ats: lever, board: cred, name: CRED, regions: [in], families: [engineering-it, design, product-project, data], size: mid, status: verified, evidence: "https://jobs.lever.co/cred", checked: 2026-07-12, note: "seed row; HQ Bengaluru" }
-  - { ats: lever, board: meesho, name: Meesho, regions: [in], families: [engineering-it, data, product-project, operations], size: large, status: verified, evidence: "https://api.lever.co/v0/postings/meesho?mode=json", checked: 2026-11-20, note: "live board checked 2026-11-20; HQ Bengaluru" }
-  - { ats: lever, board: paytm, name: Paytm, regions: [in], families: [engineering-it, data, product-project, sales, finance-accounting], size: large, status: verified, evidence: "https://jobs.lever.co/paytm", checked: 2026-07-12, note: "seed row; HQ Noida" }
+  - { ats: lever, board: cred, name: CRED, regions: [in], hq: in, families: [engineering-it, design, product-project, data], size: mid, status: verified, evidence: "https://jobs.lever.co/cred", checked: 2026-07-12, note: "seed row; HQ Bengaluru" }
+  - { ats: lever, board: meesho, name: Meesho, regions: [in], hq: in, families: [engineering-it, data, product-project, operations], size: large, status: verified, evidence: "https://api.lever.co/v0/postings/meesho?mode=json", checked: 2026-11-20, note: "live board checked 2026-11-20; HQ Bengaluru" }
+  - { ats: lever, board: paytm, name: Paytm, regions: [in], hq: in, families: [engineering-it, data, product-project, sales, finance-accounting], size: large, status: verified, evidence: "https://jobs.lever.co/paytm", checked: 2026-07-12, note: "seed row; HQ Noida" }
   - { ats: lever, board: zeta, name: Zeta, regions: [in], families: [engineering-it, product-project, data], size: mid, status: verified, evidence: "https://jobs.lever.co/zeta", checked: 2026-07-12, note: "seed row; the Indian banking-tech Zeta (not Zeta Global/ZetaChain)" }
   - { ats: lever, board: mindtickle, name: Mindtickle, regions: [in, us], families: [engineering-it, product-project, sales], size: mid, status: verified, evidence: "https://jobs.lever.co/mindtickle", checked: 2026-07-12, note: "seed row; engineering in Pune" }
   - { ats: greenhouse, board: druva, name: Druva, regions: [in, us], families: [engineering-it, sales, customer-service], size: mid, status: verified, evidence: "https://boards.greenhouse.io/druva", checked: 2026-08-01, note: "seed row; engineering in Pune" }
-  - { ats: greenhouse, board: inmobi, name: InMobi, regions: [in], families: [engineering-it, data, sales, marketing], size: large, status: verified, evidence: "https://boards.greenhouse.io/inmobi", checked: 2026-07-17, note: "seed row; HQ Bengaluru" }
+  - { ats: greenhouse, board: inmobi, name: InMobi, regions: [in], hq: in, families: [engineering-it, data, sales, marketing], size: large, status: verified, evidence: "https://boards.greenhouse.io/inmobi", checked: 2026-07-17, note: "seed row; HQ Bengaluru" }
   - { ats: ashby, board: atlan, name: Atlan, regions: [in, us], families: [engineering-it, data, product-project, sales], remote: true, size: mid, status: verified, evidence: "https://api.ashbyhq.com/posting-api/job-board/atlan", checked: 2026-11-20, note: "live board checked 2026-11-20; remote-first (market knowledge)" }
   - { ats: lever, board: freshworks, name: Freshworks, regions: [in, us], families: [engineering-it, product-project, sales, customer-service, marketing], size: large, status: verified, evidence: "https://jobs.lever.co/freshworks", checked: 2026-08-01, note: "seed row; large Chennai/Bengaluru offices" }
   - { ats: greenhouse, board: doordashindia, name: DoorDash India, regions: [in], families: [engineering-it, data], size: large, status: verified, evidence: "https://boards.greenhouse.io/doordashindia", checked: 2026-07-17, note: "seed row; Pune engineering" }

@@ -16,10 +16,11 @@ function fileOnly(args: string[], name: string, usage: string): string {
   return textFrom(f, `--${name}`);
 }
 
-type View = { id: number; origin: string; summary: string; status: string; items: { n: number; line: string; reason: string; status: string; auto: boolean; done: string | null; error: string | null }[] };
+type View = { id: number; origin: string; summary: string; status: string; items: { n: number; line: string; reason: string; status: string; auto: boolean; done: string | null; error: string | null; starts?: string | null }[] };
 const show = (p: View) => {
   say(`proposal ${p.id} (${p.origin}): ${p.summary}`);
-  for (const it of p.items) say(`  ${it.n}. [${it.auto && it.status === 'approved' ? 'applied' : it.status}] ${it.line}${it.done && it.status === 'approved' ? ` — ${it.done}` : ''}${it.error ? ` — not applied: ${it.error}` : ''}`);
+  // ADR-0008 §9: an item approved for a later day says when it starts (Undo cancels it until then).
+  for (const it of p.items) say(`  ${it.n}. [${it.auto && it.status === 'approved' ? 'applied' : it.status}] ${it.line}${it.starts ? ` — Starts ${it.starts}` : ''}${it.done && it.status === 'approved' ? ` — ${it.done}` : ''}${it.error ? ` — not applied: ${it.error}` : ''}`);
 };
 const itemArg = (v: string | undefined) => {
   if (v === undefined) return undefined;

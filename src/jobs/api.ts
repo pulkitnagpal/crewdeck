@@ -42,7 +42,7 @@ import { type SourceOp, changeSources, isKey, listSources, refreshSourcesList } 
 import { type SchedulerOptions, createSourceScheduler } from './schedule.ts';
 import { type ResolveState, sourcesScreen } from './sources-view.ts';
 import type { ResolveResult } from './resolve.ts';
-import { type ApplyEnv, ProposalError, addProposal, approve as approveProposal, checkProposal, listProposals, pendingCount, proposalView, reject as rejectProposal, undo as undoProposal } from './proposals.ts';
+import { type ApplyEnv, ProposalError, addProposal, applyDue, approve as approveProposal, checkProposal, listProposals, pendingCount, proposalView, reject as rejectProposal, undo as undoProposal } from './proposals.ts';
 
 export type JobsApi = {
   handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void>;
@@ -622,6 +622,8 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     queueLink: (url) => requests.add(LANE, LABEL.link, { kind: 'link', payload: { url: checkLink(url, ctx.features) } }).id,
     cancelLink: (id) => { const r = requests.get(id); if (!r || r.lane !== LANE || r.kind !== 'link' || !isOpen(r)) return false; requests.cancel(id, LANE); return true; },
   };
+  // ADR-0008 §9: items approved for a day that has come apply on the server's start (and at each sources run).
+  try { if (applyDue(applyEnv).applied) emit('proposals'); } catch { /* a busy database: the next sources run applies them */ }
   const proposalId = (v: unknown) => { const n = Number(v); if (!Number.isInteger(n) || n < 1) throw new HttpError(400, 'unknown proposal'); return n; };
   const itemNo = (v: unknown) => (v === undefined || v === null ? undefined : intIn(v, 1, 100, 'item'));
   /** A proposal's change, then the refresh: notes and sources changed under the page. */
@@ -671,7 +673,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   /** A source the user switched on was never fetched, or none was fetched in the last 6 hours. */
   function sourcesStale(at = Date.now()): boolean {
     const state = readSourcesState(c.jobs.home);
-    const items = notesOf(ctx).sources.data.items.filter((it) => (it.linkedin ? ctx.features.linkedin_search : it.enabled && it.fetch !== 'none'));
+    const items = notesOf(ctx).sources.data.items.filter((it) => (it.linkedin ? ctx.features.linkedin_search : it.enabled && it.fetch !== 'none' && !it.portal));
     if (!items.length) return false;
     return items.some((it) => {
       const last = state?.by_key?.[it.linkedin ? 'linkedin' : it.key];

@@ -37,6 +37,14 @@ when it comes from their words, `evidence`: **their exact words, copied from `pa
 | A company or its careers page ("watch Example Health") | `watch_company` | `{ name, careers_url }`: find the careers page in a **background tab** of the browser pane if they gave only a name; no page found → say so instead of guessing |
 | A job board to add or drop | `source_add` / `source_remove` | `{ provider }` (an id from `crewdeck jobs sources suggest`), `{ careers_url }` or `{ url }`; `{ key }` to remove |
 | Not interested in a company, an industry or a title word | `exclude` | `{ field: companies \| industries \| title_words, value }` |
+| Which countries the **companies** may be from ("only non-Indian companies", "just German employers") | `company_countries` | `{ exclude: [in] }` or `{ only: [de] }`: two-letter country codes, lowercase; each list given replaces that list (`[]` clears it). This is where the company is headquartered, not where the job is: places stay `place` items |
+| Switch a signed-in job portal on or off ("stop scanning Naukri") | `portal_toggle` | `{ portal: <portal id>, on: true \| false }` |
+
+**Starting later.** Any item may carry `"effective_from": "YYYY-MM-DD"` when they say when it starts ("from tomorrow",
+"from Monday", "after the 1st"). Work the date out in **their** time zone (`schedule.timezone` in
+`crewdeck jobs view knowledge --tab search`; none set: this computer's): "tomorrow" is the day after their today. Approved
+or applied before that day, the item waits ("Starts <date>" on the Jobs page and in `crewdeck jobs proposals list`) and
+takes effect on the first fetch or Crewdeck start on or after it; Undo cancels it until then. No date said: leave it out.
 
 **Origin** (one per proposal; split into two proposals if both apply):
 - `person`: their own direct statements in the box. Low-risk items (add a target, a place, a link, a company to watch)
@@ -58,6 +66,16 @@ when it comes from their words, `evidence`: **their exact words, copied from `pa
   links it names: `watch_company` and `add_link` items with origin `fetched`.
 - A job posting link alone: one `add_link` item (origin `person`).
 - A resume: `profile_fact` items for facts it states (origin `quoted`); never invent or reword a fact.
+- "From tomorrow just scan non-Indian companies or portals": origin `person`, every item with `effective_from` set to
+  tomorrow in their time zone and `evidence` copied from their words:
+  - one `company_countries` item `{ "exclude": ["in"] }` (only non-Indian companies);
+  - the portals: if `crewdeck jobs --help` lists a `portals` command, run `portals list` with it and add one
+    `portal_toggle` item `{ "portal": <id>, "on": false }` for each portal that is switched on and serves India only;
+    portals for several countries stay on. No `portals` command in this Crewdeck: no toggle items; say in the result
+    line that company feeds follow the new rule and portals aren't set up yet.
+  Both kinds apply on their own from their own words (and wait for the date), so nothing waits for Approve; the result
+  line says what starts when, for example "From 22 November: only companies headquartered outside India; Naukri and
+  foundit switched off. Undo on Today until then".
 
 ## 3. Ask, at most two short questions
 Only when the proposal would be wrong without the answer (the licence or visa for a relocating nurse; keep the old target
@@ -70,6 +88,14 @@ Write the proposal to `<T>/proposal.json` with the Write tool, for example:
 { "origin": "person", "summary": "Product manager roles as well as FDE", "request": 12,
   "items": [{ "kind": "target_add", "payload": { "name": "Product manager", "titles": ["product manager", "product owner"], "families": ["product-project"] },
               "reason": "You said you now want PM roles", "evidence": "now I want product manager roles" }] }
+```
+
+or, for a change that starts later:
+
+```json
+{ "origin": "person", "summary": "From tomorrow: only companies outside India", "request": 14,
+  "items": [{ "kind": "company_countries", "payload": { "exclude": ["in"] }, "effective_from": "2026-11-22",
+              "reason": "Only companies headquartered outside India, from tomorrow", "evidence": "from tomorrow just scan non-Indian companies" }] }
 ```
 
 then `crewdeck jobs propose --file <T>/proposal.json`. It checks every item (a refused file names the field: fix it and

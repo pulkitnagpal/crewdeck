@@ -6,6 +6,7 @@ import { setStatus, tx } from '../db.ts';
 import { type Compiled, compileRules, prefilter } from '../rules.ts';
 import { payCheck } from '../pay.ts';
 import { trackerCheck, trackerRules } from './tracker.ts';
+import { companyCountry } from '../company-country.ts';
 
 export type Drop = { keep: true } | { keep: false; rule: string; reason: string };
 
@@ -22,7 +23,9 @@ function check(ctx: Ctx, row: any, compiled: Compiled, tracker: Tracker): Drop {
   const pay = compiled.pay ? payCheck(row.pay_text, row.description, compiled.pay) : null;
   ctx.db.prepare('update roles set pay_min=?, pay_max=?, pay_currency=?, pay_period=?, pay_status=? where id=?').run(
     pay?.min ?? null, pay?.max ?? null, pay?.currency ?? null, compiled.pay && pay?.currency ? compiled.pay.period : null, pay?.status ?? null, row.id);
-  const v = prefilter({ title: row.title, company: row.company, location: row.location, description: row.description, pay_text: row.pay_text, language: row.language, employment_type: row.employment_type }, compiled);
+  // The company's country is looked up only when the person set a preference (ADR-0008 §8).
+  const company_country = compiled.companyCountries ? companyCountry(ctx, row.company, { company_country: row.company_country }) : null;
+  const v = prefilter({ title: row.title, company: row.company, location: row.location, description: row.description, pay_text: row.pay_text, language: row.language, employment_type: row.employment_type, company_country }, compiled);
   if (!v.keep) return v;
   return trackerDrop(tracker, row);
 }

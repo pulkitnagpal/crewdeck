@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { type Confidence, enrich } from './enrich.ts';
+import { place } from '../places.ts';
 
 export const DIR = join(import.meta.dirname, '..', 'data', 'directory');
 export const SEED_FILE = join(DIR, 'seed.csv');
@@ -25,6 +26,7 @@ export type Company = {
   families: string[]; familyConfidence: Confidence; familyFrom: string[];
   regions: string[]; regionConfidence: Confidence; regionFrom: string[];
   remote: boolean | null; staffing: boolean; size?: Size;
+  /** Where it is headquartered (an ISO country code), from a curated entry only (ADR-0008 §8). */ hq?: string;
   origin: 'seed' | 'curated'; curated: boolean;
   /** Only verified, non-quarantined entries are used by default. */ verified: boolean; quarantine: boolean;
   seenAt?: string; evidence?: string; checked?: string; note?: string;
@@ -72,7 +74,7 @@ export function loadSeed(file = SEED_FILE, pin = SEED_SHA256): { ats: Ats; name:
   return lines.slice(1).map((l) => { const [ats, name, board, seenAt] = csvLine(l); return { ats: ats as Ats, name: name.trim(), board, seenAt }; });
 }
 
-type CuratedRow = { ats: Ats; board: string; name: string; url?: string; regions?: string[]; families?: string[]; remote?: boolean; size?: Size; status: 'verified' | 'quarantine'; evidence?: string; checked?: string | Date; note?: string };
+type CuratedRow = { ats: Ats; board: string; name: string; url?: string; regions?: string[]; hq?: string; families?: string[]; remote?: boolean; size?: Size; status: 'verified' | 'quarantine'; evidence?: string; checked?: string | Date; note?: string };
 
 export function loadCurated(file = CURATED_FILE): CuratedRow[] {
   return ((parse(readFileSync(file, 'utf8'))?.companies ?? []) as CuratedRow[]).map((r) => ({ ...r, checked: r.checked instanceof Date ? r.checked.toISOString().slice(0, 10) : r.checked == null ? undefined : String(r.checked) }));
@@ -92,6 +94,7 @@ export function curatedIssues(rows = loadCurated()): string[] {
     if (r.status === 'quarantine' && !r.note) out.push(`${at}: quarantine needs a note saying why`);
     if (r.ats === 'workday' && r.board.split('/').length !== 3) out.push(`${at}: workday board is tenant/wdN/site`);
     if (r.status === 'verified' && !boardUrl(r.ats, r.board) && !r.url) out.push(`${at}: verified needs a url`);
+    if (r.hq !== undefined && !(typeof r.hq === 'string' && /^[a-z]{2}$/.test(r.hq) && place(r.hq)?.kind === 'country')) out.push(`${at}: hq ${r.hq} is not a country code (in, us, de …)`);
   }
   return out;
 }
@@ -127,7 +130,7 @@ export function loadDirectory(opts: { seedFile?: string; pin?: string; curatedFi
       regions: c.regions?.length ? c.regions : base?.regions ?? e.regions,
       regionConfidence: c.regions?.length ? 'medium' : base?.regionConfidence ?? e.regionConfidence,
       regionFrom: c.regions?.length ? ['curated'] : base?.regionFrom ?? e.regionFrom,
-      remote: c.remote ?? base?.remote ?? e.remote, staffing: base?.staffing ?? e.staffing, size: c.size,
+      remote: c.remote ?? base?.remote ?? e.remote, staffing: base?.staffing ?? e.staffing, size: c.size, ...(c.hq ? { hq: c.hq } : {}),
       origin: base ? 'seed' : 'curated', curated: true,
       verified: c.status === 'verified', quarantine: c.status !== 'verified',
       seenAt: base?.seenAt, evidence: c.evidence, checked: c.checked as string | undefined, note: c.note,

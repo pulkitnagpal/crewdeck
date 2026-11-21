@@ -18,7 +18,8 @@ import { type KeyState, readSourcesState } from './sources.ts';
 export const SOURCES_COMMENT = ' Where to look, in priority order: the first is fetched first and ranks first. Change it on Jobs → Sources, or ask Claude.';
 const TEMPLATE_FRONT = `tags: jobs\n#${SOURCES_COMMENT}\nsources: []\n`;
 
-export type NewSource = { name?: string; provider?: string; careers_url?: string; url?: string; why?: string; employer?: boolean; linkedin?: boolean };
+export type NewSource = { name?: string; provider?: string; careers_url?: string; url?: string; why?: string; employer?: boolean; linkedin?: boolean;
+  /** A signed-in portal's id (ADR-0008 §7), added switched off with `enabled: false`. */ portal?: string; enabled?: boolean };
 export type SourceOp =
   | { op: 'add'; source: NewSource; at?: number }
   | { op: 'remove'; key: string }
@@ -83,6 +84,7 @@ const keyOf = (n: unknown) => (isMap(n) ? String((n as YAMLMap).get('key') ?? ''
 
 function describe(s: NewSource): string {
   if (s.linkedin) return 'LinkedIn (its switch stays in Jobs → Settings)';
+  if (s.portal) return `the portal ${s.name ?? s.portal}${s.enabled === false ? ' (switched off)' : ''}`;
   if (s.provider) { const cat = catalogEntry(s.provider)?.name; return cat && cat !== s.name ? `${s.name} (${cat})` : String(s.name ?? s.provider); }
   return `${s.name} (${s.careers_url ?? s.url})`;
 }
@@ -101,6 +103,10 @@ export function applyOp(doc: Document, op: SourceOp, o: { today: string; used?: 
     const current = sourceItems(doc.toJS()).items;
     if (s.linkedin) {
       if (current.some((x) => x.linkedin)) throw new Error('LinkedIn is already in your list: move it instead');
+    } else if (s.portal) {
+      if (s.provider || s.careers_url || s.url) throw new Error('a portal row takes no provider, careers page or web address');
+      const dup = current.find((x) => x.portal === s.portal);
+      if (dup) throw new Error(`the portal ${s.portal} is already in your list as ${dup.key}: switch it on or off instead`);
     } else {
       const n = [s.provider, s.careers_url, s.url].filter(Boolean).length;
       if (n !== 1 && !(s.provider && s.careers_url && !s.url)) throw new Error('give one of a provider, a careers page or a web address');
@@ -110,10 +116,11 @@ export function applyOp(doc: Document, op: SourceOp, o: { today: string; used?: 
       if (dup) throw new Error(`that page is already in your list as ${dup.key}`);
     }
     const used = new Set([...(o.used ?? []), ...current.map((x) => x.key)]);
-    const name = s.linkedin ? 'LinkedIn' : (s.name?.trim() || catalogEntry(s.provider ?? '')?.name || s.provider || hostName(s.careers_url ?? s.url));
-    const key = newKey(s.linkedin ? 'linkedin' : s.provider && !s.careers_url && !s.name?.trim() ? s.provider : name, used);
+    const name = s.linkedin ? 'LinkedIn' : s.portal ? (s.name?.trim() || s.portal) : (s.name?.trim() || catalogEntry(s.provider ?? '')?.name || s.provider || hostName(s.careers_url ?? s.url));
+    const key = newKey(s.linkedin ? 'linkedin' : s.portal ? `portal-${s.portal}` : s.provider && !s.careers_url && !s.name?.trim() ? s.provider : name, used);
     const entry: Record<string, unknown> = { key, name };
     if (s.linkedin) entry.linkedin = 'search';
+    if (s.portal) { entry.portal = s.portal; if (s.enabled === false) entry.enabled = false; }
     if (s.provider) entry.provider = s.provider;
     if (s.careers_url) entry.careers_url = s.careers_url;
     if (s.url) { entry.url = s.url; entry.fetch = 'none'; entry.why = s.why ?? 'not checked yet: crewdeck jobs sources resolve ' + key; }
@@ -252,7 +259,7 @@ export function listSources(ctx: Ctx): SourceRow[] {
   const state = readSourcesState(ctx.home);
   return notes.sources.data.items.map((it, i) => {
     const cat = it.linkedin ? catalogEntry('linkedin') : it.provider ? catalogEntry(it.provider) : undefined;
-    const kind = it.linkedin ? 'linkedin' : it.employer ? 'employer' : it.url ? 'custom' : cat?.kind ?? (it.careers_url ? 'careers page' : 'unknown');
+    const kind = it.linkedin ? 'linkedin' : it.portal ? 'portal' : it.employer ? 'employer' : it.url ? 'custom' : cat?.kind ?? (it.careers_url ? 'careers page' : 'unknown');
     const last = state?.by_key?.[it.linkedin ? 'linkedin' : it.key];
     const row: SourceRow = {
       position: i + 1, key: it.key, name: it.name, kind, enabled: it.linkedin ? ctx.features.linkedin_search : it.enabled, employer: it.employer,

@@ -7,13 +7,15 @@ import { compatible, findPlaces, fold, isWorld, lookupPlace, placeName, plain, r
 import { type PaySettings, payCheck, payDrops, paySettingsOf } from './pay.ts';
 import { B, E, NOT_ELIGIBLE_KEYWORD, ONLY_KEYWORD, builtInRules, employmentKinds, fillerWords, industryWords, noTravelRe, travelNounRe } from './rule-words.ts';
 import type { JobNotes } from './notes.ts';
-import { RULE_NAMES, type MemoryItem, type Search, type Workplace, WORKPLACES, levelWord, licenceText } from './schema.ts';
+import { RULE_NAMES, type CompanyCountries, type MemoryItem, type Search, type Workplace, WORKPLACES, levelWord, licenceText } from './schema.ts';
 import { isActive } from './memory.ts';
+import { countryAllowed, countryPrefText, noCountryPref } from './country-pref.ts';
 import { OTHER_OCCUPATION_FIT, type TitleFit, type TitleMatch, type TitleMatcher, describeMatcher, levelBlock, matchTitle, readTitle, targetsOf, titleFit, titleMatcher } from './titles.ts';
 
 export type RuleName = (typeof RULE_NAMES)[number];
 export type Posting = { title: string; company?: string; location?: string; description?: string; pay_text?: string | null; /** the posting's language (ISO 639-1), when a source said */ language?: string | null;
-  /** a structured employment type from JSON-LD or a provider (never read from the text) */ employment_type?: string | null };
+  /** a structured employment type from JSON-LD or a provider (never read from the text) */ employment_type?: string | null;
+  /** the company's own country (ISO code) when Crewdeck knows it (company-country.ts); unknown passes */ company_country?: string | null };
 export type Verdict = { keep: true } | { keep: false; rule: string; reason: string };
 
 /** A list of places the user accepts; usable only when every name is known (else location drops are off). */
@@ -30,6 +32,8 @@ export type Compiled = {
   onsite: PlaceSet; remote: PlaceSet; commuteKm: number;
   companies: { name: string; key: string }[];
   companyRules: { company: string; key: string; id: string; text: string }[];
+  /** companies.countries (ADR-0008 §8): a company whose country is known and not allowed drops; null = no preference. */
+  companyCountries: CompanyCountries | null;
   avoidWords: { word: string; id: string; text: string }[];
   travelDrop: 'occasional' | 'frequent' | null;
   /** employment_types (D30): a structured type outside them drops; empty means any. */
@@ -103,6 +107,7 @@ export function compileRules(notes: Pick<JobNotes, 'search' | 'memory'>): Compil
     onsite, remote, commuteKm: s.places.commute_km,
     companies: s.exclude.companies.map((c) => ({ name: c, key: companyKey(c) })),
     companyRules: active.filter((m) => m.kind === 'company_rule' && m.company).map((m) => ({ company: m.company!, key: companyKey(m.company!), id: m.id, text: m.text })),
+    companyCountries: noCountryPref(s.companies?.countries) ? null : s.companies.countries,
     avoidWords,
     travelDrop: s.exclude.travel === 'off' ? null : s.exclude.travel,
     employment: s.employment_types, relocate: s.places.relocate_to,
@@ -193,7 +198,7 @@ export function prefilter(post: Posting, c: Compiled): Verdict {
 
 /** Which group of rules a drop belongs to: what one change to the notes would bring back (the preview's single blockers). */
 export const RULE_GROUP: Record<string, string> = {
-  title_gate: 'title', title_exclude: 'title', level: 'title', company_excluded: 'company', company_rule: 'company',
+  title_gate: 'title', title_exclude: 'title', level: 'title', company_excluded: 'company', company_rule: 'company', company_country: 'company',
   employment_type: 'employment', workplace_excluded: 'workplace', location_elsewhere: 'place', place_excluded: 'place', other_only: 'place',
   industry: 'industry', travel: 'travel', pay: 'pay', cooldown: 'tracker', active_pick: 'tracker',
 };
@@ -234,6 +239,10 @@ function* checks(post: Posting, c: Compiled, every = false): Generator<Drop> {
     const rule = bad ? null : c.companyRules.find((x) => x.key === key);
     if (bad) yield no('company_excluded', `company excluded: ${bad.name}`);
     else if (rule) yield no('company_rule', `company rule (${rule.id}): ${rule.text}`);
+  }
+  // Only when the company's country is known (the directory, a feed or a portal said): unknown goes to the judge.
+  if (c.companyCountries && post.company_country && !countryAllowed(post.company_country, c.companyCountries)) {
+    yield no('company_country', `company from ${placeName(post.company_country.toLowerCase())} (you want ${countryPrefText(c.companyCountries)})`);
   }
 
   // A structured employment type (JSON-LD, a provider's field) the user didn't ask for (D30). Words in the title or the
@@ -338,6 +347,7 @@ export function describeRules(c: Compiled): string {
   if (c.titles.level !== 'any') row('level', `titles with a seniority word outside roles.level: ${c.titles.level}`, 'roles.level');
   row('title_exclude', c.regex.title_exclude ? `title must not contain: /${pat('title_exclude')}/` : 'off', c.source.title_exclude);
   row('company_excluded', c.companies.length ? c.companies.map((x) => x.name).join(', ') : 'off', 'exclude.companies');
+  row('company_country', c.companyCountries ? `${countryPrefText(c.companyCountries)}, when the company's country is known (directory, feed or portal); unknown goes to the judge` : 'off (companies from any country)', 'companies.countries');
   row('company_rule', c.companyRules.length ? c.companyRules.map((x) => `${x.company} (${x.id})`).join(', ') : 'none', 'memory company_rule');
   row('employment_type', c.employment.length ? `a structured employment type (from the source, never the text) that is none of: ${c.employment.join(', ')}` : 'off (any employment type)', 'employment_types');
   row('workplace_excluded', c.excludedKinds.length ? `${c.excludedKinds.join(', ')} stated in title/location` : 'off (all kinds accepted)', 'workplace');
@@ -400,6 +410,7 @@ export function judgeBrief(notes: Pick<JobNotes, 'search' | 'memory' | 'career' 
   if (s.needs_sponsorship === true) L.push(`- The user needs visa sponsorship${s.places.authorized_in.length ? ' outside those countries' : ''}: fail postings that say they can't sponsor or require existing work authorisation the user lacks.`);
   if (s.needs_sponsorship === false) L.push(`- The user does not need visa sponsorship${s.places.authorized_in.length ? ' in those countries' : ''}.`);
   if (s.exclude.companies.length || s.exclude.industries.length) L.push(`- Excluded: ${[s.exclude.companies.length ? `companies ${list(s.exclude.companies)}` : '', s.exclude.industries.length ? `industries ${list(s.exclude.industries)}` : ''].filter(Boolean).join('; ')}.`);
+  if (!noCountryPref(s.companies?.countries)) L.push(`- Company country: ${countryPrefText(s.companies.countries)}: decide from the posting or the company's own page (where the company is headquartered, not where the role is); answer "unclear" when it doesn't say.`);
   if (s.exclude.travel !== 'off') L.push(`- Travel: fail ${s.exclude.travel}${s.exclude.travel === 'occasional' ? ' or frequent' : ''} travel.`);
   const avoid = kinds('avoid');
   if (avoid.length) {

@@ -65,6 +65,8 @@ export function sourcePlan(notes: Pick<JobNotes, 'sources'> & Partial<Pick<JobNo
     if (!it.enabled) continue;
     const name = it.name.slice(0, 200) || '(no name)';
     if (it.linkedin) { plan.linkedinAt ??= plan.entries.length; plan.linkedinKey ??= it.key; continue; }
+    // A signed-in portal (ADR-0008) is scanned by the portals engine in Crewdeck's browser profile, never by the providers.
+    if (it.portal) continue;
     if (it.fetch === 'none') { plan.skipped.push({ key: it.key, name, why: it.why ? `not fetched: ${it.why}` : 'not fetched (fetch: none)' }); continue; }
     let entry = cleanEntry(it.entry);
     let filled: string[] | undefined;
@@ -343,6 +345,13 @@ function mergeProviders(a: ProvidersResult | undefined, b: ProvidersResult): Pro
  */
 export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<SourcesState> {
   const state: SourcesState = { started: nowIso(ctx), ok: true, new: 0, trigger: o.trigger };
+  // ADR-0008 §9: proposal items approved for a day that has come apply first, so this run already follows them. A link
+  // item needs the server's queue: it waits for the server's next start.
+  try {
+    const { applyDue } = await import('./proposals.ts');
+    const due = applyDue({ ctx, queueLink: () => { throw new Error('a job link waits for the Crewdeck server to queue it'); } });
+    if (due.applied || due.failed.length) (state as any).proposals = due;
+  } catch { /* the server's start tries again */ }
   const prev = readSourcesState(ctx.home);
   const notes = notesOf(ctx);
   const st = o.dir ? { ready: existsSync(o.dir), message: '' } : providersStatus({ jobs: { home: ctx.home } } as any, o.manifest);
