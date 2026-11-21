@@ -151,6 +151,7 @@ export function applyOp(doc: Document, op: SourceOp, o: { today: string; used?: 
   }
   if (op.op === 'set') {
     if (node.has('linkedin')) throw new Error('the LinkedIn row has nothing to set');
+    if (node.has('portal')) throw new Error('a portal row has nothing to set');
     let changed = false;
     for (const [k, v] of Object.entries(op.fields)) {
       if (v === null) { if (node.has(k)) { node.delete(k); changed = true; } }
@@ -167,7 +168,7 @@ export function applyOp(doc: Document, op: SourceOp, o: { today: string; used?: 
 export const LIST_START = '<!-- crewdeck:sources -->';
 export const LIST_END = '<!-- /crewdeck:sources -->';
 
-const kindWords = (it: SourceItem) => (it.linkedin ? 'LinkedIn' : it.employer ? 'careers page' : it.url && !it.provider ? 'web address' : 'job board');
+const kindWords = (it: SourceItem) => (it.linkedin ? 'LinkedIn' : it.portal ? 'signed-in portal' : it.employer ? 'careers page' : it.url && !it.provider ? 'web address' : 'job board');
 
 /** The list as Markdown: one line per source, in priority order, with what it is and whether it is on. */
 export function sourcesList(items: SourceItem[]): string {
@@ -248,7 +249,7 @@ export const isKey = (k: unknown): k is string => typeof k === 'string' && SOURC
 
 export type SourceRow = {
   position: number; key: string; name: string; kind: string; enabled: boolean; employer: boolean;
-  provider?: string; careers_url?: string; url?: string; fetch: 'auto' | 'none'; why?: string; regions: string[];
+  provider?: string; careers_url?: string; url?: string; portal?: string; fetch: 'auto' | 'none'; why?: string; regions: string[];
   confidence?: string; coverage?: string; last?: KeyState;
   /** The LinkedIn row: its three switches, which only the user changes (Jobs → Settings). */ switches?: Record<string, boolean>;
 };
@@ -264,7 +265,7 @@ export function listSources(ctx: Ctx): SourceRow[] {
     const row: SourceRow = {
       position: i + 1, key: it.key, name: it.name, kind, enabled: it.linkedin ? ctx.features.linkedin_search : it.enabled, employer: it.employer,
       fetch: it.fetch, regions: cat?.regions ?? [], ...(it.provider ? { provider: it.provider } : {}), ...(it.careers_url ? { careers_url: it.careers_url } : {}),
-      ...(it.url ? { url: it.url } : {}), ...(it.why ? { why: it.why } : {}), ...(cat ? { confidence: cat.confidence, coverage: cat.coverage } : {}),
+      ...(it.url ? { url: it.url } : {}), ...(it.portal ? { portal: it.portal } : {}), ...(it.why ? { why: it.why } : {}), ...(cat ? { confidence: cat.confidence, coverage: cat.coverage } : {}),
       ...(last ? { last: (({ history: _, ...l }) => l)(last) } : {}),
     };
     if (it.linkedin) row.switches = { linkedin_search: ctx.features.linkedin_search, linkedin_links: ctx.features.linkedin_links, easy_apply: ctx.features.easy_apply };

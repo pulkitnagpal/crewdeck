@@ -56,13 +56,13 @@ export function requireBrowser(setting = 'auto'): FoundBrowser {
 }
 
 /** The browser's environment without proxy variables (the guard proxy is its only way out). */
-function browserEnv(): Record<string, string> {
+export function browserEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/_proxy$/i.test(k) && !/^no_proxy$/i.test(k)) env[k] = v;
   return env;
 }
 
-const QUIET = ['--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync',
+export const QUIET = ['--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync',
   '--disable-default-apps', '--disable-extensions', '--disable-domain-reliability', '--metrics-recording-only', '--mute-audio'];
 
 export type Guarded = { browser: Browser; context: BrowserContext; proxy: GuardProxy; found: FoundBrowser; close(): Promise<void> };

@@ -288,7 +288,7 @@ function nearMisses(c: Compiled, rows: PoolRow[], drops: Drop[][]): Map<string, 
 }
 
 function sourceCounts(notes: JobNotes, rows: PoolRow[], drops: Drop[][]): Preview['by_source'] {
-  const names = new Map(notes.sources.data.items.map((it) => [it.linkedin ? 'linkedin' : it.key, it.name]));
+  const names = new Map(notes.sources.data.items.map((it) => [it.linkedin ? 'linkedin' : it.portal ? `portal:${it.portal}` : it.key, it.name]));
   const by = new Map<string, { key: string; name: string; in: number; pass: number }>();
   rows.forEach((r, i) => {
     const key = r.source_key ?? (r.source === 'linkedin' ? 'linkedin' : r.source);

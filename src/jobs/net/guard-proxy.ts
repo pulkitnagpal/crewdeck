@@ -5,12 +5,16 @@
 import http from 'node:http';
 import net from 'node:net';
 import type { Duplex } from 'node:stream';
-import { type Address, type NetOptions, checkHost } from './netguard.ts';
+import { type Address, type NetOptions, checkHost, hostAllowed } from './netguard.ts';
 import { cleanHost, isLinkedinHost, isXHost } from '../fields.ts';
 
 export type Blocked = { host: string; reason: string };
 export type GuardProxy = { port: number; url: string; blocked: Blocked[]; allowed: number; close(): Promise<void> };
-export type ProxyOptions = { net?: NetOptions; allowLinkedin?: boolean; denyAll?: boolean };
+export type ProxyOptions = {
+  net?: NetOptions; allowLinkedin?: boolean; denyAll?: boolean;
+  /** A signed-in portal's profile (ADR-0008): only these hosts (and their subdomains), each still checked by netguard. */
+  allowHosts?: readonly string[];
+};
 
 const HOP = new Set(['proxy-connection', 'proxy-authorization', 'connection', 'keep-alive', 'te', 'trailer', 'upgrade']);
 
@@ -39,7 +43,9 @@ export async function startGuardProxy(o: ProxyOptions = {}): Promise<GuardProxy>
     try {
       if (o.denyAll) throw new Error('the network is off for this browser');
       if (isXHost(h)) throw new Error('X is never used');
-      if (isLinkedinHost(h) && !o.allowLinkedin) throw new Error('LinkedIn is not opened by headless code');
+      const listed = o.allowHosts ? hostAllowed(h, o.allowHosts) : false;
+      if (o.allowHosts && !listed) throw new Error('not one of this portal\'s hosts');
+      if (isLinkedinHost(h) && !o.allowLinkedin && !listed) throw new Error('LinkedIn is not opened by headless code');
       const addrs = await checkHost(h, o.net);
       allowed++;
       return addrs;

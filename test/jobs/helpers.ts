@@ -54,6 +54,7 @@ import { type Ctx, makeCtx } from '../../src/jobs/ctx.ts';
 
 // No live fetch of the planned sources in tests (src/jobs/sources.ts); spawned CLIs and servers inherit it.
 process.env.CREWDECK_PLANNED ??= 'off';
+process.env.CREWDECK_PORTALS ??= 'off';
 
 export type World = ReturnType<typeof tempSetup> & { ctx: Ctx; at: (iso: string) => void };
 

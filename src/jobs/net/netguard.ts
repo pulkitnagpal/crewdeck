@@ -57,6 +57,15 @@ export function isBlockedAddress(ip: string): boolean {
   return true;
 }
 
+/**
+ * True when `host` is one of `list` or a subdomain of one (a portal's hosts, ADR-0008): the guard proxy admits only these
+ * for a portal's profile, so a portal page can't make the browser fetch anything else.
+ */
+export function hostAllowed(host: string, list: readonly string[]): boolean {
+  const h = String(host ?? '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+  return !!h && list.some((x) => { const a = x.toLowerCase(); return h === a || h.endsWith(`.${a}`); });
+}
+
 const bare = (host: string) => host.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.$/, '');
 
 /** Every address of a host, checked: refuses the host if any one is blocked (or it has none). */

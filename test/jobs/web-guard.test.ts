@@ -25,14 +25,20 @@ test('no web request in src/jobs bypasses netguard', () => {
 
 test('the browser is launched only through launchGuarded, with the guard proxy', () => {
   const launches = SRC.filter(({ src }) => /chromium\.launch|launchPersistentContext|connectOverCDP/.test(src)).map((x) => x.f);
-  assert.deepEqual(launches, ['src/jobs/browser.ts']);
-  const b = SRC.find((x) => x.f === 'src/jobs/browser.ts')!.src;
-  assert.match(b, /args: \[\.\.\.proxyArgs\(proxy\)/);
-  assert.match(b, /serviceWorkers: 'block'/);
+  // ADR-0008: the signed-in portals' profile is the one other launch, with the same proxy and only the portal's hosts.
+  assert.deepEqual(launches, ['src/jobs/browser.ts', 'src/jobs/portals/profile.ts']);
+  for (const f of launches) {
+    const b = SRC.find((x) => x.f === f)!.src;
+    assert.match(b, /args: \[\.\.\.proxyArgs\(proxy\)/, f);
+    assert.match(b, /serviceWorkers: 'block'/, f);
+  }
+  assert.match(SRC.find((x) => x.f === 'src/jobs/portals/profile.ts')!.src, /startGuardProxy\(\{ net: o\.net, allowHosts: allowedHosts\(portal/);
 });
 
 test('web code never clicks, submits, types or fills', () => {
-  for (const f of ['src/jobs/read-form.ts', 'src/jobs/link.ts', 'src/jobs/linkedin.ts', 'src/jobs/resume.ts', 'src/jobs/browser.ts']) {
+  // The portals' sign-in window included: the person types passwords and codes, Crewdeck never fills a field.
+  for (const f of ['src/jobs/read-form.ts', 'src/jobs/link.ts', 'src/jobs/linkedin.ts', 'src/jobs/resume.ts', 'src/jobs/browser.ts',
+    'src/jobs/portals/profile.ts', 'src/jobs/portals/connect.ts', 'src/jobs/portals/scan.ts']) {
     const src = SRC.find((x) => x.f === f)!.src;
     assert.ok(!/\.(click|fill|type|press|check|selectOption|setInputFiles|submit|requestSubmit|dispatchEvent)\(/.test(src), f);
   }

@@ -296,6 +296,8 @@ export type SourcesState = {
   linkedin?: { ran: boolean; stored?: number; partial?: number; cards?: number; stopped?: string; errors?: string[]; why?: string; paused_until?: string };
   /** After a LinkedIn stop: skip it until `until`; `level` counts the stops in a row (carried over from run to run). */
   linkedin_pause?: { until: string; level: number; reason?: string };
+  /** ADR-0008: the signed-in portals scanned this run (or why none was). */
+  portals?: import('./portals/scan.ts').PortalsRun | { ran: false; why: string };
   prefilter?: { kept: number; dropped: number }; details?: Partial<DetailsResult> & { tried: number; found: number; closed: number; errors: number };
   new: number; error?: string;
   /** Per source key: the last fetch, and up to five before it (newest first). Carried over from run to run. */
@@ -318,6 +320,8 @@ export type SourceOptions = SpawnOptions & {
   /** How many roles' descriptions to read this run (default 1000; 0 = none), and the detail step's other options. */ details?: number; detailOptions?: DetailOptions;
   /** setup's first fetch: only sources never fetched before */ onlyNew?: boolean;
   /** Jobs v2: also fetch the person's planned sources (official APIs, company job feeds). The CLI turns it on; tests opt in. */ planned?: boolean;
+  /** ADR-0008: scan the connected, switched-on portals (the CLI's launcher; tests pass a fake one). Off without it. */
+  portals?: import('./portals/scan.ts').ScanOptions;
 };
 
 /** Hours LinkedIn is paused after 1, 2, 3, 4+ stops in a row. */
@@ -429,6 +433,16 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
       state.new += r.stored;
     } catch (e: any) { (state as any).planned = { error: String(e?.message ?? e).slice(0, 300) }; }
   }
+  // ADR-0008: the connected, switched-on signed-in portals, one at a time, in Crewdeck's own browser profile.
+  // CREWDECK_PORTALS=off keeps a run away from them (the test suite sets it: no browser).
+  if (o.portals && process.env.CREWDECK_PORTALS !== 'off') {
+    try {
+      const { scanPortals } = await import('./portals/scan.ts');
+      const r = await scanPortals(ctx, o.portals);
+      state.portals = r;
+      state.new += r.new;
+    } catch (e: any) { state.portals = { ran: false, why: String(e?.message ?? e).slice(0, 300) }; }
+  }
   const p1 = runPrefilter(ctx);
   // Every rule-passing role without a full description, not only the best-ranked (P1b).
   const { fetchDetails } = await import('./pipeline/details.ts');
@@ -454,10 +468,10 @@ function keyStates(ctx: Ctx, state: SourcesState, plan: Plan, prev: SourcesState
   const kept = (ids: string[]) => (ids.length ? Number((q.get(JSON.stringify(ids)) as any).n) : 0);
   const cov = ctx.db.prepare(`select count(*) total, coalesce(sum(case when length(description) >= 200 and length(description) != 4000 then 1 else 0 end), 0) n_full from roles
       where source_key=? and status not in ('prefiltered_out','expired')`);
-  const put = (key: string, s: KeyState) => {
+  const put = (key: string, s: KeyState, sourceKey?: string) => {
     const old = out[key];
     const history = old ? [{ ...old, history: undefined }, ...(old.history ?? [])].map(({ history: _, ...h }) => h).slice(0, 5) : [];
-    const c = cov.get(key === liKey ? 'linkedin' : key) as any;
+    const c = cov.get(sourceKey ?? (key === liKey ? 'linkedin' : key)) as any;
     out[key] = { ...s, descriptions: { full: Number(c?.n_full ?? 0), total: Number(c?.total ?? 0) }, history };
   };
   const ran = state.providers && 'entries' in state.providers ? state.providers.entries : [];
@@ -465,6 +479,19 @@ function keyStates(ctx: Ctx, state: SourcesState, plan: Plan, prev: SourcesState
   const why = !state.providers || !('entries' in state.providers) ? (state.providers as any)?.why : undefined;
   if (why) for (const e of plan.entries) put(e.key, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why });
   for (const s of plan.skipped) if (s.key) put(s.key, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why: s.why });
+  // Each portal's line goes under its jobs/sources.md row's key; its roles carry source_key portal:<id>.
+  if (state.portals && 'portals' in state.portals) {
+    const rowKey = new Map(notesOf(ctx).sources.data.items.filter((it) => it.portal).map((it) => [it.portal!, it.key]));
+    const roleIds = ctx.db.prepare(`select id from roles where source_key=? and updated_at >= ?`);
+    for (const r of state.portals.portals) {
+      const key = rowKey.get(r.id);
+      if (!key) continue;
+      const ids = r.ran ? (roleIds.all(`portal:${r.id}`, state.started) as any[]).map((x) => String(x.id)) : [];
+      const s: KeyState = r.ran ? { at, ok: !r.stopped, jobs: r.found, new: r.new, kept: kept(ids), refused: r.found - r.stored, ...(r.stopped ? { error: r.stopped } : {}), ...(r.paused_until ? { paused_until: r.paused_until } : {}) }
+        : { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why: r.why ?? 'not run', ...(r.paused_until ? { paused_until: r.paused_until } : {}) };
+      put(key, s, `portal:${r.id}`);
+    }
+  }
   const paused = state.linkedin?.paused_until ? { paused_until: state.linkedin.paused_until } : {};
   if (state.linkedin?.ran) put(liKey, { at, ok: !state.linkedin.errors?.length && !state.linkedin.paused_until, jobs: state.linkedin.cards ?? 0, new: (state.linkedin.stored ?? 0) + (state.linkedin.partial ?? 0), kept: kept(liRoles), refused: 0, ...(state.linkedin.stopped ? { error: state.linkedin.stopped } : {}), ...paused });
   else if (ctx.features.linkedin_search && state.linkedin?.why && state.linkedin.why !== FETCHED_BEFORE) put(liKey, { at, ok: false, jobs: 0, new: 0, kept: 0, refused: 0, why: state.linkedin.why, ...paused });

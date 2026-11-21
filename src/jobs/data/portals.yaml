@@ -1,0 +1,244 @@
+# Signed-in job portals (ADR-0008 §6): what Crewdeck needs to scan each one in its own browser profile. Data only; code
+# adapters live in src/jobs/portals/adapters/<id>.ts when data isn't enough (none yet). src/jobs/portals/catalog.ts
+# validates this file on load.
+#
+# Fields:
+#   id, name, countries (ISO alpha-2, or world), fields (job families from sources-catalog.yaml, or any)
+#   hosts: the portal's own hosts (the guard proxy lets the profile reach these, their subdomains included)
+#   cdn_hosts: other hosts its pages need (scripts, images, APIs); auth_hosts: extra hosts only the sign-in window needs
+#   signup_url, login_url: where `crewdeck jobs portals connect <id> [--signup]` opens the window
+#   signed_in: any one passing = signed in. cookie (a cookie name on the portal's hosts), url_pattern (an open page's
+#     path matches), selector (present on an open page of the portal)
+#   sign_in_wall: path patterns that mean "sign in first" (a scan stops there and marks the portal needs_sign_in)
+#   search: url (template), url_place / url_remote (used instead when the query has a place / is remote), with
+#     {q} {q_slug} {place} {place_slug} {remote} {recency} {page} {host}; empty query parameters are dropped.
+#     remote / hybrid: the {remote} value for those queries; recency: { days: value } (the smallest ≥ 7 days is used);
+#     page: { start, step, omit_first }; place_aliases: { slug: portal's slug }; country_hosts: { iso2: host }
+#   job_url: pattern (a regex on the path), keep_params (query parameters that identify the posting), canonical
+#     (optional template: {host}, {path}, {id} = the pattern's first group, and kept parameter names)
+#   json: responses the page itself loads: url (regex), list (path to the items), where (path: regex), fields (paths)
+#   limits: searches_per_run, pages_per_search, delay_ms (number, jittered ±40%, or [min, max]), min_hours, pages_per_day
+#   headful: true when the portal refuses a headless browser
+#   risk: said once at connect, in plain words; verified: whether the search and job URLs were checked against the
+#     portal's public pages (never signed in); notes: what was and wasn't checked
+defaults:
+  limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: 10000, min_hours: 6, pages_per_day: 30 }
+  auth_hosts: [accounts.google.com, www.google.com, www.gstatic.com, ssl.gstatic.com, apis.google.com, www.recaptcha.net, challenges.cloudflare.com, hcaptcha.com, js.hcaptcha.com, appleid.apple.com]
+  sign_in_wall: ['^/(login|signin|sign-in|signup|register)\b', '/authwall', '/checkpoint/', '/uas/login']
+
+portals:
+  - id: linkedin
+    name: LinkedIn
+    countries: [world]
+    fields: [any]
+    hosts: [www.linkedin.com, linkedin.com]
+    cdn_hosts: [static.licdn.com, media.licdn.com, static-exp1.licdn.com, platform.linkedin.com]
+    signup_url: https://www.linkedin.com/signup
+    login_url: https://www.linkedin.com/login
+    signed_in: { cookie: li_at, url_pattern: '^/feed/' }
+    sign_in_wall: ['^/(login|signup)\b', '/authwall', '/checkpoint/', '/uas/login']
+    search:
+      url: https://www.linkedin.com/jobs/search/?keywords={q}&location={place}&f_TPR={recency}&f_WT={remote}&start={page}
+      remote: '2'
+      hybrid: '3'
+      recency: { 1: r86400, 7: r604800, 30: r2592000 }
+      page: { start: 0, step: 25, omit_first: true }
+    job_url: { pattern: '^/jobs/view/(?:[^/]*-)?(\d{6,})/?$', canonical: 'https://www.linkedin.com/jobs/view/{id}' }
+    json:
+      - url: '/voyager/api/voyagerJobsDashJobCards'
+        list: included
+        where: { $type: 'JobPostingCard$' }
+        fields: { id: 'entityUrn ~ \((\d{6,}),', title: jobPostingTitle, company: primaryDescription.text, location: secondaryDescription.text }
+        url_template: https://www.linkedin.com/jobs/view/{id}
+    limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: [12000, 20000], min_hours: 12, pages_per_day: 25 }
+    risk: LinkedIn's terms forbid automated access to signed-in pages and it restricts accounts it suspects. Crewdeck keeps to 3 searches every 12 hours and stops at the first check, but the account is yours and so is the risk.
+    verified: false
+    notes: Search parameters and /jobs/view/<id> are the ones Crewdeck's guest search already uses; the signed-in search page answered 429 to a check on 2026-11-21, so it was not read again. The voyager response shape is unverified.
+
+  - id: naukri
+    name: Naukri
+    countries: [in]
+    fields: [any]
+    hosts: [www.naukri.com, naukri.com, login.naukri.com]
+    cdn_hosts: [static.naukimg.com, img.naukimg.com, static.naukri.com]
+    signup_url: https://www.naukri.com/registration/createAccount
+    login_url: https://www.naukri.com/nlogin/login
+    signed_in: { cookie: nauk_at, url_pattern: '^/mnjuser/' }
+    sign_in_wall: ['^/nlogin/', '^/registration/']
+    search:
+      url: https://www.naukri.com/{q_slug}-jobs?k={q}&jobAge={recency}&wfhType={remote}
+      url_place: https://www.naukri.com/{q_slug}-jobs-in-{place_slug}?k={q}&l={place}&jobAge={recency}&wfhType={remote}
+      remote: '2'
+      hybrid: '3'
+      recency: { 1: '1', 3: '3', 7: '7', 15: '15', 30: '30' }
+      place_aliases: { bengaluru: bangalore }
+    job_url: { pattern: '^/job-listings-[a-z0-9-]+-\d{6,}$' }
+    json:
+      - url: '/jobapi/v3/search'
+        list: jobDetails
+        fields: { url: jdURL, title: title, company: companyName, location: 'placeholders[type=location].label', description: jobDescription, posted_at: createdDate }
+    limits: { searches_per_run: 4, pages_per_search: 1, delay_ms: [8000, 15000], min_hours: 6, pages_per_day: 40 }
+    risk: Naukri's terms don't allow automated use of the site. Crewdeck reads a few search pages, slowly, as you; your account carries the risk.
+    verified: false
+    notes: naukri.com answered 403 to every signed-out check, so the search URL, the job-listings pattern, the jobapi response fields and the nauk_at cookie are from earlier knowledge, not checked.
+
+  - id: instahyre
+    name: Instahyre
+    countries: [in]
+    fields: [engineering-it, data, product-project, design]
+    hosts: [www.instahyre.com, instahyre.com]
+    cdn_hosts: [static.instahyre.com]
+    signup_url: https://www.instahyre.com/candidate/signup/
+    login_url: https://www.instahyre.com/login/
+    signed_in: { cookie: sessionid, url_pattern: '^/candidate/' }
+    sign_in_wall: ['^/login/', '^/candidate/signup/']
+    search:
+      url: https://www.instahyre.com/{q_slug}-jobs/
+      url_place: https://www.instahyre.com/{q_slug}-jobs-in-{place_slug}/
+      place_aliases: { bengaluru: bangalore }
+    job_url: { pattern: '^/job-\d+-[a-z0-9-]+/?$' }
+    limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: 10000, min_hours: 6, pages_per_day: 30 }
+    risk: Instahyre doesn't offer automated access; Crewdeck reads a few pages as you, and your account carries the risk.
+    verified: false
+    notes: instahyre.com answered 403 to a signed-out check; URLs are unverified. Its matches page is behind sign-in, so JSON-LD and job links are the layers that will work.
+
+  - id: wellfound
+    name: Wellfound
+    countries: [world]
+    fields: [engineering-it, data, product-project, design, sales, operations]
+    hosts: [wellfound.com, www.wellfound.com]
+    cdn_hosts: [photos.wellfound.com, assets.wellfound.com, js.datadome.co, api-js.datadome.co]
+    signup_url: https://wellfound.com/join
+    login_url: https://wellfound.com/login
+    signed_in: { url_pattern: '^/(jobs/home|profile|candidate)' }
+    sign_in_wall: ['^/login\b', '^/join\b']
+    search:
+      url: https://wellfound.com/role/{q_slug}?page={page}
+      url_place: https://wellfound.com/role/l/{q_slug}/{place_slug}?page={page}
+      url_remote: https://wellfound.com/role/r/{q_slug}?page={page}
+      page: { start: 1, step: 1, omit_first: true }
+    job_url: { pattern: '^/jobs/\d+-[a-z0-9-]+/?$' }
+    limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: [10000, 16000], min_hours: 8, pages_per_day: 20 }
+    headful: true
+    risk: Wellfound uses a bot shield (DataDome) that challenges automated browsers; the scan runs in a visible window and stops at the first challenge. Your account carries the risk.
+    verified: true
+    notes: Checked on its public pages 2026-11-21 - /role/<role>, /role/l/<role>/<place>, /role/r/<role> (remote), ?page=N, and job links /jobs/<id>-<slug>. Sign-in URLs and the signed-in check are unverified.
+
+  - id: cutshort
+    name: Cutshort
+    countries: [in]
+    fields: [engineering-it, data, product-project, design]
+    hosts: [cutshort.io, www.cutshort.io]
+    cdn_hosts: [cdn.cutshort.io]
+    signup_url: https://cutshort.io/signup
+    login_url: https://cutshort.io/login
+    signed_in: { url_pattern: '^/(profile|dashboard|jobs/recommended)' }
+    sign_in_wall: ['^/(login|signup)\b']
+    search:
+      url: https://cutshort.io/jobs/{q_slug}-jobs
+      url_place: https://cutshort.io/jobs/{q_slug}-jobs-in-{place_slug}
+      url_remote: https://cutshort.io/jobs/remote-{q_slug}-jobs
+      place_aliases: { bengaluru: bangalore-bengaluru, bangalore: bangalore-bengaluru }
+    job_url: { pattern: '^/job/[A-Za-z0-9-]+-[A-Za-z0-9]{6,10}$' }
+    limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: 10000, min_hours: 6, pages_per_day: 30 }
+    risk: Cutshort doesn't offer automated access; Crewdeck reads a few pages as you, and your account carries the risk.
+    verified: true
+    notes: Checked on its public pages 2026-11-21 - /jobs/<role>-jobs, /jobs/<role>-jobs-in-<city>, /jobs/remote-<role>-jobs and job links /job/<slug>-<8-character id>. Sign-in URLs and the signed-in check are unverified.
+
+  - id: weekday
+    name: Weekday
+    countries: [in]
+    fields: [engineering-it, data, product-project, design]
+    hosts: [jobs.weekday.works, www.weekday.works, weekday.works]
+    cdn_hosts: []
+    signup_url: https://jobs.weekday.works/
+    login_url: https://jobs.weekday.works/
+    signed_in: { selector: '[data-testid="user-avatar"]' }
+    search:
+      url: https://jobs.weekday.works/?search={q}&location={place}
+    job_url: { pattern: '^/[a-z0-9-]+-\d{4,}$' }
+    limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: 10000, min_hours: 6, pages_per_day: 30 }
+    risk: Weekday doesn't offer automated access; Crewdeck reads a few pages as you, and your account carries the risk.
+    verified: false
+    notes: jobs.weekday.works serves an app shell with no job links or search parameters signed out (checked 2026-11-21); the search parameters, job-URL pattern and signed-in selector are guesses to confirm with crewdeck jobs portals test weekday.
+
+  - id: foundit
+    name: foundit
+    countries: [in]
+    fields: [any]
+    hosts: [www.foundit.in, foundit.in]
+    cdn_hosts: [media.foundit.in, static.foundit.in]
+    signup_url: https://www.foundit.in/seeker/registration
+    login_url: https://www.foundit.in/rio/login/seeker
+    signed_in: { url_pattern: '^/(seeker/dashboard|rio/dashboard)' }
+    sign_in_wall: ['^/rio/login', '^/seeker/registration']
+    search:
+      url: https://www.foundit.in/srp/results?query={q}&locations={place}&jobFreshness={recency}&start={page}
+      recency: { 1: '1', 3: '3', 7: '7', 15: '15', 30: '30' }
+      page: { start: 0, step: 15, omit_first: true }
+    job_url: { pattern: '^/job/[a-z0-9-]+-\d{5,}$' }
+    limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: 10000, min_hours: 6, pages_per_day: 30 }
+    risk: foundit's terms don't allow automated use; Crewdeck reads a few pages as you, and your account carries the risk.
+    verified: false
+    notes: foundit.in answered 403 to a signed-out check (robots.txt included); every URL here is unverified.
+
+  - id: hirist
+    name: Hirist
+    countries: [in]
+    fields: [engineering-it, data]
+    hosts: [www.hirist.tech, hirist.tech]
+    cdn_hosts: [js-static.hirist.tech, staticlogo.hirist.com, hirist-assets.s3.ap-south-1.amazonaws.com]
+    signup_url: https://www.hirist.tech/registration
+    login_url: https://www.hirist.tech/login
+    signed_in: { url_pattern: '^/(profile|dashboard|my-)' }
+    sign_in_wall: ['^/(login|registration)\b']
+    search:
+      url: https://www.hirist.tech/k/{q_slug}-jobs
+    job_url: { pattern: '^/j/[a-z0-9-]+-\d{5,}(\.html)?$' }
+    limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: 10000, min_hours: 6, pages_per_day: 30 }
+    risk: Hirist doesn't offer automated access; Crewdeck reads a few pages as you, and your account carries the risk.
+    verified: false
+    notes: Checked 2026-11-21 - search pages /k/<skill>-jobs, /c/<category>-jobs and it-jobs-in-<city>, and its asset hosts. Not checked - the job-link pattern (no job links on the home page), the sign-in URLs (shown as buttons without links) and a place filter (so places are not used).
+
+  - id: indeed
+    name: Indeed
+    countries: [in, us, gb]
+    fields: [any]
+    hosts: [in.indeed.com, www.indeed.com, uk.indeed.com, secure.indeed.com, indeed.com]
+    cdn_hosts: [d3fw5vlhllyvee.cloudfront.net, c03.s3.indeed.com, challenges.cloudflare.com]
+    signup_url: https://secure.indeed.com/auth
+    login_url: https://secure.indeed.com/auth
+    signed_in: { cookie: SOCK, url_pattern: '^/(myjobs|account)' }
+    sign_in_wall: ['^/auth\b', '^/account/login']
+    search:
+      url: https://{host}/jobs?q={q}&l={place}&fromage={recency}&sc={remote}&start={page}
+      remote: '0kf:attr(DSQF7);'
+      recency: { 1: '1', 3: '3', 7: '7', 14: '14' }
+      page: { start: 0, step: 10, omit_first: true }
+      country_hosts: { in: in.indeed.com, us: www.indeed.com, gb: uk.indeed.com }
+    job_url: { pattern: '^/(viewjob|rc/clk|pagead/clk)$', keep_params: [jk], canonical: 'https://{host}/viewjob?jk={jk}' }
+    limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: [10000, 16000], min_hours: 8, pages_per_day: 25 }
+    risk: Indeed forbids automated access and shields its pages with Cloudflare; Crewdeck stops at the first challenge. Your account carries the risk.
+    verified: false
+    notes: robots.txt (checked 2026-11-21) confirms /viewjob and /rc/ job links and &start=N paging. The q, l, fromage and remote sc parameters, the country hosts and the SOCK cookie are from earlier knowledge, unchecked.
+
+  - id: glassdoor
+    name: Glassdoor
+    countries: [in, us, gb]
+    fields: [any]
+    hosts: [www.glassdoor.co.in, www.glassdoor.com, www.glassdoor.co.uk, glassdoor.com]
+    cdn_hosts: [media.glassdoor.com]
+    signup_url: https://www.glassdoor.com/profile/joinNow_input.htm
+    login_url: https://www.glassdoor.com/profile/login_input.htm
+    signed_in: { url_pattern: '^/(member|Community)/' }
+    sign_in_wall: ['^/profile/(login|joinNow)', '^/member/profile/(login|joinNow)']
+    search:
+      url: https://{host}/Job/jobs.htm?sc.keyword={q}&locKeyword={place}&fromAge={recency}&remoteWorkType={remote}
+      remote: '1'
+      recency: { 1: '1', 3: '3', 7: '7', 14: '14', 30: '30' }
+      country_hosts: { in: www.glassdoor.co.in, us: www.glassdoor.com, gb: www.glassdoor.co.uk }
+    job_url: { pattern: '^/job-listing/[^/]+\.htm$', keep_params: [jl] }
+    limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: [10000, 16000], min_hours: 8, pages_per_day: 25 }
+    risk: Glassdoor forbids automated access and puts many pages behind its sign-in wall; Crewdeck stops at the first wall or check. Your account carries the risk.
+    verified: false
+    notes: robots.txt (checked 2026-11-21) confirms the sign-in and join pages and the /Job/ and /job-listing/ paths. The search parameters and the signed-in check are from earlier knowledge, unchecked.

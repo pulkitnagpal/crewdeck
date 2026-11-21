@@ -404,8 +404,8 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
     if (v2 && (arr(d.boards).length || arr(d.watchlist).length)) add('warning', 'boards', 'boards: and watchlist: are ignored while sources: is there', 'move their entries into sources: (Crewdeck does this on its next change)');
     const lists = v2 ? [['sources', arr(d.sources)] as const] : (['boards', 'watchlist'] as const).map((k) => [k, arr(d[k])] as const);
     const keys = new Map<string, number>();
-    let mirrors = 0;
     const portals = new Set<string>();
+    let mirrors = 0;
     for (const [k, list] of lists) list.forEach((e, i) => {
       if (!isObj(e)) return;
       const p = `${k}[${i}]`;
@@ -423,6 +423,11 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
       if (e.portal !== undefined) {
         if (typeof e.portal === 'string' && portals.has(e.portal)) add('error', `${p}.portal`, `the portal ${e.portal} is listed twice`, 'keep one row per portal');
         if (typeof e.portal === 'string') portals.add(e.portal);
+        if (typeof e.portal === 'string' && !PORTAL_IDS.has(e.portal)) {
+          const near = didYouMean(e.portal, [...PORTAL_IDS]);
+          // A warning: a portal leaving the catalog must not make the whole note unreadable (the row is just not scanned).
+          add('warning', `${p}.portal`, `"${e.portal}" is not a portal Crewdeck knows: it is not scanned`, near ? `did you mean "${near}"?` : 'pick one from crewdeck jobs portals list');
+        }
         if (e.provider || e.careers_url || e.url) add('error', p, 'a portal row takes no provider, careers_url or url', 'remove them');
         return;
       }
@@ -447,6 +452,8 @@ const CROSS: Record<string, (d: Record<string, any>, add: Add) => void> = {
 const MANIFEST = JSON.parse(readFileSync(pathJoin(import.meta.dirname, 'data', 'providers.manifest.json'), 'utf8')) as { providers: string[]; excluded: Record<string, string> };
 const PROVIDERS = new Set<string>(MANIFEST.providers);
 const CATALOG = new Map((parseYaml(readFileSync(pathJoin(import.meta.dirname, 'data', 'sources-catalog.yaml'), 'utf8')).sources as any[]).map((c) => [c.id as string, c]));
+// Portal ids straight from the catalog file (portals/catalog.ts validates the rest; importing it here would be a cycle).
+const PORTAL_IDS = new Set<string>(((parseYaml(readFileSync(pathJoin(import.meta.dirname, 'data', 'portals.yaml'), 'utf8')).portals ?? []) as any[]).map((p) => String(p.id)));
 const FAMILY_IDS = Object.keys(parseYaml(readFileSync(pathJoin(import.meta.dirname, 'data', 'sources-catalog.yaml'), 'utf8')).families ?? {});
 function familyCheck(v: string) { return FAMILY_IDS.includes(v) ? null : `is not a field Crewdeck knows (${FAMILY_IDS.slice(0, 6).join(', ')}, …)`; }
 const EXCLUDED_PROVIDERS = new Map(Object.entries(MANIFEST.excluded).filter(([p]) => /^providers\/[^_/][^/]*\.mjs$/.test(p)).map(([p, why]) => [p.slice(10, -4), why.replace(/^imports .*\((.*)\)$/, '$1')]));

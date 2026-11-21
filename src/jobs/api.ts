@@ -42,6 +42,8 @@ import { type SourceOp, changeSources, isKey, listSources, refreshSourcesList } 
 import { type SchedulerOptions, createSourceScheduler } from './schedule.ts';
 import { type ResolveState, sourcesScreen } from './sources-view.ts';
 import type { ResolveResult } from './resolve.ts';
+import { loadPortals } from './portals/catalog.ts';
+import { type PortalTestView, portalsNeedingSignIn, portalsView, togglePortal } from './portals/view.ts';
 import { type ApplyEnv, ProposalError, addProposal, applyDue, approve as approveProposal, checkProposal, listProposals, pendingCount, proposalView, reject as rejectProposal, undo as undoProposal } from './proposals.ts';
 
 export type JobsApi = {
@@ -75,6 +77,8 @@ export type JobsGlance = {
   /** P4: today's picks nobody is applying to yet, best first (the panel's "N jobs ready" with Apply on each). */
   picks: { id: string; company: string; title: string; prepared: boolean }[];
   ready_total: number;
+  /** ADR-0008: connected portals whose sign-in ran out; the panel offers Sign in (op connectPortal). */
+  portals_sign_in: { id: string; name: string }[];
 };
 export type JobsApiOptions = {
   configPath?: string; pollMs?: number; platform?: string;
@@ -103,6 +107,15 @@ export type JobsApiOptions = {
    * child process, like the scheduled fetch (the sandbox and netguard stay out of the server). Tests replace it.
    */
   resolve?: (key: string) => Promise<ResolveResult>;
+  /**
+   * ADR-0008: the signed-in portals' browser work, by default `crewdeck jobs portals connect|disconnect|test <id>` in a
+   * child process (a browser never runs inside the server). Tests replace them.
+   */
+  portals?: {
+    connect?: (id: string, signup: boolean) => Promise<unknown>;
+    disconnect?: (id: string) => Promise<unknown>;
+    test?: (id: string) => Promise<PortalTestView>;
+  };
 };
 
 const LANE = 'jobs';
@@ -370,6 +383,30 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     children.add(child);
   });
   const resolver = o.resolve ?? resolveChild;
+
+  // ---- signed-in portals (ADR-0008): the browser runs in `crewdeck jobs portals …` children, one window at a time ----
+  const portalChild = (args: string[], timeoutMs: number): Promise<string> => new Promise((ok, bad) => {
+    const child = execFile(process.execPath, [join(REPO, 'src', 'cli.ts'), 'jobs', 'portals', ...args],
+      { env: { ...process.env, CREWDECK_HOME: HOME }, timeout: timeoutMs, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+        children.delete(child);
+        if (err && !String(stdout).trim().startsWith('{')) return bad(new Error((String(stderr).trim().split('\n').at(-1) || String(stdout).trim().split('\n').at(-1) || err.message).slice(0, 300)));
+        ok(String(stdout));
+      });
+    children.add(child);
+  });
+  const portalOps = {
+    connect: o.portals?.connect ?? ((id: string, signup: boolean) => portalChild(['connect', id, ...(signup ? ['--signup'] : [])], 16 * 60_000)),
+    disconnect: o.portals?.disconnect ?? ((id: string) => portalChild(['disconnect', id], 60_000)),
+    test: o.portals?.test ?? (async (id: string) => JSON.parse(await portalChild(['test', id, '--json'], 3 * 60_000)) as PortalTestView),
+  };
+  /** The portal a sign-in window is open for (one profile: one window at a time). */
+  let connecting: string | null = null;
+  const testing = new Set<string>();
+  const portalArg = (v: unknown) => {
+    const p = typeof v === 'string' ? loadPortals().byId.get(v) : undefined;
+    if (!p) throw new HttpError(400, 'unknown portal');
+    return p;
+  };
   /** Answers younger than an hour, for sources still in the list. */
   const recentResolves = () => new Map([...resolved].filter(([, v]) => Date.now() - Date.parse(v.at ?? '') < 3_600_000));
 
@@ -910,6 +947,45 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       return { ok: true };
     },
   };
+  /** ADR-0008: open the sign-in (or sign-up) window; it closes itself once signed in. State changes emit `portals`. */
+  actions.connectPortal = (b) => {
+    const p = portalArg(b.id);
+    if (connecting) throw new HttpError(409, connecting === p.id ? `The ${p.name} sign-in window is already open` : 'Another portal\'s sign-in window is open: finish or close it first');
+    if (testing.size) throw new HttpError(409, 'A portal test is running: try again when it is done');
+    connecting = p.id;
+    emit('portals');
+    Promise.resolve().then(() => portalOps.connect(p.id, b.signup === true)).catch(() => {}).finally(() => { connecting = null; emit('portals'); });
+    return { ok: true, opened: true };
+  };
+  actions.disconnectPortal = async (b) => {
+    const p = portalArg(b.id);
+    if (connecting === p.id) throw new HttpError(409, `The ${p.name} sign-in window is open: close it first`);
+    try { await portalOps.disconnect(p.id); } finally { emit('portals'); }
+    return { ok: true };
+  };
+  actions.togglePortal = (b) => {
+    const p = portalArg(b.id);
+    if (typeof b.on !== 'boolean') throw new HttpError(400, 'on is true or false');
+    try {
+      const r = togglePortal(ctx, p, b.on);
+      emit('portals');
+      return { ok: true, enabled: b.on, changed: r.changed };
+    } catch (e: any) { throw new HttpError(400, String(e.message).slice(0, 300)); }
+  };
+  actions.testPortal = async (b) => {
+    const p = portalArg(b.id);
+    const v = portalsView(ctx).portals.find((x) => x.id === p.id)!;
+    if (v.state !== 'connected') throw new HttpError(400, `${p.name} is not connected${v.state === 'paused' ? ` (paused until ${v.paused_until})` : v.state === 'needs_sign_in' ? ' (sign in again first)' : ''}`);
+    if (connecting || testing.has(p.id)) throw new HttpError(409, 'Crewdeck\'s portal browser is busy: try again in a minute');
+    testing.add(p.id);
+    try {
+      const r = await portalOps.test(p.id);
+      return { found: Number(r?.found ?? 0), by: { json: Number(r?.by?.json ?? 0), jsonld: Number(r?.by?.jsonld ?? 0), links: Number(r?.by?.links ?? 0) },
+        sample: (Array.isArray(r?.sample) ? r.sample : []).slice(0, 5).map((x: any) => ({ title: String(x?.title ?? ''), company: String(x?.company ?? ''), url: String(x?.url ?? '') })),
+        ...(r?.stopped ? { stopped: String(r.stopped).slice(0, 300) } : {}) };
+    } catch (e: any) { throw new HttpError(400, String(e?.message ?? e).slice(0, 300)); }
+    finally { testing.delete(p.id); emit('portals'); }
+  };
   actions.firstTimeChoice = (b) => actions.answer({ ...b, text: undefined });
   actions.retryApply = actions.approve;
 
@@ -972,6 +1048,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       if (path === '/api/jobs/proposals') return json(res, 200, proposalsView());
       if (path === '/api/jobs/preferences') return json(res, 200, preferences());
       if (path === '/api/jobs/settings') return json(res, 200, settings());
+      if (path === '/api/jobs/portals') return json(res, 200, portalsView(ctx));
       if (path === '/api/jobs/sources') return json(res, 200, sourcesScreen(ctx, { resolving, results: recentResolves(), notesPage: (f) => notesPage(f)! }));
       throw new HttpError(404, 'not found');
     } catch (e: any) {
@@ -1033,6 +1110,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       proposals: pendingCount(db),
       queue: v.queue.filter((q: any) => q.chip?.kind !== 'applied').slice(0, 6).map((q: any) => ({ id: String(q.id), company: String(q.company), title: String(q.title), chip: String(q.chip?.text ?? ''), kind: String(q.chip?.kind ?? '') })),
       ...readyPicks(v.queue),
+      portals_sign_in: (() => { try { return portalsNeedingSignIn(ctx); } catch { return []; } })(),
     };
   }
 
@@ -1054,7 +1132,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
         if (!ROLE_ID.test(role) || !todayView(ctx).queue.some((q) => q.id === role)) throw new HttpError(400, 'not one of today\'s picks');
         return await actions.approve({ role });
       }
-      throw new HttpError(400, 'op is find or apply');
+      throw new HttpError(400, 'op is find, apply or connectPortal');
     } catch (e) {
       if (e instanceof RequestError) throw new HttpError(400, e.message);
       throw e;

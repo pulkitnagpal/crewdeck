@@ -139,7 +139,10 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     const since = intArg(flag(args, 'since'), 'since', 14);
     if (since < 1 || since > 90) throw new Error('--since must be from 1 to 90 days');
     const { runSources } = await import('./sources.ts');
-    const r = await runSources(ctx, { sinceDays: since, trigger: args.includes('--scheduled') ? 'scheduled' : 'command', onlyNew: args.includes('--only-new-sources'), planned: !args.includes('--no-planned') });
+    const { realLaunch } = await import('./portals/profile.ts');
+    const r = await runSources(ctx, { sinceDays: since, trigger: args.includes('--scheduled') ? 'scheduled' : 'command', onlyNew: args.includes('--only-new-sources'), planned: !args.includes('--no-planned'),
+      // ADR-0008: connected, switched-on portals in Crewdeck's own browser profile (--no-portals skips them).
+      ...(args.includes('--no-portals') ? {} : { portals: { launch: realLaunch(ctx.home, loadConfig().jobs.browser) } }) });
     if (args.includes('--json')) return json(r);
     const p = r.providers as any;
     if (p?.ran) {
@@ -148,6 +151,9 @@ const cmds: Record<string, (args: string[]) => unknown> = {
       for (const s of p.skipped) say(`  · ${s.name}: ${s.why}`);
     } else say(`boards: not run (${p?.why})`);
     const l = r.linkedin;
+    const pr = r.portals as any;
+    if (pr?.ran) for (const x of pr.portals) say(`  ${x.ran && !x.stopped ? '✓' : '✗'} ${x.name} (signed-in portal): ${x.ran ? `${x.found} found, ${x.new} new${x.stopped ? ` (${x.stopped})` : ''}` : x.why}`);
+    else if (pr?.why && !/no portals switched on/.test(pr.why)) say(`portals: not run (${pr.why})`);
     say(l?.ran ? `LinkedIn: ${l.stored} new of ${l.cards} found${l.partial ? `, ${l.partial} kept from their cards (details later)` : ''}${l.stopped ? ` (${l.stopped})` : ''}` : `LinkedIn: not run (${l?.why})`);
     const d = r.details;
     if (d?.tried || d?.deferred) say(`descriptions: ${d.found} full descriptions read of ${d.tried} tried, ${d.closed} closed postings set aside${d.errors ? `, ${d.errors} not read` : ''}${d.deferred ? `, ${d.deferred} left for the next run${d.backed_off?.length ? ` (${d.backed_off.join(', ')} asked us to back off)` : ''}` : ''}`);
@@ -156,6 +162,7 @@ const cmds: Record<string, (args: string[]) => unknown> = {
   }),
 
   sources: async (args) => (await import('./sources-cmd.ts')).sourcesCmd(args),
+  portals: async (args) => (await import('./portals/cmd.ts')).portalsCmd(args),
 
   // A dry run of the rules over the postings already fetched (design §24.6): read-only.
   preview: async (args) => {
@@ -450,8 +457,9 @@ export const COMMANDS = cmds;
 export const USAGE = `
 tracker and pipeline (text from postings and the user's words only through files or - for stdin):
   prefilter | refilter --days N           drop roles your notes rule out / bring back ones they now allow
-  source [--since N] [--only-new-sources]  fetch new roles from your sources in priority order (sandboxed), then your rules
+  source [--since N] [--only-new-sources] [--no-portals]  fetch new roles from your sources in priority order (sandboxed), then your rules
   sources list|suggest|add|remove|move|enable|disable   your ordered list of sources (crewdeck jobs sources --help)
+  portals list|connect <id> [--signup]|disconnect <id>|test <id>|on <id>|off <id>   signed-in job portals (you sign in yourself)
   preview [--search-file f] [--days N] [--source key] [--json]   what your rules (or a change to them) catch, read-only
   providers install | status | verify     the pinned job-board providers (download, check, re-hash)
   candidates [--limit N]                  unjudged roles, best first (JSON)

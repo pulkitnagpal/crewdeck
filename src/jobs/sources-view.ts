@@ -16,7 +16,7 @@ import { suggestSources } from './suggest.ts';
 /** What the page shows for a kind (the catalog's words are for developers). */
 export const KIND_LABEL: Record<string, string> = {
   board: 'Job board', aggregator: 'Aggregator', ats: 'Careers system', national: 'Public employment service', field: 'Field board',
-  employer: 'Employer', feed: 'Feed', linkedin: 'LinkedIn', custom: 'Web address', 'careers page': 'Careers page', unknown: 'Source',
+  employer: 'Employer', feed: 'Feed', linkedin: 'LinkedIn', portal: 'Signed-in portal', custom: 'Web address', 'careers page': 'Careers page', unknown: 'Source',
 };
 
 /** A resolve the page started (or its answer), kept in the server's memory for the screen. */
