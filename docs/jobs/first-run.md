@@ -54,7 +54,7 @@ it. The panel shows each step:
 5. Starting Crewdeck.
 
 Then the panel shows **Today**: your to-dos (empty for now), **Jobs** with **Set up my job search**, and buttons to open
-Crewdeck. Crewdeck itself is at **http://crewdeck.localhost:4848** (Claude's browser pane or any browser).
+Crewdeck. Crewdeck itself is at **http://crewdeck.localhost:4848** in your browser.
 
 **If not:**
 - A step says it could not download: check your internet connection and click **Try again**: setup carries on where it
@@ -78,7 +78,7 @@ sandbox), and the Jobs page shows **Claude connected** while it is open.
 
 ## 4. Open Crewdeck
 
-Click **Open Crewdeck** in the panel, or ask Claude to "open Crewdeck" (it opens the page in Claude's browser pane).
+Click **Open Crewdeck** in the panel: the page opens in your default browser at once.
 The rail on the left has **Notes** (your files on the left, **Today** and formatting buttons at the top) and **Jobs**.
 
 On **Jobs → Today** you see the setup card while the interview runs, and your picks once Find has run. The interview
@@ -145,6 +145,13 @@ example "Workday: 20 roles on a one-page test", or offers **Ask Claude** to find
 address**, and the
 **Catalog** (filter by region, field and kind; **Add** puts a source at the end).
 
+**Portals** (below your list): the job sites you sign in to. For each one you want (LinkedIn, Naukri, Instahyre,
+Weekday…): **Connect** → read the one-line risk note → a Jobs chat opens the site's sign-in page in Claude's browser
+pane. Sign in there yourself with the site's own email/phone login ("Sign in with Google" may not work in the pane), or
+import that site's cookies with the pane's ⋮ menu. **You should see** Claude confirm you are signed in and run one test
+search: "29 jobs read". A site without a reader yet takes a minute more: Claude sets one up from that page first. Then
+switch the site on. From now on every Find reads it, slowly, and stops at the first CAPTCHA or security check.
+
 ## 7. Review your preferences
 
 Open **Preferences**: kinds of job (name, titles and variants, skills), title matching, level, where, how you work,
@@ -195,8 +202,10 @@ on the page. "Pasted LinkedIn links are off": see step 13, or paste the company'
 
 Click **Apply**. The apply panel goes through its steps:
 
-1. **Waiting for Claude**, then **Claude is filling the form**: Claude opens the real application in a new tab of the
-   browser pane, next to Crewdeck. **Open the form** brings that tab to the front.
+1. **Waiting for Claude**, then **Claude is filling the form**: a fresh Jobs chat opens the real application in Claude's
+   browser pane and follows the site's playbook (the chip on the pick says which: Easy Apply, Lever, Greenhouse,
+   Workday, Naukri one-click, Company site). Files such as your resume you pick yourself. On **Naukri**, Claude never
+   clicks Apply or Quick apply (they send your profile at once): you click it, then Claude fills any recruiter questions.
 2. **What Claude did** lists each step ("Step 1 of 2: filled 4 fields from your answers").
 3. A question Prepare didn't see comes back as **Claude needs your answer**; answer it and Claude continues.
 4. **Your turn: review the form tab and click Submit.** Claude stops at the review page. It never clicks Submit.
@@ -236,6 +245,9 @@ Find uses it.
 
 LinkedIn's terms forbid automated access; turning these on can get your IP rate-limited or your account restricted.
 Read the README's "Safety and terms of service" first.
+
+The best way is LinkedIn as a **portal** (step 6): signed in, in Claude's browser pane, 3 searches every 12 hours.
+While it is connected and on, the guest search below is skipped. For pasted LinkedIn job links or the guest search:
 
 1. Jobs → **Settings** → the switch for LinkedIn guest search or pasted LinkedIn job links, then **Yes, switch it on**
    (or **Switch on…** on LinkedIn's row in **Sources**).

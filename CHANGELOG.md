@@ -3,7 +3,17 @@
 What changed for people using Crewdeck. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Crewdeck is not released yet: versions below name the `crewdeck` plugin's version and the state of `main`.
 
-## [Unreleased] — Jobs v2 P1a: titles are a score
+## [0.10.0] (plugin 0.10.0) — Jobs v2: every source that fits you, the sites you sign in to, Apply per site
+
+The short version: Crewdeck now plans your sources from your notes (job boards, official job APIs, companies' own job
+feeds, and 52 job sites you sign in to, read in Claude's browser pane), judges only on eligibility, learns from what you
+apply to and skip, takes anything you tell it (a sentence, a LinkedIn post, a tweet) as a proposal you approve, and
+fills applications per site (LinkedIn Easy Apply, Lever, Greenhouse, Ashby, Workday, Naukri) up to the Submit button
+you click. Find and Apply each open their own Jobs chat in front. Details below.
+
+- **Fixes found by testing on a real profile:** a fetch run no longer fails on a posting with no location; roles the old
+  title gate dropped are checked again under the new rules; Today shows how many roles wait to be judged; the panel's
+  buttons open Crewdeck in your browser at once (no chat turn).
 
 - **Apply knows the site** (plugin 0.10.0): each role carries how it is applied to (Easy Apply, a LinkedIn posting
   that leaves LinkedIn, Lever, Greenhouse, Ashby, Workday, Naukri, or a company site), shown as a quiet chip on Today.

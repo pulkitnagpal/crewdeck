@@ -14,11 +14,11 @@ Crewdeck builds as little as it can. It wires together mature open-source tools:
 |---|---|---|
 | Notes · memory · backlinks | [SilverBullet](https://silverbullet.md) (MIT) | Markdown notes in the browser; plain files on disk (they open in Obsidian too) |
 | Tickets · kanban | [Backlog.md](https://github.com/MrLesk/Backlog.md) (MIT) | Tickets are Markdown files in each project's repo; agents use its CLI |
-| Agents | [Claude Code](https://claude.com/claude-code) in the Claude desktop app | Sessions do the work; Crewdeck shows in Claude's browser pane |
+| Agents | [Claude Code](https://claude.com/claude-code) in the Claude desktop app | Sessions do the work; Claude's browser pane reads your job sites and fills forms |
 
 Everything runs on your machine, bound to `127.0.0.1`. No accounts, no cloud, no telemetry.
 
-**Where it lives:** **http://crewdeck.localhost:4848** in any browser or in Claude desktop's browser pane, and
+**Where it lives:** **http://crewdeck.localhost:4848** in your browser (the panel's buttons open it there at once), and
 **`/crewdeck`** in any Claude session, which opens today's to-dos, jobs and tickets beside the chat. With the background
 service it is always running ([Always on](#always-on-and-from-anywhere)).
 
@@ -29,8 +29,8 @@ in Pune, a new graduate, a warehouse worker without a resume, a freelance transl
 Claude talks with you in your own language; the page itself is in English for now.
 
 What you need: a Mac or Linux computer with the [Claude desktop app](https://claude.ai/download) on a plan that
-includes its **Code** tab, and Chrome, Brave or Edge (Claude fills job forms in it). Nothing to install by hand and no
-programming. Windows: not yet.
+includes its **Code** tab, and Chrome, Brave or Edge (Crewdeck prints tailored resumes with it). Claude fills job forms
+in the Claude app's own browser pane. Nothing to install by hand and no programming. Windows: not yet.
 
 ## Get started: two steps
 
@@ -56,9 +56,12 @@ back in any Claude session. The full walk-through is [docs/jobs/first-run.md](do
   to another page. Type `/` in a page for more. They are SilverBullet's own features, switched on by Crewdeck.
 - **Boards.** One kanban per project (To Do · In Progress · Needs you · Done). Tickets live in the project's repo. To add
   one, open a Claude Code session in the project's folder, type `/crewdeck` and click **Add this folder as a board**.
-- **Jobs.** A job search for any role in any country. Claude interviews you once and writes your notes; it finds roles
-  within a token budget, reads a posting you paste, prepares every answer from your own words, and fills the form in a
-  tab next to Crewdeck. **You click Submit. Crewdeck never submits.**
+- **Jobs.** A job search for any role in any country. Claude interviews you once and writes your notes. Crewdeck picks
+  your sources from them: job boards, official job APIs, hundreds of companies' own job feeds, and the job sites you sign
+  in to (LinkedIn, Naukri, Instahyre, Weekday… 52 in the catalog), read in Claude's browser pane. Tell it anything ("now
+  PM roles too", a LinkedIn post or a tweet with jobs): it proposes the changes and you approve them. Find judges the
+  best candidates within a token budget, prepares the top few, and Apply fills the real form (LinkedIn Easy Apply,
+  Lever, Greenhouse, Ashby, Workday, Naukri, any company site). **You click Submit. Crewdeck never submits.**
 - **The `crewdeck` plugin** for Claude Code. Its bridge brings your clicks on the page into the Claude session that owns
   that work, and its skills carry the Jobs playbooks and "remember this" for every session.
 
@@ -230,6 +233,32 @@ one-click changes to try, each previewed first.
 
 ![Sources: the coverage line and your list in order](docs/img/jobs-sources-light.png)
 
+## Job sites you sign in to
+
+Most job sites (LinkedIn, Naukri, Instahyre, Weekday, Wellfound, Cutshort, foundit, iimjobs, Indeed, Glassdoor, apna,
+Internshala…) show their listings only to signed-in people and have no public feed. Crewdeck reads them **as you, in
+Claude's browser pane**, during a Find:
+
+- **Connect** (Jobs → Sources → Portals, or `/crewdeck` → Sign in): a Jobs chat opens the site's sign-in page in the
+  pane. You sign in there yourself (or import that one site's cookies from your browser with the pane's ⋮ menu); Claude
+  never types a password, a code or a CAPTCHA. "Sign in with Google" may not work inside the pane: use the site's own
+  email or phone login.
+- **A site with no reader yet:** the first time you connect it, Claude looks at one search page, works out its job cards,
+  tests the reader on that page (at least 5 jobs read correctly) and saves it for you (`crewdeck jobs portals teach`).
+- **Find** opens the planned searches (your titles × places × remote, last 7 days) and reads each page's job cards with a
+  small script: no extra requests to the site, a few thousand tokens a page. Slow by design: per site a few searches,
+  seconds apart, at most every 6 h (LinkedIn: 3 searches, 12–20 s apart, every 12 h, 25 pages a day).
+- **It stops at the first sign of trouble** (a CAPTCHA, a security check, a sign-in wall, "slow down"): the site pauses
+  for 6, then 24, then 72 hours and the panel asks you to sign in again. Crewdeck never tries to get past a check.
+- **The risk is yours to take, per site:** most sites' terms don't allow automated use of a signed-in account, and
+  LinkedIn restricts accounts it suspects. Connect says so once, plainly.
+
+```bash
+crewdeck jobs portals list            # the catalog, with each site's state for you
+crewdeck jobs portals on naukri       # scan it in every Find (after connecting)
+crewdeck jobs portals off naukri
+```
+
 ## Presets (deprecated)
 
 Setup with Claude proposes sources from your own profile (`crewdeck jobs sources suggest`), so presets are going away.
@@ -246,8 +275,9 @@ and isn't covered. Who you are and your career always come from you.
 
 ## Daily use
 
-- **Find jobs.** Job boards are fetched on a timer (`jobs.fetch_every`, default 12 h; **Refresh sources** on the page
-  fetches now). That is plain code and costs no tokens. Your rules drop what clearly doesn't fit, and the rest is ranked.
+- **Find jobs.** Job boards, job APIs and company feeds are fetched on a timer (`jobs.fetch_every`, default 12 h;
+  **Refresh sources** on the page fetches now). That is plain code and costs no tokens. The sites you sign in to are read
+  in Claude's browser pane when you click **Find now**. Your rules drop what clearly doesn't fit, and the rest is ranked.
   **Find N jobs** (N is your daily picks) asks Claude to judge candidates best first, in batches of 10, and stop once N
   pass: at most 40 postings judged per Find. The first pass uses a small, fast model.
 - **Paste a link.** Paste any posting into **Paste a job link**. Claude reads it (through Crewdeck's guard), adds it and
@@ -256,13 +286,23 @@ and isn't covered. Who you are and your career always come from you.
 - **Prepare.** Claude reads the application form, fills what your profile and memory already answer, drafts the rest
   from your facts only (each answer shows its sources), and lists **first-time questions** for you. Answer one once, on
   the page or in the chat, and it is remembered for every later form. Edit any answer, or **Ask Claude** to improve it.
-- **Apply.** Click **Apply**. Claude opens the real form in a new tab of the browser pane, fills each page from your
-  answers and shows its progress in the apply panel. **Open the form** brings that tab to the front. A question it
-  hadn't seen comes back to the panel for you to answer, then Claude continues.
+- **Apply.** Click **Apply** (on Today or in the `/crewdeck` panel). A fresh Jobs chat opens the real form in the
+  browser pane and follows that site's playbook: LinkedIn Easy Apply step by step; a LinkedIn posting that leaves
+  LinkedIn to the company's site (Lever, Greenhouse, Ashby, Workday or any form; an account to create stops for you);
+  Naukri, whose own Apply sends your profile in one click, so **you** click it and Claude fills any recruiter questions
+  after. A question it hadn't seen comes back to you, then Claude continues. Files (your resume) you pick yourself.
+- **Quick apply (N)** walks your prepared Easy Apply picks one by one in one chat, stopping at each Submit for your
+  click, within `daily_quick_apply` a day.
 - **You click Submit.** Claude stops at the review page and never clicks Submit. Review the form tab, submit it
   yourself, then click **I submitted it** (or **Mark applied** when Claude sees the confirmation page). That starts the
   company's cooldown and adds a journal line.
 - **Not interested** asks why, remembers your words, and can drop titles with a word outright.
+- **Tell Crewdeck** anything in the panel's Tell box: "now PM roles too", "only companies outside India from tomorrow",
+  or a LinkedIn post or tweet link. Claude reads it (a post once, with the links in it) and proposes changes: targets,
+  places, jobs to consider, companies to watch, job sites to add. Your own words apply at once and can be undone;
+  anything read from a page waits for **Approve** in Review.
+- **It learns from what you do:** companies, title words and sources you apply to rank higher; what you skip ranks
+  lower (`crewdeck jobs learn` shows it). Never from Claude's own verdicts, and never past your rules.
 
 ![The browser pane beside the chat: your turn](docs/img/jobs-narrow-light.png)
 
@@ -318,7 +358,7 @@ These are **off** until you switch them on, and only you can:
 
 | Switch | What it allows | Limits in code |
 |---|---|---|
-| `linkedin_search` | LinkedIn's public job search, as a guest | 2.5 s between requests, a request cap, stops at the first refusal (429, 999 or a redirect) |
+| `linkedin_search` | LinkedIn's public job search, as a guest (skipped while signed-in LinkedIn is connected and on) | 2.5 s between requests, a request cap, stops at the first refusal (429, 999 or a redirect) |
 | `linkedin_links` | Pasting LinkedIn job links | Only `/jobs/view/<id>` and `currentJobId` links, one page per link |
 | `easy_apply` + `daily_quick_apply` | Claude fills LinkedIn Easy Apply in your signed-in browser | At most `daily_quick_apply` forms a day (25 at most); you click Submit |
 | `email_drafts` + `max_emails_per_day` | Gmail drafts to recruiters | Drafts only, never sent; 20 a day at most |

@@ -9,7 +9,7 @@
 // Test hooks (the person's own environment only): CREWDECK_HOME, CREWDECK_VAULT, CREWDECK_PORT, CREWDECK_NO_SERVICE=1, and
 // CREWDECK_NODE_URL / CREWDECK_NODE_SHA256 / CREWDECK_APP_URL / CREWDECK_APP_SHA256 to install from local copies.
 
-export const CREWDECK_VERSION = '0.7.2'
+export const CREWDECK_VERSION = '0.10.0'
 export const NODE_VERSION = '25.9.0'
 
 /** nodejs.org/dist/v25.9.0/SHASUMS256.txt */
