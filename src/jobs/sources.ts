@@ -322,6 +322,8 @@ export type SourceOptions = SpawnOptions & {
   /** Jobs v2: also fetch the person's planned sources (official APIs, company job feeds). The CLI turns it on; tests opt in. */ planned?: boolean;
   /** ADR-0008: scan the connected, switched-on portals (the CLI's launcher; tests pass a fake one). Off without it. */
   portals?: import('./portals/scan.ts').ScanOptions;
+  /** ADR-0008: `jobs.portals_mode`. Only `profile` scans here; in `pane` mode Claude scans during Find (default: profile when `portals` is given). */
+  portalsMode?: 'pane' | 'profile';
 };
 
 /** Hours LinkedIn is paused after 1, 2, 3, 4+ stops in a row. */
@@ -433,9 +435,11 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
       state.new += r.stored;
     } catch (e: any) { (state as any).planned = { error: String(e?.message ?? e).slice(0, 300) }; }
   }
-  // ADR-0008: the connected, switched-on signed-in portals, one at a time, in Crewdeck's own browser profile.
+  // ADR-0008: the connected, switched-on signed-in portals, one at a time, in Crewdeck's own browser profile (profile
+  // mode only: in pane mode Claude scans them in the Jobs chat during Find).
   // CREWDECK_PORTALS=off keeps a run away from them (the test suite sets it: no browser).
-  if (o.portals && process.env.CREWDECK_PORTALS !== 'off') {
+  if (o.portalsMode === 'pane') state.portals = { ran: false, why: 'pane mode: Claude scans portals in its browser pane during Find (crewdeck jobs portals plan)' };
+  else if (o.portals && process.env.CREWDECK_PORTALS !== 'off') {
     try {
       const { scanPortals } = await import('./portals/scan.ts');
       const r = await scanPortals(ctx, o.portals);

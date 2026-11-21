@@ -5,7 +5,9 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import type net from 'node:net';
 import { statSync } from 'node:fs';
-import { findBrowser } from '../../src/jobs/browser.ts';
+import { QUIET, findBrowser } from '../../src/jobs/browser.ts';
+import { pageScript } from '../../src/jobs/portals/page-script.ts';
+import { ingestPage } from '../../src/jobs/portals/pane.ts';
 import { launchPortal, profileDir } from '../../src/jobs/portals/profile.ts';
 import { scanPortal } from '../../src/jobs/portals/scan.ts';
 import { updatePortal } from '../../src/jobs/portals/state.ts';
@@ -53,4 +55,56 @@ test('a real headless scan of a local fixture portal: json, jsonld and links, ot
     assert.ok(blocked.includes('tracker.elsewhere.test'), `refused: ${blocked.join(', ')}`);
     assert.equal(statSync(profileDir(w.jobsHome)).mode & 0o777, 0o700);
   } finally { site.close(); }
+});
+
+// ADR-0008 pane mode: the exact `crewdeck jobs portals script` text, evaluated in a real page as javascript_tool does
+// (an expression whose Promise is awaited), over a local fixture site named www.portal.test; then its answer through
+// ingest. Every layer: the JSON the page loaded (fetched again), JSON-LD, job links with their card text; and signals.
+test('pane mode: the page script in a real browser reads JSON, JSON-LD and cards; its answer is what ingest stores', { skip: found ? false : 'no Chromium-based browser on this machine', timeout: 90_000 }, async () => {
+  const site = http.createServer((req, res) => {
+    const url = req.url ?? '';
+    const send = (type: string, body: string) => { res.writeHead(200, { 'content-type': type }); res.end(body); };
+    if (url.startsWith('/api/search')) return send('application/json', JSON.stringify({ results: [{ link: '/job/Product-Analyst-Opal-Mobility-Zz123456', name: 'Product Analyst', org: { name: 'Opal Mobility' }, where: 'Bengaluru' }] }));
+    if (url.startsWith('/jobs/data')) return send('text/html; charset=utf-8', fixture('jsonld-search.html').replaceAll('https://www.portal.test/', `http://www.portal.test:${port}/`).replace('</body>', `<script>fetch('/api/search?q=data').catch(()=>{});</script></body>`));
+    if (url.startsWith('/jobs/remote')) return send('text/html; charset=utf-8', fixture('cards-search.html'));
+    if (url.startsWith('/challenge')) return send('text/html; charset=utf-8', fixture('challenge.html'));
+    if (url.startsWith('/login')) return send('text/html; charset=utf-8', '<html><body><form><input name="u"><input type="password" name="p"></form></body></html>');
+    res.writeHead(404).end('no');
+  });
+  await new Promise<void>((r) => site.listen(0, '127.0.0.1', r));
+  const port = (site.address() as net.AddressInfo).port;
+  const { chromium } = await import('playwright-core');
+  // www.portal.test resolves to the local site; nothing else is reachable.
+  const browser = await chromium.launch({ executablePath: found!.path, headless: true, args: ['--host-resolver-rules=MAP www.portal.test 127.0.0.1, MAP * ~NOTFOUND', ...QUIET] });
+  const w = world('berlin-analyst', { now: new Date().toISOString() });
+  try {
+    const p = fixturePortal();
+    const script = pageScript(p, { settleMs: 300 });
+    const page = await browser.newPage();
+    const at = (path: string) => `http://www.portal.test:${port}${path}`;
+    const run = async (path: string): Promise<any> => { await page.goto(at(path), { waitUntil: 'load' }); return page.evaluate(script); };
+
+    const a = await run('/jobs/data-analyst-jobs-in-bangalore?days=7');
+    assert.deepEqual(a.signals, { sign_in_wall: false, challenge: false, empty: false });
+    // The page's own API answer (fetched again), then the JSON-LD's two (their links repeat them: counted once).
+    assert.deepEqual(a.jobs.map((j: any) => [j.title, j.company]), [['Product Analyst', 'Opal Mobility'], ['Data Analyst', 'Ember Logistics'], ['BI Analyst', 'Saffron Retail']]);
+    assert.equal(a.jobs[0].url, `http://www.portal.test:${port}/job/Product-Analyst-Opal-Mobility-Zz123456`);
+    assert.equal(a.jobs[2].workplace, 'remote');
+
+    const b = await run('/jobs/remote-analytics-jobs');
+    assert.deepEqual(b.jobs.map((j: any) => ({ title: j.title, company: j.company, location: j.location, posted_at: j.posted_at })), [
+      { title: 'Analytics Engineer', company: 'Juniper Data', location: 'Remote', posted_at: '2 days ago' },
+      { title: 'Senior & Lead Data Analyst', company: 'Cobalt Freight', location: 'Pune, India', posted_at: 'today' },
+    ]);
+    assert.ok(JSON.stringify(b).length < 8000);
+
+    assert.deepEqual((await run('/challenge')).signals, { sign_in_wall: false, challenge: true, empty: true });
+    assert.deepEqual((await run('/login?next=jobs')).signals, { sign_in_wall: true, challenge: false, empty: true });
+
+    // The answer, as Claude writes it to a file, through ingest: stored as portal:fixture.
+    updatePortal(w.jobsHome, p.id, () => ({ connected: true }));
+    const r = ingestPage(w.ctx, p, JSON.parse(JSON.stringify(b)), { pageUrl: at('/jobs/remote-analytics-jobs') });
+    assert.equal(r.stopped, undefined);
+    assert.equal(r.stored, 2);
+  } finally { await browser.close(); site.close(); }
 });

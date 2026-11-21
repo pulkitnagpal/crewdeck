@@ -9,7 +9,7 @@ import { addEvent, upsertRole } from '../db.ts';
 import { cleanJob } from '../sources.ts';
 import { portalVerdict } from './allow.ts';
 import { type Portal, delayMs, hostIn, loadPortals } from './catalog.ts';
-import { type Extracted, type Found, type Layer, extractPostings } from './extract.ts';
+import { type Extracted, type Found, type Layer, type Posting, extractPostings } from './extract.ts';
 import type { Launch, Loaded } from './profile.ts';
 import { type PortalQuery, type PortalProfile, portalProfile, portalQueries, searchUrl } from './queries.ts';
 import { type PortalState, nextPause, readPortalsState, updatePortal } from './state.ts';
@@ -52,6 +52,23 @@ export function classifyPage(p: Loaded & { html: string }, portal: Portal): Stop
   if (p.status === 403) return { kind: 'challenge', reason: `${portal.name} refused the page (HTTP 403)` };
   if (p.status >= 500 || p.status === 0) return { kind: 'error', reason: `${portal.name} answered HTTP ${p.status || 'nothing'}` };
   return null;
+}
+
+/**
+ * Postings into the tracker, the one path for both engines (profile scan, pane ingest): the same checks as every
+ * source (cleanJob), then upsertRole with source_key portal:<id> and the company's country when the portal showed it.
+ */
+export function storePostings(ctx: Ctx, portal: Portal, postings: Posting[], at: Date): { stored: number; new: number } {
+  const t = nowIso(ctx);
+  let stored = 0, added = 0;
+  for (const p of postings) {
+    const c = cleanJob({ ...p, description: p.description ?? '', location: p.location || (p.workplace === 'remote' ? 'Remote' : '') }, { features: { linkedin_links: true }, at });
+    if (!c.ok) continue;
+    const { id, isNew } = upsertRole(ctx.db, { ...c.role, source: 'portal', source_key: `portal:${portal.id}`, company_country: p.company_country ?? null });
+    stored++;
+    if (isNew) { added++; addEvent(ctx.db, id, 'added', `from ${portal.name} (signed-in portal)`, t); }
+  }
+  return { stored, new: added };
 }
 
 /** The person's portals in their order: `portal: <id>` items in jobs/sources.md, with the on/off switch. */
@@ -123,14 +140,8 @@ export async function scanPortal(ctx: Ctx, portal: Portal, o: ScanOptions & { te
   run.sample = found.slice(0, 5).map((p) => ({ title: p.title, company: p.company, url: p.url, by: p.by }));
 
   if (!o.test) {
-    const t = nowIso(ctx);
-    for (const p of found) {
-      const c = cleanJob({ ...p, description: p.description ?? '', location: p.location || (p.workplace === 'remote' ? 'Remote' : '') }, { features: { linkedin_links: true }, at: now() });
-      if (!c.ok) continue;
-      const { id, isNew } = upsertRole(ctx.db, { ...c.role, source: 'portal', source_key: `portal:${portal.id}`, company_country: p.company_country ?? null });
-      run.stored++;
-      if (isNew) { run.new++; addEvent(ctx.db, id, 'added', `from ${portal.name} (signed-in portal)`, t); }
-    }
+    const r = storePostings(ctx, portal, found, now());
+    run.stored = r.stored; run.new = r.new;
   }
 
   // A real stop pauses the portal; an error (5xx, a page that didn't load) only ends this run.

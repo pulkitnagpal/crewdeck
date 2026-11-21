@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { render } from 'preact-render-to-string';
 import type { Browser, Page } from 'playwright-core';
 import { html } from '../../web/jobs/lib.js';
-import { PORTAL_RISK, Portals, effectiveState, fits, portalLine, splitPortals, testLine } from '../../web/jobs/screens/portals.js';
+import { PORTAL_RISK, Portals, effectiveState, fits, paneLine, portalLine, splitPortals, testLine } from '../../web/jobs/screens/portals.js';
 import { STUB_RISK, createPortalsStub, stubPortal, type PortalView } from '../../src/jobs/portals/api-stub.ts';
 import { findBrowser } from '../../src/jobs/browser.ts';
 import { jobsServer } from './api-helpers.ts';
@@ -105,6 +105,22 @@ test('the section rendered: one row per portal with a switch and one button; the
   assert.equal(render(html`<${Portals} portals=${[]} mine=${MINE} />`), '');
 });
 
+test('pane mode: the section says Claude scans during Find in its browser pane; the stub answers Connect and Test with a queued Jobs chat', () => {
+  const t = text(render(html`<${Portals} portals=${fixture()} mode="pane" mine=${MINE} />`));
+  assert.match(t, /Job sites you sign in to once, in Claude's browser pane\. Claude scans them slowly during Find/);
+  assert.match(t, /import that site's cookies from your own browser with the pane's ⋮ menu/);
+  assert.match(t, /Sign in with Google may not work inside the pane/);
+  assert.doesNotMatch(t, /Crewdeck's own browser/);
+  assert.equal(paneLine({ ok: true, request: 3, opened: true, mode: 'pane' }), 'A Jobs chat opened: sign in there');
+  assert.equal(paneLine({ ok: true, request: 3, mode: 'pane' }), 'Sent to your Jobs chat: sign in there');
+  assert.equal(paneLine({ ok: true, request: 3, opened: true, mode: 'pane' }, 'test'), 'A Jobs chat opened: Claude tests it there');
+  assert.equal(paneLine({ ok: true, opened: true }), '', 'profile mode has its own words');
+  const stub = createPortalsStub(fixture(), { mode: 'pane' });
+  assert.equal((stub.answer('GET', '/api/jobs/portals', null)!.json as any).mode, 'pane');
+  assert.deepEqual(stub.answer('POST', '/api/jobs/action/connectPortal', { id: 'naukri' })!.json, { ok: true, request: 1, status: 'new', opened: true, mode: 'pane' });
+  assert.deepEqual(stub.answer('POST', '/api/jobs/action/testPortal', { id: 'stepstone' })!.json, { ok: true, request: 2, status: 'new', opened: true, mode: 'pane' });
+});
+
 // ---- in a real browser ----
 const found = findBrowser();
 const noBrowser = found ? false : 'no Chromium-based browser on this machine';
@@ -162,6 +178,21 @@ test('first Connect: the risk once, quietly, with a confirm; Sign in or Sign up 
   await page.close();
 });
 
+test('pane mode in the page: Connect (after the risk) and Test say a Jobs chat opened; the confirm says where to sign in', { skip: noBrowser, timeout: 90_000 }, async () => {
+  const stub = createPortalsStub(fixture(), { mode: 'pane' });
+  const page = await open(stub);
+  await page.getByRole('button', { name: 'Connect Demo Careers' }).click();
+  const dialog = page.getByRole('alertdialog');
+  assert.match(await dialog.textContent() ?? '', /could limit your account.*A Jobs chat opens with the site in Claude's browser pane.*Claude never does/);
+  await dialog.getByRole('button', { name: 'Sign in' }).click();
+  await page.locator('.prow[data-portal="demo-careers"]').getByText('A Jobs chat opened: sign in there').waitFor();
+  assert.deepEqual(stub.calls.at(-1), { name: 'connectPortal', body: { id: 'demo-careers' } });
+  await page.getByRole('button', { name: 'Test StepStone' }).click();
+  await page.locator('.prow[data-portal="stepstone"]').getByText('A Jobs chat opened: Claude tests it there').waitFor();
+  assert.equal(await page.locator('.psample').count(), 0, 'no result in the row: Claude reports in the chat');
+  await page.close();
+});
+
 test('Test shows what it found and how; the switch turns scanning on and off', { skip: noBrowser, timeout: 60_000 }, async () => {
   const stub = createPortalsStub(fixture());
   const page = await open(stub);
@@ -188,7 +219,9 @@ const problems = (page: Page) => page.evaluate(() => {
   const out: string[] = [];
   const vw = document.documentElement.clientWidth;
   if (document.documentElement.scrollWidth > vw + 1) out.push(`page overflows ${document.documentElement.scrollWidth} > ${vw}`);
-  const shown = (e: Element) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  // Inside a closed <details> nothing shows (newer Chromium still gives such content a box: content-visibility).
+  const closed = (e: Element) => !!(e.matches('summary') ? e.parentElement?.parentElement : e)?.closest('details:not([open])');
+  const shown = (e: Element) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && !closed(e); };
   const cs = [...document.querySelectorAll('.portals button, .portals a, .portals summary')].filter(shown);
   const name = (e: Element) => (e.getAttribute('aria-label') || e.textContent || '').trim().slice(0, 30);
   for (const e of cs) {

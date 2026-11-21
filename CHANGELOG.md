@@ -5,6 +5,10 @@ Crewdeck is not released yet: versions below name the `crewdeck` plugin's versio
 
 ## [Unreleased] — Jobs v2 P1a: titles are a score
 
+- **Signed-in portals in Claude's browser pane** (plugin 0.9.0, ADR-0008 amended; `jobs.portals_mode: pane`, the
+  default): Connect or Sign in on Sources → Portals opens a Jobs chat where you sign in to the site in the pane (or
+  import its cookies with the pane's ⋮ menu); Claude reads the portals' search pages there during Find, slowly, and
+  stops at the first sign-in wall or check. `jobs.portals_mode: profile` keeps Crewdeck's own browser.
 - **Titles never drop a posting any more** (ADR-0003): only eligibility does (places, workplace, employment type, pay
   floor, the title words, companies and industries you excluded, cooldowns). Each posting gets a title fit: your own
   titles first, then synonyms (developer for engineer, product owner for product manager, RN for registered nurse, in

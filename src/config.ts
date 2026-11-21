@@ -56,6 +56,11 @@ export type JobsConfig = {
   browser: string;
   /** How often sources are fetched, e.g. 12h, 30m, 1d. */
   fetch_every: string;
+  /**
+   * ADR-0008: who scans the signed-in portals. `pane` (the default): Claude, in Claude desktop's browser pane during
+   * Find, in the person's own signed-in session. `profile`: Crewdeck's own headless browser profile in each sources run.
+   */
+  portals_mode: 'pane' | 'profile';
   features: JobsFeatures;
 };
 export const FEATURE_DEFAULTS: JobsFeatures = {
@@ -76,7 +81,7 @@ export function defaults(): Config {
 export function normaliseJobs(raw: unknown): JobsConfig {
   const j = (raw ?? {}) as Record<string, any>;
   if (typeof j !== 'object' || Array.isArray(j)) throw new Error('jobs: must be a map of settings');
-  const known = ['enabled', 'home', 'workspace', 'browser', 'fetch_every', 'features'];
+  const known = ['enabled', 'home', 'workspace', 'browser', 'fetch_every', 'portals_mode', 'features'];
   for (const k of Object.keys(j)) if (!known.includes(k)) throw new Error(`jobs.${k}: unknown setting (known: ${known.join(', ')})`);
   const bool = (v: unknown, name: string, d: boolean) => { if (v === undefined || v === null) return d; if (typeof v !== 'boolean') throw new Error(`${name}: use true or false`); return v; };
   const path = (v: unknown, name: string, d: string) => { if (v === undefined || v === null || v === '') return d; if (typeof v !== 'string') throw new Error(`${name}: must be a folder path`); return expand(v); };
@@ -86,6 +91,8 @@ export function normaliseJobs(raw: unknown): JobsConfig {
   const every = j.fetch_every ?? '12h';
   const m = typeof every === 'string' ? /^(\d+)(m|h|d)$/.exec(every) : null;
   if (!m || Number(m[1]) * { m: 1, h: 60, d: 1440 }[m[2] as 'm'] < 30) throw new Error('jobs.fetch_every: use a duration of at least 30m, like 30m, 12h or 1d');
+  const mode = j.portals_mode ?? 'pane';
+  if (mode !== 'pane' && mode !== 'profile') throw new Error('jobs.portals_mode: use pane (Claude scans portals in its browser pane) or profile (Crewdeck\'s own browser)');
   const f = (j.features ?? {}) as Record<string, unknown>;
   if (typeof f !== 'object' || Array.isArray(f)) throw new Error('jobs.features: must be a map of switches');
   const features = { ...FEATURE_DEFAULTS };
@@ -93,7 +100,7 @@ export function normaliseJobs(raw: unknown): JobsConfig {
     if (!Object.hasOwn(FEATURE_DEFAULTS, k)) throw new Error(`jobs.features.${k}: unknown feature (known: ${Object.keys(FEATURE_DEFAULTS).join(', ')})`);
     (features as any)[k] = featureValue(k as keyof JobsFeatures, v);
   }
-  return { enabled: bool(j.enabled, 'jobs.enabled', false), home, workspace: path(j.workspace, 'jobs.workspace', home), browser: browser === 'auto' ? 'auto' : expand(browser), fetch_every: every, features };
+  return { enabled: bool(j.enabled, 'jobs.enabled', false), home, workspace: path(j.workspace, 'jobs.workspace', home), browser: browser === 'auto' ? 'auto' : expand(browser), fetch_every: every, portals_mode: mode, features };
 }
 
 /** A feature switch value, checked against its type and cap. */

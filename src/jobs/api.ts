@@ -14,7 +14,7 @@ import { type FSWatcher, existsSync, readFileSync, realpathSync, statSync, watch
 import { parse as parseYaml } from 'yaml';
 import { basename, join, sep } from 'node:path';
 import { type Config, CONFIG_PATH, HOME, REPO, FEATURE_CAPS, FEATURE_DEFAULTS, type JobsFeatures, featureValue, normaliseJobs, setFeature } from '../config.ts';
-import { JOBS_SESSION_PROMPT, JOBS_SETUP_PROMPT, type JobsTask, jobsTaskLink, sessionLink, taskPrompt } from '../session-link.ts';
+import { JOBS_SESSION_PROMPT, JOBS_SETUP_PROMPT, type JobsTask, PORTAL_TASK_ID, jobsTaskLink, sessionLink, taskPrompt } from '../session-link.ts';
 import { HttpError, SECURITY_HEADERS, fromAgent, fromOwnPage, json, ownRead, readJson, send } from '../http.ts';
 import { type JobKind, type Request, type Requests, RequestError, isOpen } from '../requests.ts';
 import { type Ctx, makeCtx, notesOf, todayOf } from './ctx.ts';
@@ -43,6 +43,7 @@ import { type SchedulerOptions, createSourceScheduler } from './schedule.ts';
 import { type ResolveState, sourcesScreen } from './sources-view.ts';
 import type { ResolveResult } from './resolve.ts';
 import { loadPortals } from './portals/catalog.ts';
+import { disconnectPortal } from './portals/connect.ts';
 import { type PortalTestView, portalsNeedingSignIn, portalsView, togglePortal } from './portals/view.ts';
 import { type ApplyEnv, ProposalError, addProposal, applyDue, approve as approveProposal, checkProposal, listProposals, pendingCount, proposalView, reject as rejectProposal, undo as undoProposal } from './proposals.ts';
 
@@ -121,7 +122,7 @@ export type JobsApiOptions = {
 const LANE = 'jobs';
 /** Careers pages checked at once from the Sources screen (each is a sandboxed child of ≤ 35 s). */
 const MAX_RESOLVING = 2;
-const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page', tell: 'Tell Crewdeck', prepare: 'Prepare a role' };
+const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page', tell: 'Tell Crewdeck', prepare: 'Prepare a role', connect: 'Connect a portal' };
 /** A request kept for the Jobs chat opened for it; after this, any Jobs chat may take it (the person closed the dialog). */
 const CHAT_HOLD_MS = 10 * 60_000;
 const MAX_CLIENTS = 20;
@@ -268,8 +269,10 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     try { const st = statSync(configPath); stamp = `${st.mtimeMs}:${st.size}`; } catch { return; }
     if (stamp === configStamp) return;
     try {
-      const features = normaliseJobs((parseYaml(readFileSync(configPath, 'utf8')) as any)?.jobs).features;
+      const jobsCfg = normaliseJobs((parseYaml(readFileSync(configPath, 'utf8')) as any)?.jobs);
+      const features = jobsCfg.features;
       c.jobs.features = features;
+      c.jobs.portals_mode = jobsCfg.portals_mode;
       ctx.features = { ...features };
       configStamp = stamp;
     } catch { /* a half-written or broken file: keep the last good switches */ }
@@ -402,6 +405,8 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   /** The portal a sign-in window is open for (one profile: one window at a time). */
   let connecting: string | null = null;
   const testing = new Set<string>();
+  /** ADR-0008: pane (default) = Claude signs in and scans in its browser pane, in a Jobs chat; profile = Crewdeck's own browser. */
+  const portalsMode = (): 'pane' | 'profile' => (c.jobs.portals_mode === 'profile' ? 'profile' : 'pane');
   const portalArg = (v: unknown) => {
     const p = typeof v === 'string' ? loadPortals().byId.get(v) : undefined;
     if (!p) throw new HttpError(400, 'unknown portal');
@@ -615,7 +620,8 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   }
   /** The task prompt for an open jobs request (the page's Open in Claude on a waiting request reopens its chat). */
   const taskOf = (r: Request): JobsTask | null =>
-    r.kind === 'find' || r.kind === 'tell' ? { kind: r.kind, request: r.id }
+    r.kind === 'connect' && r.ref && PORTAL_TASK_ID.test(r.ref) ? { kind: 'connect', portal: r.ref, request: r.id }
+    : r.kind === 'find' || r.kind === 'tell' ? { kind: r.kind, request: r.id }
       : (r.kind === 'apply' || r.kind === 'prepare') && r.ref && ROLE_ID.test(r.ref) ? { kind: r.kind, role: r.ref, request: r.id }
         : null;
   /** Picked, never prepared (Find prepares only the top few): nothing has read its form yet. */
@@ -947,9 +953,16 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       return { ok: true };
     },
   };
+  /**
+   * Pane mode: a `connect` request and a Jobs chat in front for it, where Claude opens the portal in the browser pane and
+   * the person signs in there (or imports its cookies). `test` asks that chat for a one-page test of a connected portal.
+   */
+  const queueConnect = (p: { id: string }, extra: { signup?: boolean; test?: boolean }) =>
+    ({ ...queue('connect', p.id, { portal: p.id, ...(extra.signup ? { signup: true } : {}), ...(extra.test ? { test: true } : {}) }, { task: (id) => ({ kind: 'connect', portal: p.id, request: id }), fresh: true }), mode: 'pane' as const });
   /** ADR-0008: open the sign-in (or sign-up) window; it closes itself once signed in. State changes emit `portals`. */
   actions.connectPortal = (b) => {
     const p = portalArg(b.id);
+    if (portalsMode() === 'pane') return queueConnect(p, { signup: b.signup === true });
     if (connecting) throw new HttpError(409, connecting === p.id ? `The ${p.name} sign-in window is already open` : 'Another portal\'s sign-in window is open: finish or close it first');
     if (testing.size) throw new HttpError(409, 'A portal test is running: try again when it is done');
     connecting = p.id;
@@ -959,6 +972,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   };
   actions.disconnectPortal = async (b) => {
     const p = portalArg(b.id);
+    if (portalsMode() === 'pane') { await disconnectPortal(c.jobs.home, p); emit('portals'); return { ok: true }; }
     if (connecting === p.id) throw new HttpError(409, `The ${p.name} sign-in window is open: close it first`);
     try { await portalOps.disconnect(p.id); } finally { emit('portals'); }
     return { ok: true };
@@ -976,6 +990,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const p = portalArg(b.id);
     const v = portalsView(ctx).portals.find((x) => x.id === p.id)!;
     if (v.state !== 'connected') throw new HttpError(400, `${p.name} is not connected${v.state === 'paused' ? ` (paused until ${v.paused_until})` : v.state === 'needs_sign_in' ? ' (sign in again first)' : ''}`);
+    if (portalsMode() === 'pane') { const out = queueConnect(p, { test: true }); emit('portals'); return out; }
     if (connecting || testing.has(p.id)) throw new HttpError(409, 'Crewdeck\'s portal browser is busy: try again in a minute');
     testing.add(p.id);
     try {
@@ -1048,7 +1063,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       if (path === '/api/jobs/proposals') return json(res, 200, proposalsView());
       if (path === '/api/jobs/preferences') return json(res, 200, preferences());
       if (path === '/api/jobs/settings') return json(res, 200, settings());
-      if (path === '/api/jobs/portals') return json(res, 200, portalsView(ctx));
+      if (path === '/api/jobs/portals') { refreshFeatures(); return json(res, 200, portalsView(ctx, undefined, portalsMode())); }
       if (path === '/api/jobs/sources') return json(res, 200, sourcesScreen(ctx, { resolving, results: recentResolves(), notesPage: (f) => notesPage(f)! }));
       throw new HttpError(404, 'not found');
     } catch (e: any) {
@@ -1074,6 +1089,11 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     refreshFeatures();
     if (r.kind === 'find') return { daily_picks: notesOf(ctx).search.data.schedule.daily_picks, prepare_ahead: notesOf(ctx).search.data.schedule.prepare_ahead };
     if (r.kind === 'source') return { source: listSources(ctx).find((x) => x.key === r.payload?.key) ?? null };
+    if (r.kind === 'connect') {
+      const p = r.ref ? loadPortals().byId.get(r.ref) : undefined;
+      const v = p ? portalsView(ctx, [p], portalsMode()).portals[0] : undefined;
+      return { mode: portalsMode(), portal: p && v ? { id: p.id, name: p.name, login_url: p.login_url, signup_url: p.signup_url, hosts: p.hosts, state: v.state, enabled: v.enabled, risk: p.risk } : null };
+    }
     if ((r.kind !== 'apply' && r.kind !== 'improve' && r.kind !== 'prepare') || !r.ref || !ROLE_ID.test(r.ref)) return {};
     let role;
     try { role = getRole(db, r.ref); } catch { return { role: null }; }

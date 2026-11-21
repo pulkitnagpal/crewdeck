@@ -205,6 +205,7 @@ const TASK_REQUEST = [
   /^Crewdeck: apply to role [A-Za-z0-9]{1,64} \(request ([1-9][0-9]{0,9})\)$/,
   /^Crewdeck: prepare role [A-Za-z0-9]{1,64} \(request ([1-9][0-9]{0,9})\)$/,
   /^Crewdeck: handle tell request ([1-9][0-9]{0,9})$/,
+  /^Crewdeck: connect portal [a-z0-9-]{1,40} \(request ([1-9][0-9]{0,9})\)$/,
 ]
 function taskRequestOf(text: string): number | null {
   for (const re of TASK_REQUEST) {
@@ -366,14 +367,20 @@ async function jobsAct($: Dollar, port: number, body: { op: 'find' } | { op: 'ap
       : d.preparing ? 'Preparing it first (about 1 min) in your Jobs chat' : 'Sent to your Jobs chat')
 }
 
-/** A connected portal needs the person to sign in again (ADR-0008): Crewdeck opens its sign-in window; they type there. */
+/**
+ * A connected portal needs the person to sign in again (ADR-0008). Pane mode (the default): Crewdeck opens a Jobs chat
+ * in front where Claude opens the portal in the browser pane and they sign in there. Profile mode: Crewdeck opens its
+ * own sign-in window. Either way they type; Claude never does.
+ */
 async function portalSignIn($: Dollar, port: number, id: string, name: string): Promise<void> {
-  const got = (await post($, port, '/api/today/jobs', { op: 'connectPortal', id })) as (Today & { error?: string; done?: { opened?: boolean } }) | null
+  const got = (await post($, port, '/api/today/jobs', { op: 'connectPortal', id })) as (Today & { error?: string; done?: { opened?: boolean; mode?: string } }) | null
   if (!got) { await update($, todayNote, () => 'That did not reach Crewdeck: is it running?'); return }
   if (got.error) { await update($, todayNote, () => String(got.error)); return }
   await update($, todayAtom, () => got)
   await update($, todayNote, () => '')
-  $.ui.toast(got.done?.opened ? `A ${name} window opened: sign in there` : `Crewdeck could not open ${name}: open Jobs → Sources`)
+  $.ui.toast(got.done?.mode === 'pane'
+    ? (got.done.opened ? `A Jobs chat is opening in front of you: sign in to ${name} there` : `Sent to your Jobs chat: sign in to ${name} there`)
+    : got.done?.opened ? `A ${name} window opened: sign in there` : `Crewdeck could not open ${name}: open Jobs → Sources`)
 }
 
 /** The git project this session's folder is in (the nearest folder up with a .git), found without running git: on a Mac

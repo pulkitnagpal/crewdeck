@@ -17,6 +17,8 @@
 #   job_url: pattern (a regex on the path), keep_params (query parameters that identify the posting), canonical
 #     (optional template: {host}, {path}, {id} = the pattern's first group, and kept parameter names)
 #   json: responses the page itself loads: url (regex), list (path to the items), where (path: regex), fields (paths)
+#     or state: a value the page keeps on window (e.g. __NEXT_DATA__.props.pageProps; pane mode reads it, also from the
+#     __NEXT_DATA__ script tag) with list relative to it. Pane mode re-fetches matching responses with the person's cookies.
 #   limits: searches_per_run, pages_per_search, delay_ms (number, jittered ±40%, or [min, max]), min_hours, pages_per_day
 #   headful: true when the portal refuses a headless browser
 #   risk: said once at connect, in plain words; verified: whether the search and job URLs were checked against the

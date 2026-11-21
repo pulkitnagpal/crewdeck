@@ -3,8 +3,8 @@
 // (a folder from a link is never trusted on its own) and puts the prompt in the message box without sending it.
 // Documented at https://support.claude.com/en/articles/14729294-open-claude-desktop-with-a-link.
 //
-// Jobs work runs on demand in a Jobs chat opened in front of the person (ADR-0004 revised, ADR-0006): Find, intake and
-// Apply each open one with a prompt naming that task and its request. The prompts are fixed words and ids only, so the
+// Jobs work runs on demand in a Jobs chat opened in front of the person (ADR-0004 revised, ADR-0006): Find, intake,
+// Apply and (ADR-0008 pane mode) a portal's sign-in each open one with a prompt naming that task and its request. The prompts are fixed words and ids only, so the
 // panel (plugin/hooks/register.tsx) can check a link against these exact shapes before it opens anything.
 import { isAbsolute } from 'node:path';
 
@@ -20,10 +20,14 @@ export type JobsTask =
   | { kind: 'find'; request: number }
   | { kind: 'apply'; role: string; request: number }
   | { kind: 'prepare'; role: string; request: number }
-  | { kind: 'tell'; request: number };
+  | { kind: 'tell'; request: number }
+  /** ADR-0008 pane mode: sign in to a portal in Claude's browser pane (or test it), in a Jobs chat in front. */
+  | { kind: 'connect'; portal: string; request: number };
 
 const ID = /^[A-Za-z0-9]{1,64}$/;
 const REQ = /^[1-9][0-9]{0,9}$/;
+/** A portal id in a task prompt: lowercase letters, digits and dashes (the catalog's ids are stricter still). */
+export const PORTAL_TASK_ID = /^[a-z0-9-]{1,40}$/;
 
 /** The first message of a Jobs chat opened for a task (the jobs-workspace skill does exactly that task first). */
 export function taskPrompt(t: JobsTask): string {
@@ -42,6 +46,9 @@ export function taskPrompt(t: JobsTask): string {
     case 'apply': return `Crewdeck: apply to role ${role(t.role)} (request ${req(t.request)})`;
     case 'prepare': return `Crewdeck: prepare role ${role(t.role)} (request ${req(t.request)})`;
     case 'tell': return `Crewdeck: handle tell request ${req(t.request)}`;
+    case 'connect':
+      if (!PORTAL_TASK_ID.test(t.portal)) throw new Error('a portal id is lowercase letters, digits and dashes');
+      return `Crewdeck: connect portal ${t.portal} (request ${req(t.request)})`;
   }
 }
 
@@ -53,6 +60,7 @@ const TASK_PROMPTS: [RegExp, (m: RegExpExecArray) => JobsTask][] = [
   [/^Crewdeck: apply to role ([A-Za-z0-9]{1,64}) \(request ([1-9][0-9]{0,9})\)$/, (m) => ({ kind: 'apply', role: m[1]!, request: Number(m[2]) })],
   [/^Crewdeck: prepare role ([A-Za-z0-9]{1,64}) \(request ([1-9][0-9]{0,9})\)$/, (m) => ({ kind: 'prepare', role: m[1]!, request: Number(m[2]) })],
   [/^Crewdeck: handle tell request ([1-9][0-9]{0,9})$/, (m) => ({ kind: 'tell', request: Number(m[1]) })],
+  [/^Crewdeck: connect portal ([a-z0-9-]{1,40}) \(request ([1-9][0-9]{0,9})\)$/, (m) => ({ kind: 'connect', portal: m[1]!, request: Number(m[2]) })],
 ];
 
 /** A Jobs chat's first prompt, read back: the task it names, or null for any other text. */

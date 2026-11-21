@@ -9,4 +9,4 @@
 | [0005](0005-linkedin-user-driven.md) | LinkedIn only through pages the person opens; guest search off by default | Proposed |
 | [0006](0006-apply-in-current-chat.md) | Apply in the chat the person is in, through a restricted subagent | Proposed |
 | [0007](0007-occupation-taxonomy.md) | Model targets as standard occupations (O*NET database, ESCO) with alternate titles and skills | Proposed |
-| [0008](0008-signed-in-portals.md) | Signed-in job portals, scanned in Crewdeck's own browser profile | Accepted |
+| [0008](0008-signed-in-portals.md) | Signed-in job portals, scanned in Claude's browser pane (default) or Crewdeck's own browser profile | Accepted |

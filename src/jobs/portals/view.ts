@@ -13,7 +13,8 @@ export type PortalView = {
 };
 export type PortalTestView = { found: number; by: { json: number; jsonld: number; links: number }; sample: { title: string; company: string; url: string }[]; stopped?: string };
 
-export function portalsView(ctx: Ctx, cat: Portal[] = loadPortals().portals): { portals: PortalView[] } {
+/** `mode` (jobs.portals_mode): pane = Claude scans in its browser pane during Find, and Connect opens a Jobs chat. */
+export function portalsView(ctx: Ctx, cat: Portal[] = loadPortals().portals, mode: 'pane' | 'profile' = 'pane'): { mode: 'pane' | 'profile'; portals: PortalView[] } {
   const st = readPortalsState(ctx.home).portals;
   let items: ReturnType<typeof portalItems> = [];
   try { items = portalItems(ctx); } catch { /* broken notes: nothing switched on */ }
@@ -22,6 +23,7 @@ export function portalsView(ctx: Ctx, cat: Portal[] = loadPortals().portals): { 
   const order = new Map(items.map((it, i) => [it.id, i]));
   const sorted = [...cat].sort((a, b) => (order.get(a.id) ?? 1e6) - (order.get(b.id) ?? 1e6));
   return {
+    mode,
     portals: sorted.map((p) => {
       const s = st[p.id];
       const state = portalStatus(s, now);

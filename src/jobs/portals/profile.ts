@@ -58,7 +58,7 @@ const isJson = (ct: string | undefined) => /\bjson\b/i.test(ct ?? '');
 
 function wrapPage(page: Page, portal: Portal): PortalPage {
   let captured: Captured[] = [];
-  const patterns = portal.json.map((j) => { try { return new RegExp(j.url); } catch { return null; } }).filter((r): r is RegExp => !!r);
+  const patterns = portal.json.filter((j) => j.url).map((j) => { try { return new RegExp(j.url); } catch { return null; } }).filter((r): r is RegExp => !!r);
   page.on('response', (r) => {
     if (!patterns.length || captured.length >= KEEP || !patterns.some((re) => re.test(r.url())) || !isJson(r.headers()['content-type'])) return;
     const list = captured;

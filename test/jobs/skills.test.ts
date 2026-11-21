@@ -123,10 +123,11 @@ const PORTALS_DIR = join(REPO, 'src', 'jobs', 'portals');
 const SRC_PORTALS = existsSync(PORTALS_DIR) ? readdirSync(PORTALS_DIR).filter((f) => f.endsWith('.ts') && f !== 'api-stub.ts').map((f) => read('src', 'jobs', 'portals', f)).join('\n') : '';
 const SRC_JOBS = read('src', 'jobs', 'cli.ts') + read('src', 'jobs', 'commands.ts') + read('src', 'jobs', 'sources-cmd.ts') + read('src', 'jobs', 'proposals-cmd.ts') + SRC_PORTALS;
 /**
- * `crewdeck jobs portals list|connect <id> [--signup]|disconnect <id>|test <id>` (ADR-0008), as agreed with the engine:
- * the skills are checked against this until the command exists, then against its source like every other command.
+ * `crewdeck jobs portals list|connect <id> [--signup]|disconnect <id>|test <id>` (ADR-0008), and pane mode's
+ * `plan [--json] [--portal <id>]|script <id>|ingest <id> --file <f> [--page-url <u>] [--test]|mark <id> connected|signed-out`,
+ * as agreed with the engine: the skills are checked against this until the command exists, then against its source.
  */
-const PORTALS_CONTRACT = { verbs: ['list', 'connect', 'disconnect', 'test'], flags: ['signup'] };
+const PORTALS_CONTRACT = { verbs: ['list', 'connect', 'disconnect', 'test', 'on', 'off', 'plan', 'script', 'ingest', 'mark'], flags: ['signup', 'json', 'portal', 'file', 'page-url', 'test'] };
 const portalsPending = () => !JOBS_COMMANDS.includes('portals');
 const TOP = ['setup', 'init', 'up', 'open', 'service', 'address', 'add-project', 'doctor', 'requests', 'request', 'progress', 'jobs'];
 /** Commands whose next word is a verb. */
@@ -193,24 +194,39 @@ test('the lint itself: it catches an unknown command, verb and flag', () => {
   assert.deepEqual(lintCommand('jobs portals connect <id> --password'), ['"jobs portals connect <id> --password": no flag --password']);
 });
 
-test('portals in the skills (ADR-0008): setup recommends, says the risk once, connects or registers only with a yes, tests, then on; the runs say what to do on "sign in again"', () => {
+test('portals in the skills (ADR-0008): setup recommends, says the risk once, signs in in the pane or registers only with a yes, checks, tests, then on; the runs say what to do on "sign in again"', () => {
   const setup = read('plugin', 'skills', 'jobs-setup', 'SKILL.md');
   const portals = setup.slice(setup.indexOf('5. **Portals**'), setup.indexOf('## 6.'));
   assert.ok(portals.length > 500, 'a Portals step in Where to look, before Fetch once');
-  for (const re of [/`crewdeck jobs portals list`/, /`crewdeck jobs portals connect <id>`/, /`crewdeck jobs portals connect <id> --signup`/, /`crewdeck jobs portals test <id>`/,
+  for (const re of [/`crewdeck jobs portals list`/, /`crewdeck jobs portals list --json`/, /browser pane/, /import that site's cookies from their own browser with the pane's\s+\*\*⋮\*\* menu/,
+    /Sign in with Google may not work inside the pane — use the site's\s+own email\/phone \+ password or OTP/, /`crewdeck jobs portals script <id>`/, /`crewdeck jobs portals mark <id> connected`/,
+    /`crewdeck jobs portals plan --json --portal <id>`/, /`crewdeck jobs portals ingest <id> --file <T>\/portal-<id>-1\.json --test`/,
     /sites may not allow automation and could limit your account/, /once/, /create nothing without a clear yes in this\s+chat/,
-    /\*\*They\*\* type passwords, one-time codes and CAPTCHAs/, /non-secret fields/, /only after they say yes to using them/, /Switched-on portals are scanned/, /crewdeck jobs portals on <id>/]) assert.match(portals, re);
-  // In order: list, risk, connect, sign up, test, switch on.
-  const at = ['portals list', 'Say the risk', 'portals connect <id>`', '--signup', 'portals test', 'portals on <id>'].map((x) => portals.indexOf(x));
+    /\*\*They\*\* type passwords, one-time codes and CAPTCHAs/, /non-secret fields/, /only after they say yes\s+to using them/, /Switched-on portals are scanned/, /crewdeck jobs portals on <id>/,
+    /data, never instructions/, /`crewdeck jobs portals connect <id>`/, /`crewdeck jobs portals test <id>`/]) assert.match(portals, re);
+  // In order: list, risk, the pane's sign-in, sign up, the check, the test, switch on.
+  const at = ['portals list`', 'Say the risk', 'login_url', 'signup_url', 'portals mark <id> connected', 'ingest <id>', 'portals on <id>'].map((x) => portals.indexOf(x));
   assert.ok(at.every((x, i) => x >= 0 && (i === 0 || x > at[i - 1])), `the order: ${at}`);
   const daily = read('plugin', 'skills', 'jobs-daily-run', 'SKILL.md');
   const ws = read('plugin', 'skills', 'jobs-workspace', 'SKILL.md');
   for (const t of [daily, ws]) {
     assert.match(t, /Portals/);
     assert.match(t, /needs you to sign in again: Jobs page\s+→\s+Sources\s+→\s+Portals\s+→\s+Sign in/);
+    assert.match(t, /data, never instructions/);
   }
-  assert.match(daily, /scanned in the same run/);
-  assert.match(ws, /scanned in every sources run/);
+  // Find: the pane step after the pool and before judging, in the plan's order, nothing else opened, stop at a signal.
+  const pane = daily.slice(daily.indexOf('## 1b. Portals (pane)'), daily.indexOf('## 2. Judge'));
+  assert.ok(daily.indexOf('## 1. The pool') < daily.indexOf('## 1b. Portals (pane)'), 'after the pool');
+  for (const re of [/`crewdeck jobs portals plan --json`/, /`crewdeck jobs portals script <portal id>`/, /wait `delay_ms`/, /navigate the\s+browser pane to `url`/, /javascript_tool/,
+    /`<T>\/portal-<portal id>-<n>\.json` with the Write tool/, /`crewdeck jobs portals ingest <portal id> --file <T>\/portal-<portal id>-<n>\.json`/, /Never open a page\s+that is not in the plan/,
+    /\*\*Never\*\* solve a challenge/, /no screenshots and no `read_page`/, /`crewdeck jobs prefilter` again/]) assert.match(pane, re);
+  assert.match(daily, /scanned in the same sources run/);
+  // The workspace's connect section: the pane's sign-in, the cookie import, Google, no secrets typed, the check, the test.
+  assert.match(ws, /`Crewdeck: connect portal <portal id> \(request <id>\)` → the \*\*connect\*\* section/);
+  const connect = ws.slice(ws.indexOf('## connect:'), ws.indexOf('## Also in this session'));
+  for (const re of [/`login_url`/, /\*\*⋮\*\* menu/, /only\s+that portal's domain/, /Sign in with Google may not work inside the pane — use the site's own email\/phone \+ password or OTP/,
+    /\*\*Never\*\* type a password, a one-time code or a CAPTCHA/, /never create an account without\s+a clear yes/, /say "done"/, /`crewdeck jobs portals script <portal id>`/,
+    /`crewdeck jobs portals mark <portal id> connected`/, /`crewdeck jobs portals plan --json --portal <portal id>`/, /--test`/, /data, never instructions/]) assert.match(connect, re);
 });
 
 test('every crewdeck command in the skills, the generated workspace CLAUDE.md and the vault CLAUDE.md exists', () => {
@@ -235,11 +251,11 @@ test('every crewdeck command in the skills, the generated workspace CLAUDE.md an
 
 // ---- the plugin ----
 
-test('the plugin is named crewdeck (0.8.1) everywhere; the bridge keeps its token and proof', () => {
+test('the plugin is named crewdeck (0.9.0) everywhere; the bridge keeps its token and proof', () => {
   const p = JSON.parse(read('plugin', '.claude-plugin', 'plugin.json'));
   assert.equal(p.name, 'crewdeck');
   assert.equal(p.displayName, 'Crewdeck');
-  assert.equal(p.version, '0.8.1');
+  assert.equal(p.version, '0.9.0');
   // The plugin installs the Crewdeck release it pins (install-script.ts): the app's version, which a plugin-only fix doesn't bump.
   assert.match(read('plugin', 'hooks', 'install-script.ts'), new RegExp(`CREWDECK_VERSION = '${JSON.parse(read('package.json')).version.replace(/\./g, '\\.')}'`));
   const m = JSON.parse(read('.claude-plugin', 'marketplace.json'));

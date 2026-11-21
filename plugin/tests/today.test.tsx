@@ -28,7 +28,7 @@ const res = (exitCode: number, stdout: string, stderr: string) => ({ exitCode, s
 const typed = (command: string, args = '') => ({ command, args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 } })
 
 /** A fake Crewdeck on port 4848: what each curl the plugin runs gets back, and what it was asked. */
-function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: number; portalsSignIn?: { id: string; name: string }[] }) {
+function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: number; portalsSignIn?: { id: string; name: string }[]; portalsMode?: 'pane' | 'profile' }) {
   const s = {
     running: o.running,
     setupNeeded: !!o.setupNeeded,
@@ -82,7 +82,7 @@ function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: 
       if (path === '/api/tell') { s.told.push(body.text); return ok(JSON.stringify({ ok: true, request: 21, opened: true, link: `claude://code/new?folder=%2Ffake%2Fjobs&q=${encodeURIComponent('Crewdeck: handle tell request 21')}` })) }
       if (path === '/api/today/jobs' && body.op === 'connectPortal') {
         s.portalsSignIn = (s.portalsSignIn ?? []).filter((p) => p.id !== body.id)
-        return ok(JSON.stringify({ ...today(), done: { ok: true, opened: true } }))
+        return ok(JSON.stringify({ ...today(), done: o.portalsMode === 'pane' ? { ok: true, request: 12, status: 'new', opened: true, mode: 'pane' } : { ok: true, opened: true } }))
       }
       if (path === '/api/today/jobs') return ok(JSON.stringify({ ...today(), done: { ok: true, request: 9, opened: true } }))
       if (path === '/api/claim') return ok(JSON.stringify({ lane: 'cockpit', cli: 'crewdeck', proof: await sha256Hex(`crewdeck-proof:${TOKEN}:${body.nonce}:4848`), requests: [] }))
@@ -407,7 +407,7 @@ test('an older Crewdeck than the plugin: the panel offers Update Crewdeck, which
 })
 
 test('a connected portal that needs signing in again: one line with Sign in, which asks Crewdeck to open its window', async ($, on) => {
-  const { s, run } = fakeCrewdeck({ running: true, portalsSignIn: [{ id: 'naukri', name: 'Naukri' }] })
+  const { s, run } = fakeCrewdeck({ running: true, portalsSignIn: [{ id: 'naukri', name: 'Naukri' }], portalsMode: 'profile' })
   mock.clock(on)
   on('session.cwd', () => ({ value: '/work' }))
   on('command.register', () => ({ value: { command: 'crewdeck' } }))
@@ -432,6 +432,28 @@ test('a connected portal that needs signing in again: one line with Sign in, whi
   expect(toasts.at(-1)).toBe('A Naukri window opened: sign in there')
   expect(s.opened).toEqual([])
   expect(await ui.find({ type: 'Text', text: /needs you to sign in again/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('pane mode: the panel\'s Sign in asks Crewdeck for a Jobs chat where they sign in in the browser pane', async ($, on) => {
+  const { s, run } = fakeCrewdeck({ running: true, portalsSignIn: [{ id: 'naukri', name: 'Naukri' }], portalsMode: 'pane' })
+  mock.clock(on)
+  on('session.cwd', () => ({ value: '/work' }))
+  on('command.register', () => ({ value: { command: 'crewdeck' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('fs.read', () => ({ value: `${TOKEN}\n` }))
+  on('process.run', async (_, e) => ({ value: await run(e.argv, e.init) }))
+  const toasts: string[] = []
+  on('ui.toast', (_, e) => { toasts.push(String(e.text)); return { value: undefined } })
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(typed('crewdeck'))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'portal-signin-naukri' })
+  expect(s.calls.at(-1)).toEqual({ path: '/api/today/jobs', body: { op: 'connectPortal', id: 'naukri' }, token: true })
+  expect(toasts.at(-1)).toBe('A Jobs chat is opening in front of you: sign in to Naukri there')
+  // Crewdeck opens the chat (its link checked there); the panel opens nothing itself.
+  expect(s.opened).toEqual([])
   await ui.unmount()
 })
 

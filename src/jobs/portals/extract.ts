@@ -6,7 +6,8 @@ import { isoCountry } from '../company-country.ts';
 import { htmlToText } from '../feeds/html.ts';
 import { lookupPlace } from '../places.ts';
 import { elements, plainText } from '../text.ts';
-import { type JsonAdapter, type Portal, hostIn } from './catalog.ts';
+import type { JsonAdapter, Portal } from './catalog.ts';
+import { RX, canonUrl, pathValue as runtimePathValue, workplaceOf as runtimeWorkplace } from './page-runtime.js';
 
 export type Layer = 'json' | 'jsonld' | 'links';
 export type Posting = {
@@ -27,22 +28,7 @@ const s = (v: unknown, max = 300) => (typeof v === 'string' ? plainText(v).slice
  * query parameters that identify the posting (or the catalog's canonical form). Null for anything else.
  */
 export function canonicalJobUrl(raw: string, base: string, portal: Portal): string | null {
-  let u: URL;
-  try { u = new URL(String(raw ?? '').trim(), base); } catch { return null; }
-  if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.username || u.password || !hostIn(u.hostname, portal.hosts)) return null;
-  let re: RegExp;
-  try { re = new RegExp(portal.job_url.pattern); } catch { return null; }
-  const hit = re.exec(u.pathname);
-  if (!hit) return null;
-  const keep = portal.job_url.keep_params ?? [];
-  const kept = keep.map((k) => [k, u.searchParams.get(k)] as const);
-  if (keep.length && kept.some(([, v]) => !v || !/^[\w.-]{1,100}$/.test(v))) return null;
-  if (portal.job_url.canonical) {
-    const vals: Record<string, string> = { host: u.host, id: hit[1] ?? '', path: u.pathname.replace(/\/+$/, '') || '/', ...Object.fromEntries(kept.map(([k, v]) => [k, encodeURIComponent(v!)])) };
-    try { return new URL(portal.job_url.canonical.replace(/\{(\w+)\}/g, (_m, k: string) => vals[k] ?? '')).toString(); } catch { return null; }
-  }
-  const q = kept.length ? `?${kept.map(([k, v]) => `${k}=${encodeURIComponent(v!)}`).join('&')}` : '';
-  return `${u.protocol}//${u.host}${u.pathname}${q}`;
+  return canonUrl(raw, base, portal.job_url, portal.hosts);
 }
 
 /** "3 days ago", "today", an ISO date or an epoch (ms or s) → ISO; undefined when unreadable or in the future. */
@@ -61,11 +47,7 @@ export function postedAt(v: unknown, now = new Date()): string | undefined {
   return new Date(t).toISOString();
 }
 
-export function workplaceOf(text: string): Posting['workplace'] {
-  if (/\bhybrid\b/i.test(text)) return 'hybrid';
-  if (/\bremote\b|work from home|\bwfh\b/i.test(text)) return 'remote';
-  return undefined;
-}
+export const workplaceOf: (text: string) => Posting['workplace'] = runtimeWorkplace;
 
 // ---- layer 1: the JSON the page loaded ----
 
@@ -73,20 +55,7 @@ export function workplaceOf(text: string): Posting['workplace'] {
  * A value at a path: `a.b.c`, `list[type=location].label` (the first item whose field equals the value), and an
  * optional ` ~ regex` that keeps the regex's first group of the value.
  */
-export function pathValue(obj: unknown, path: string): unknown {
-  const [p, re] = path.split(/\s+~\s+/, 2);
-  let cur: any = obj;
-  for (const seg of p.split('.').filter(Boolean)) {
-    if (cur === null || cur === undefined) return undefined;
-    const m = /^([^[\]]+)(?:\[([^=\]]+)=([^\]]*)\])?$/.exec(seg);
-    if (!m) return undefined;
-    cur = /^\d+$/.test(m[1]) && Array.isArray(cur) ? cur[Number(m[1])] : cur[m[1]];
-    if (m[2] !== undefined) cur = Array.isArray(cur) ? cur.find((x) => x && String(x[m[2]]) === m[3]) : undefined;
-  }
-  if (re === undefined) return cur;
-  if (typeof cur !== 'string') return undefined;
-  try { return new RegExp(re).exec(cur.slice(0, 2000))?.[1]; } catch { return undefined; }
-}
+export const pathValue: (obj: unknown, path: string) => unknown = runtimePathValue;
 
 function fromAdapter(json: unknown, a: JsonAdapter, portal: Portal, base: string, now: Date): Posting[] {
   const list = pathValue(json, a.list);
@@ -115,6 +84,7 @@ export function fromJson(captured: Captured[], portal: Portal, base: string, now
   for (const c of captured.slice(0, 50)) {
     for (const a of portal.json) {
       let re: RegExp;
+      if (!a.url) continue;
       try { re = new RegExp(a.url); } catch { continue; }
       if (!re.test(c.url)) continue;
       let j: unknown;
@@ -170,10 +140,8 @@ export function fromJsonLd(html: string, portal: Portal, base: string, now = new
 
 // ---- layer 3: job links and their card text ----
 
-/** Link texts that are buttons, not titles. */
-const BUTTON = /^(apply( now)?|easy apply|quick apply|save|saved|view( job| details)?|details|more|share|see more|know more|read more|new|promoted|featured)$/i;
-const TIMEISH = /\b(ago|today|yesterday|just now|posted|hours?|days?|weeks?|months?)\b/i;
-const NOISE = /^(\d+(\.\d+)?\s*(-|to|–)\s*\d+(\.\d+)?\s*(yrs?|years?|lpa|lakhs?)|₹|\$|£|€|\d+\+? (applicants?|reviews?)|actively hiring|be an early applicant|\d(\.\d)?★?)/i;
+/** Link texts that are buttons, not titles; time and noise lines (shared with the pane's in-page code, page-runtime.js). */
+const BUTTON = RX.button, TIMEISH = RX.time, NOISE = RX.noise;
 
 function hrefOf(tag: string): string | null {
   const m = /\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(tag.slice(0, 3000));
@@ -186,7 +154,7 @@ function cardFields(lines: string[], title: string, now: Date): Pick<Posting, 'c
   let location = '', posted: string | undefined, company = '';
   for (const l of rest) {
     if (!posted && TIMEISH.test(l) && postedAt(l.replace(/^posted\s+(on\s+)?/i, ''), now)) { posted = postedAt(l.replace(/^posted\s+(on\s+)?/i, ''), now); continue; }
-    if (!location && (/^(remote|hybrid|work from home|on-?site)\b/i.test(l) || (lookupPlace(l.split(/[,(·|]/)[0].trim()) ?? []).length)) { location = l; continue; }
+    if (!location && (RX.where.test(l) || (lookupPlace(l.split(/[,(·|]/)[0].trim()) ?? []).length)) { location = l; continue; }
     if (!company && !NOISE.test(l) && !TIMEISH.test(l) && /\p{L}/u.test(l)) company = l;
   }
   const wp = workplaceOf(`${location} ${rest.join(' ').slice(0, 500)}`);

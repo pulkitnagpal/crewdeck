@@ -1,6 +1,8 @@
 // A stand-in for the portals engine's page API (ADR-0008), for the Sources screen's tests only: the same shapes as
 // GET /api/jobs/portals and the page actions connectPortal, disconnectPortal, togglePortal and testPortal, over an
 // in-memory list. Nothing here opens a browser, reads ~/.crewdeck or reaches a portal. The real engine replaces it.
+// `mode` (jobs.portals_mode): profile (the stub's default, as before) answers Connect with { ok, opened } and Test with
+// what it found; pane answers both with the request it queued and the Jobs chat it opened ({ ok, request, opened, mode }).
 
 export type PortalState = 'not_connected' | 'connected' | 'needs_sign_in' | 'paused';
 export type PortalView = {
@@ -9,6 +11,9 @@ export type PortalView = {
 };
 export type PortalTest = { found: number; by: { json: number; jsonld: number; links: number }; sample: { title: string; company: string; url: string }[]; stopped?: string };
 export type StubAnswer = { status: number; json: unknown };
+export type PortalsMode = 'pane' | 'profile';
+/** Pane mode's answer to Connect and Test: a `connect` request, and whether a Jobs chat opened in front for it. */
+export type PaneQueued = { ok: true; request: number; status: 'new'; opened?: true; mode: 'pane' };
 
 export const STUB_RISK = 'Crewdeck scans this site with your account at a slow pace; sites may not allow automation and could limit your account.';
 
@@ -20,8 +25,11 @@ export function stubPortal(id: string, o: Partial<PortalView> = {}): PortalView 
   };
 }
 
-export function createPortalsStub(initial: PortalView[], o: { test?: (p: PortalView) => PortalTest } = {}) {
+export function createPortalsStub(initial: PortalView[], o: { test?: (p: PortalView) => PortalTest; mode?: PortalsMode } = {}) {
   const portals = initial.map((p) => ({ ...p }));
+  let mode: PortalsMode = o.mode ?? 'profile';
+  let nextRequest = 1;
+  const queued = (): PaneQueued => ({ ok: true, request: nextRequest++, status: 'new', opened: true, mode: 'pane' });
   const calls: { name: string; body: any }[] = [];
   const find = (id: unknown) => portals.find((p) => p.id === id);
   const test = o.test ?? ((p: PortalView): PortalTest => ({
@@ -32,6 +40,7 @@ export function createPortalsStub(initial: PortalView[], o: { test?: (p: PortalV
     connectPortal: (b) => {
       const p = find(b.id);
       if (!p) return { status: 400, json: { error: 'unknown portal' } };
+      if (mode === 'pane') return { status: 200, json: queued() };
       return { status: 200, json: { ok: true, opened: true } };
     },
     disconnectPortal: (b) => {
@@ -51,12 +60,15 @@ export function createPortalsStub(initial: PortalView[], o: { test?: (p: PortalV
       const p = find(b.id);
       if (!p) return { status: 400, json: { error: 'unknown portal' } };
       if (p.state !== 'connected') return { status: 400, json: { error: `${p.name} is not connected` } };
+      if (mode === 'pane') return { status: 200, json: queued() };
       return { status: 200, json: test(p) };
     },
   };
   return {
     portals, calls,
-    view: () => ({ portals: portals.map((p) => ({ ...p })) }),
+    view: () => ({ mode, portals: portals.map((p) => ({ ...p })) }),
+    /** Switch the stub's mode (jobs.portals_mode changed in config.yaml). */
+    setMode(m: PortalsMode) { mode = m; },
     /** The engine finishing a sign-in (or a scan hitting a sign-in wall): set a portal's fields. */
     set(id: string, patch: Partial<PortalView>) { Object.assign(find(id)!, patch); },
     /** Answer one request of the page, or null when it isn't a portals call. */

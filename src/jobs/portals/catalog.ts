@@ -9,7 +9,8 @@ import { place } from '../places.ts';
 import { hostAllowed } from '../net/netguard.ts';
 
 export type Limits = { searches_per_run: number; pages_per_search: number; delay_ms: number | [number, number]; min_hours: number; pages_per_day: number };
-export type JsonAdapter = { url: string; list: string; where?: Record<string, string>; fields: Record<string, string>; url_template?: string };
+/** A list of postings the page has: `url` a JSON response it loads (regex), or `state` a window value (e.g. __NEXT_DATA__.props); `list` is relative to it. */
+export type JsonAdapter = { url: string; state?: string; list: string; where?: Record<string, string>; fields: Record<string, string>; url_template?: string };
 export type Portal = {
   id: string; name: string; countries: string[]; fields: string[];
   hosts: string[]; cdn_hosts: string[]; auth_hosts: string[];
@@ -54,7 +55,7 @@ function normalise(e: any, d: any): Portal {
       ...(s.place_aliases ? { place_aliases: rec(s.place_aliases) } : {}), ...(s.country_hosts ? { country_hosts: rec(s.country_hosts) } : {}),
     },
     job_url: { pattern: String(e?.job_url?.pattern ?? ''), ...(e?.job_url?.keep_params ? { keep_params: strs(e.job_url.keep_params) } : {}), ...(e?.job_url?.canonical ? { canonical: String(e.job_url.canonical) } : {}) },
-    json: (Array.isArray(e?.json) ? e.json : []).map((j: any) => ({ url: String(j?.url ?? ''), list: String(j?.list ?? ''), fields: rec(j?.fields), ...(j?.where ? { where: rec(j.where) } : {}), ...(j?.url_template ? { url_template: String(j.url_template) } : {}) })),
+    json: (Array.isArray(e?.json) ? e.json : []).map((j: any) => ({ url: String(j?.url ?? ''), ...(j?.state ? { state: String(j.state) } : {}), list: String(j?.list ?? ''), fields: rec(j?.fields), ...(j?.where ? { where: rec(j.where) } : {}), ...(j?.url_template ? { url_template: String(j.url_template) } : {}) })),
     limits: { searches_per_run: Number(lim.searches_per_run), pages_per_search: Number(lim.pages_per_search), delay_ms: Array.isArray(lim.delay_ms) ? [Number(lim.delay_ms[0]), Number(lim.delay_ms[1])] : Number(lim.delay_ms), min_hours: Number(lim.min_hours), pages_per_day: Number(lim.pages_per_day) },
     headful: e?.headful === true, risk: String(e?.risk ?? ''), verified: e?.verified === true, ...(e?.notes ? { notes: String(e.notes) } : {}),
   };
@@ -106,7 +107,9 @@ export function portalIssues(p: Portal): string[] {
   if (p.search.page && !(p.search.page.step > 0 && p.search.page.start >= 0)) out.push(`${at}: search.page needs start ≥ 0 and step > 0`);
   if (!p.job_url.pattern || !regexOk(p.job_url.pattern)) out.push(`${at}: job_url.pattern is missing or not a regex`);
   for (const j of p.json) {
-    if (!j.url || !regexOk(j.url)) out.push(`${at}: json url is missing or not a regex`);
+    if (!j.url && !j.state) out.push(`${at}: json needs a url (a response pattern) or a state path`);
+    if (j.url && !regexOk(j.url)) out.push(`${at}: json url is not a regex`);
+    if (j.state && !/^[A-Za-z_$][\w$]*(\.[\w$-]+)*$/.test(j.state)) out.push(`${at}: json state is a dotted path from a window value`);
     if (!j.list) out.push(`${at}: json has no list path`);
     if (!j.fields.title) out.push(`${at}: json fields need a title`);
     if (!j.fields.url && !j.url_template) out.push(`${at}: json needs fields.url or url_template`);
