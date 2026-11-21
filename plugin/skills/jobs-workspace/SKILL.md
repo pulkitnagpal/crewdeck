@@ -225,6 +225,13 @@ text, asks at most two short questions, writes one proposal (`crewdeck jobs prop
 the request. Never change the notes directly for a tell request: the proposal is the only write.
 
 ## Also in this session
+- **Portals** (job sites the user signed in to, ADR-0008) are scanned in every sources run, after the planned sources,
+  at no token cost. When one needs signing in again (`crewdeck jobs portals list` shows "needs sign-in", or a Find
+  result's pool is missing it), tell the user in one line: "<Portal> needs you to sign in again: Jobs page → Sources →
+  Portals → Sign in, or the Sign in button in the /crewdeck panel". If they ask you to, run
+  `crewdeck jobs portals connect <id>`: a window opens and **they** type the password and any code; you never do, and
+  you never get past a CAPTCHA or checkpoint for them. Connecting a new portal or registering on one is the
+  **jobs-setup** skill's Portals step (the risk said once, an account only after their yes).
 - "Not interested" said in chat about a role: write the user's words to a file and run
   `crewdeck jobs not-interested <role> --reason-file <T>/reason.txt` (optionally `--title-words-file`).
 - Anything the user asks you to remember: the **crewdeck-memory** skill.

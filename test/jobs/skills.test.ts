@@ -118,10 +118,19 @@ test('skills: the six playbooks, each with a name that matches its folder and a 
 // ---- the command lint ----
 
 const SRC_TOP = read('src', 'cli.ts');
-const SRC_JOBS = read('src', 'jobs', 'cli.ts') + read('src', 'jobs', 'commands.ts') + read('src', 'jobs', 'sources-cmd.ts') + read('src', 'jobs', 'proposals-cmd.ts');
+// The portals engine's own files (ADR-0008), whatever it names them; the page-API stub isn't a command.
+const PORTALS_DIR = join(REPO, 'src', 'jobs', 'portals');
+const SRC_PORTALS = existsSync(PORTALS_DIR) ? readdirSync(PORTALS_DIR).filter((f) => f.endsWith('.ts') && f !== 'api-stub.ts').map((f) => read('src', 'jobs', 'portals', f)).join('\n') : '';
+const SRC_JOBS = read('src', 'jobs', 'cli.ts') + read('src', 'jobs', 'commands.ts') + read('src', 'jobs', 'sources-cmd.ts') + read('src', 'jobs', 'proposals-cmd.ts') + SRC_PORTALS;
+/**
+ * `crewdeck jobs portals list|connect <id> [--signup]|disconnect <id>|test <id>` (ADR-0008), as agreed with the engine:
+ * the skills are checked against this until the command exists, then against its source like every other command.
+ */
+const PORTALS_CONTRACT = { verbs: ['list', 'connect', 'disconnect', 'test'], flags: ['signup'] };
+const portalsPending = () => !JOBS_COMMANDS.includes('portals');
 const TOP = ['setup', 'init', 'up', 'open', 'service', 'address', 'add-project', 'doctor', 'requests', 'request', 'progress', 'jobs'];
 /** Commands whose next word is a verb. */
-const VERBS = new Set(['me', 'pref', 'request', 'event', 'question', 'linkedin', 'contact', 'message', 'followup', 'view', 'sources', 'proposals']);
+const VERBS = new Set(['me', 'pref', 'request', 'event', 'question', 'linkedin', 'contact', 'message', 'followup', 'view', 'sources', 'proposals', 'portals']);
 const literal = (src: string, w: string) => src.includes(`'${w}'`) || src.includes(`"${w}"`);
 
 /** Every `crewdeck …` command line in a Markdown text: inline code spans and fenced code lines. */
@@ -149,6 +158,11 @@ export function lintCommand(cmd: string): string[] {
     src = SRC_JOBS;
     const [sub, verb] = rest;
     if (!plain(sub)) return out;
+    if (sub === 'portals' && portalsPending()) {
+      if (plain(verb)) for (const v of verb.split('|')) if (!PORTALS_CONTRACT.verbs.includes(v)) out.push(`"crewdeck jobs portals ${v}": no such verb`);
+      for (const tok of rest.slice(2)) { const m = /^--([a-z][a-z-]*)/.exec(tok); if (m && !PORTALS_CONTRACT.flags.includes(m[1])) out.push(`"${cmd}": no flag --${m[1]}`); }
+      return out;
+    }
     for (const c of sub.split('|')) {
       if (!JOBS_COMMANDS.includes(c)) out.push(`unknown command "crewdeck jobs ${c}"`);
       if (VERBS.has(c) && plain(verb)) for (const v of verb.split('|')) if (!literal(src, v)) out.push(`"crewdeck jobs ${c} ${v}": no such verb`);
@@ -172,6 +186,31 @@ test('the lint itself: it catches an unknown command, verb and flag', () => {
   assert.deepEqual(lintCommand('jobs link --request 3 --submit'), ['"jobs link --request 3 --submit": no flag --submit']);
   assert.deepEqual(lintCommand('request close 3'), ['"crewdeck request close": no such verb']);
   assert.deepEqual(lintCommand('jobs me|pref|remember …'), []);
+  // Portals (ADR-0008): the agreed verbs and --signup; anything else is caught.
+  assert.deepEqual(lintCommand('jobs portals connect <id> --signup'), []);
+  assert.deepEqual(lintCommand('jobs portals list'), []);
+  assert.deepEqual(lintCommand('jobs portals login <id>'), ['"crewdeck jobs portals login": no such verb']);
+  assert.deepEqual(lintCommand('jobs portals connect <id> --password'), ['"jobs portals connect <id> --password": no flag --password']);
+});
+
+test('portals in the skills (ADR-0008): setup recommends, says the risk once, connects or registers only with a yes, tests, then on; the runs say what to do on "sign in again"', () => {
+  const setup = read('plugin', 'skills', 'jobs-setup', 'SKILL.md');
+  const portals = setup.slice(setup.indexOf('5. **Portals**'), setup.indexOf('## 6.'));
+  assert.ok(portals.length > 500, 'a Portals step in Where to look, before Fetch once');
+  for (const re of [/`crewdeck jobs portals list`/, /`crewdeck jobs portals connect <id>`/, /`crewdeck jobs portals connect <id> --signup`/, /`crewdeck jobs portals test <id>`/,
+    /sites may not allow automation and could limit your account/, /once/, /create nothing without a clear yes in this\s+chat/,
+    /\*\*They\*\* type passwords, one-time codes and CAPTCHAs/, /non-secret fields/, /only after they say yes to using them/, /switched on/]) assert.match(portals, re);
+  // In order: list, risk, connect, sign up, test, switch on.
+  const at = ['portals list', 'Say the risk', 'portals connect <id>`', '--signup', 'portals test', 'switched on'].map((x) => portals.indexOf(x));
+  assert.ok(at.every((x, i) => x >= 0 && (i === 0 || x > at[i - 1])), `the order: ${at}`);
+  const daily = read('plugin', 'skills', 'jobs-daily-run', 'SKILL.md');
+  const ws = read('plugin', 'skills', 'jobs-workspace', 'SKILL.md');
+  for (const t of [daily, ws]) {
+    assert.match(t, /Portals/);
+    assert.match(t, /needs you to sign in again: Jobs page\s+→\s+Sources\s+→\s+Portals\s+→\s+Sign in/);
+  }
+  assert.match(daily, /scanned in the same run/);
+  assert.match(ws, /scanned in every sources run/);
 });
 
 test('every crewdeck command in the skills, the generated workspace CLAUDE.md and the vault CLAUDE.md exists', () => {

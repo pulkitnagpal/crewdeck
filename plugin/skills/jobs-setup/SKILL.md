@@ -157,6 +157,29 @@ it everywhere. Write each with `me set`.
    (providers not installed, or Node older than 25), say so: the page stays in their list and is tried at the first fetch.
 4. `crewdeck jobs sources list` shows the list; reorder with `crewdeck jobs sources move <key> up|down|first|last`. Tell
    them they can change all of it on the **Sources** tab.
+5. **Portals** (job sites they sign in to: in India Naukri, Instahyre, Wellfound, foundit and others; elsewhere Indeed,
+   Seek, StepStone…). Their listings sit behind a sign-in, so the boards above miss them. Crewdeck scans them in its
+   own browser profile, with the person's account, at a slow pace, at no token cost.
+   1. `crewdeck jobs portals list` shows the catalog: each portal's countries, fields and state. From their country
+      and their targets' families, recommend the **few that matter** (two to four), say why in one line each, and let
+      them pick. Never propose a portal that isn't in the list.
+   2. Say the risk **once**, plainly, before the first connect: "Crewdeck scans this site with your account at a slow
+      pace; sites may not allow automation and could limit your account." Go on only after they say yes.
+   3. **They already have an account:** `crewdeck jobs portals connect <id>`. A window of Crewdeck's own browser opens
+      at the sign-in page; they type their password and any code there, and solve any CAPTCHA themselves. The command
+      waits until they are signed in and the window closes by itself. Tell them that before you run it.
+   4. **No account yet:** ask "Shall I help you register on <portal>?" and create nothing without a clear yes in this
+      chat. With the yes, `crewdeck jobs portals connect <id> --signup` opens its sign-up page. Tell them what to enter,
+      field by field, using their notes for non-secret fields (name, email, phone, city, current title, years of
+      experience), and only after they say yes to using them. **They** type passwords, one-time codes and CAPTCHAs;
+      never ask for them, never type them, never read them back. Payment or an ID number on a sign-up page: stop,
+      they decide and type it themselves.
+   5. `crewdeck jobs portals test <id>` scans one search and prints what it found and how (the page's data, job
+      markup or links) with a few titles. Show them that. Nothing found, or it stopped at a challenge: say so plainly;
+      the portal stays off.
+   6. Then it is switched on: the switch on its row, Jobs page → **Sources** → **Portals** (they can switch it off
+      there at any time, or remove it with `crewdeck jobs portals disconnect <id>`). Switched-on portals are scanned in
+      every fetch from then on.
 
 ## 6. Fetch once, then preview until they are happy
 1. `crewdeck jobs source --only-new-sources` fetches only the sources that were never fetched (it can take minutes; post

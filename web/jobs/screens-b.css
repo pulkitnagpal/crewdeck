@@ -43,3 +43,29 @@
 .pacts { display: flex; gap: 4px; flex: none; }
 .pitem .bad { color: var(--bad); }
 .pitem .more-body p { margin: 0; }
+
+/* Portals (ADR-0008): one compact row each, the switch and one button at the top right (also on a phone, where the
+   chip wraps under the name). What opens in a row (a confirm, a test result, Details) takes the row's full width under
+   both, so nothing overlaps the controls or gets squeezed beside them. */
+.portals .plist2 { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.portals .more .plist2 { margin-top: 0.25rem; }
+.prow { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.875rem; row-gap: 0.25rem; align-items: start; padding: 0.625rem 0.875rem; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--ground); }
+.prow .body { display: contents; }
+.prow .body > * { grid-column: 1 / -1; min-width: 0; }
+.prow .body > .head { grid-column: 1; grid-row: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.5rem; min-height: 2rem; }
+.prow .ctl { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 0.625rem; min-height: 2rem; }
+.prow.off .head h3 { color: var(--soft); }
+.prow .switch:disabled { opacity: .45; cursor: not-allowed; }
+.prow .small.ok { color: var(--ok); }
+.prow .small.warn { color: var(--warn); }
+.prow p.small { display: flex; align-items: center; gap: 0.5rem; }
+.prow .ptest { display: flex; flex-direction: column; gap: 0.25rem; }
+.prow .psample { margin: 0; padding-left: 1.125rem; font-size: 0.875rem; color: var(--soft); }
+.prow .psample a { overflow-wrap: anywhere; }
+.prow .more { margin: 0; }
+.portals .small, .portals .chip, .portals .btn, .portals .linkbtn { font-size: 0.875rem; }
+@media (max-width: 600px) {
+  .prow { column-gap: 0.5rem; padding: 0.625rem 0.75rem; }
+  .prow .ctl { gap: 0.5rem; }
+  .prow .head .chip { white-space: normal; overflow-wrap: anywhere; }
+}

@@ -34,6 +34,8 @@ export type Today = {
         ready_total?: number
         /** Proposals waiting for Approve or Reject (P3). */
         proposals?: number
+        /** Connected portals whose sign-in ran out (ADR-0008): the panel says so, with Sign in (op connectPortal). */
+        portals_sign_in?: { id: string; name: string }[]
       }
   tickets: { project: string; id: string; title: string; status: string }[]
   more: number

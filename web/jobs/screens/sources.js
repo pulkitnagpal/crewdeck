@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { html, noop, cls, ago, clock, plural, More } from '../lib.js';
 import { TerminalCode } from './settings.js';
+import { Portals } from './portals.js';
 
 const n = (x) => Number(x ?? 0).toLocaleString('en-US');
 const FAMILY = (id) => id.replace(/-/g, ' ');
@@ -222,7 +223,7 @@ function Browse({ data, f, list, set, onAdd }) {
     <ul class="clist">${list.map((c) => html`<${CatalogRow} key=${c.id} c=${c} onAdd=${onAdd} />`)}</ul>`;
 }
 
-export function Sources({ data, state = null, onAct = async () => null, onFeature = async () => null, onNotes = noop }) {
+export function Sources({ data, state = null, portals = null, onAct = async () => null, onFeature = async () => null, onNotes = noop }) {
   const [say, setSay] = useState('');
   const [focus, setFocus] = useState(null);
   const companyRef = useRef(null);
@@ -294,6 +295,8 @@ export function Sources({ data, state = null, onAct = async () => null, onFeatur
       ${data.linkedin.in_list ? null : html`<div class="row-flex"><span class="soft small">LinkedIn isn't in your list.</span>
         <button type="button" class="btn small" onClick=${addLinkedIn}>Place LinkedIn in your list</button></div>`}
     </section>
+    <${Portals} portals=${portals} onAct=${onAct} say=${setSay}
+      mine=${{ countries: data.filters.regions.filter((r) => r.mine).map((r) => r.id), within: data.filters.within, fields: data.filters.mine_families }} />
     <div class="grid2 adds" ref=${companyRef}>
       <${AddPage} kind="company" data=${data} onAdd=${addPage} onAsk=${ask} asking=${asking} />
       <${AddPage} kind="address" data=${data} onAdd=${addPage} onAsk=${ask} asking=${asking} />

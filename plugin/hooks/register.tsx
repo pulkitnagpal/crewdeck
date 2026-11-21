@@ -366,6 +366,16 @@ async function jobsAct($: Dollar, port: number, body: { op: 'find' } | { op: 'ap
       : d.preparing ? 'Preparing it first (about 1 min) in your Jobs chat' : 'Sent to your Jobs chat')
 }
 
+/** A connected portal needs the person to sign in again (ADR-0008): Crewdeck opens its sign-in window; they type there. */
+async function portalSignIn($: Dollar, port: number, id: string, name: string): Promise<void> {
+  const got = (await post($, port, '/api/today/jobs', { op: 'connectPortal', id })) as (Today & { error?: string; done?: { opened?: boolean } }) | null
+  if (!got) { await update($, todayNote, () => 'That did not reach Crewdeck: is it running?'); return }
+  if (got.error) { await update($, todayNote, () => String(got.error)); return }
+  await update($, todayAtom, () => got)
+  await update($, todayNote, () => '')
+  $.ui.toast(got.done?.opened ? `A ${name} window opened: sign in there` : `Crewdeck could not open ${name}: open Jobs → Sources`)
+}
+
 /** The git project this session's folder is in (the nearest folder up with a .git), found without running git: on a Mac
  * without the developer tools, git itself would pop up Apple's install dialog. */
 async function projectRoot($: Dollar): Promise<string> {
@@ -569,6 +579,12 @@ export const register: Register = (on, options) => {
               </Box>
             ))}
             {j.queue.filter((q) => !(j.picks ?? []).some((p) => p.id === q.id)).map((q, i) => <Text key={`job-${i}`} dimColor={q.kind !== 'first' && q.kind !== 'ready'}>{q.company} · {q.title}{q.chip ? ` (${q.chip})` : ''}</Text>)}
+            {(j.portals_sign_in ?? []).slice(0, 3).map((p) => (
+              <Box key={`portal-${p.id}`} flexDirection="row" columnGap={1}>
+                <Text color="warning">{p.name} needs you to sign in again</Text>
+                <Button key={`portal-signin-${p.id}`} label="Sign in" onPress={() => portalSignIn($, port, p.id, p.name)} />
+              </Box>
+            ))}
             {proposals ? <Text key="proposals">{proposals} proposal{proposals === 1 ? '' : 's'} to review</Text> : null}
             {props ? props.pending.flatMap((p) => [
               <Text key={`pr-${p.id}`} bold>{p.summary}</Text>,

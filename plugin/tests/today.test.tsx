@@ -28,11 +28,12 @@ const res = (exitCode: number, stdout: string, stderr: string) => ({ exitCode, s
 const typed = (command: string, args = '') => ({ command, args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 } })
 
 /** A fake Crewdeck on port 4848: what each curl the plugin runs gets back, and what it was asked. */
-function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: number }) {
+function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: number; portalsSignIn?: { id: string; name: string }[] }) {
   const s = {
     running: o.running,
     setupNeeded: !!o.setupNeeded,
     proposals: o.proposals,
+    portalsSignIn: o.portalsSignIn,
     decided: [] as string[],
     told: [] as string[],
     todos: [{ line: 4, done: false, text: 'Tweet for the day' }] as Todo[],
@@ -45,7 +46,7 @@ function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: 
     date: '2026-11-20', url: 'http://crewdeck.localhost:4848', notes_page: 'journal/2026-11-20', todos: s.todos,
     jobs: { setup_needed: s.setupNeeded, connected: false, session_link: `claude://code/new?folder=%2Ffake%2Fjobs&q=${encodeURIComponent(s.setupNeeded ? 'Hello! Please set up my Crewdeck job search.' : 'Hello! This is my Crewdeck Jobs session.')}`, counts: { needs_you: 1, ready: 2, in_progress: 0, applied_today: 0 },
       queue: [{ id: 'a1b2c3d4e5f6', company: 'Acme', title: 'Backend Engineer', chip: 'Needs you', kind: 'first' }, { id: 'bbbbbbbbbbbb', company: 'Initech', title: 'Data Analyst', chip: 'Applying', kind: 'info' }],
-      picks: [{ id: 'a1b2c3d4e5f6', company: 'Acme', title: 'Backend Engineer', prepared: true }, { id: 'c0ffee000001', company: 'Globex', title: 'Platform Engineer', prepared: false }], ready_total: 2, ...(s.proposals === undefined ? {} : { proposals: s.proposals }) },
+      picks: [{ id: 'a1b2c3d4e5f6', company: 'Acme', title: 'Backend Engineer', prepared: true }, { id: 'c0ffee000001', company: 'Globex', title: 'Platform Engineer', prepared: false }], ready_total: 2, ...(s.proposals === undefined ? {} : { proposals: s.proposals }), ...(s.portalsSignIn ? { portals_sign_in: s.portalsSignIn } : {}) },
     tickets: [{ project: 'app', id: 'TASK-2', title: 'Fix login', status: 'In Progress' }], more: 0,
     projects: [{ name: 'app', label: 'Board' }],
   })
@@ -79,6 +80,10 @@ function fakeCrewdeck(o: { running: boolean; setupNeeded?: boolean; proposals?: 
           recent: [{ id: 4, summary: 'Earlier', status: 'done', items: [{ n: 1, line: 'Skip Initech', status: 'approved', can_undo: true }] }] }))
       }
       if (path === '/api/tell') { s.told.push(body.text); return ok(JSON.stringify({ ok: true, request: 21, opened: true, link: `claude://code/new?folder=%2Ffake%2Fjobs&q=${encodeURIComponent('Crewdeck: handle tell request 21')}` })) }
+      if (path === '/api/today/jobs' && body.op === 'connectPortal') {
+        s.portalsSignIn = (s.portalsSignIn ?? []).filter((p) => p.id !== body.id)
+        return ok(JSON.stringify({ ...today(), done: { ok: true, opened: true } }))
+      }
       if (path === '/api/today/jobs') return ok(JSON.stringify({ ...today(), done: { ok: true, request: 9, opened: true } }))
       if (path === '/api/claim') return ok(JSON.stringify({ lane: 'cockpit', cli: 'crewdeck', proof: await sha256Hex(`crewdeck-proof:${TOKEN}:${body.nonce}:4848`), requests: [] }))
       return ok('{}')
@@ -398,5 +403,51 @@ test('an older Crewdeck than the plugin: the panel offers Update Crewdeck, which
   await ui.press({ key: 'update' })
   expect(spawned).toEqual(['sh -s'])
   expect(s.calls.length).toBeGreaterThan(0)
+  await ui.unmount()
+})
+
+test('a connected portal that needs signing in again: one line with Sign in, which asks Crewdeck to open its window', async ($, on) => {
+  const { s, run } = fakeCrewdeck({ running: true, portalsSignIn: [{ id: 'naukri', name: 'Naukri' }] })
+  mock.clock(on)
+  on('session.cwd', () => ({ value: '/work' }))
+  on('command.register', () => ({ value: { command: 'crewdeck' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('fs.read', () => ({ value: `${TOKEN}\n` }))
+  on('process.run', async (_, e) => ({ value: await run(e.argv, e.init) }))
+  const toasts: string[] = []
+  on('ui.toast', (_, e) => { toasts.push(String(e.text)); return { value: undefined } })
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(typed('crewdeck'))
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ type: 'Text', text: 'Naukri needs you to sign in again' })).toBeDefined()
+    expect((await ui.find({ key: 'portal-signin-naukri' }))?.props.label).toBe('Sign in')
+    await ui.unmount()
+  }
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'portal-signin-naukri' })
+  // Only the portal's id goes to Crewdeck, with the token; the panel opens nothing itself (Crewdeck opens the window).
+  expect(s.calls.at(-1)).toEqual({ path: '/api/today/jobs', body: { op: 'connectPortal', id: 'naukri' }, token: true })
+  expect(toasts.at(-1)).toBe('A Naukri window opened: sign in there')
+  expect(s.opened).toEqual([])
+  expect(await ui.find({ type: 'Text', text: /needs you to sign in again/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('no portal needs signing in (or an older Crewdeck without portals): no sign-in line', async ($, on) => {
+  const { run } = fakeCrewdeck({ running: true })
+  mock.clock(on)
+  on('session.cwd', () => ({ value: '/work' }))
+  on('command.register', () => ({ value: { command: 'crewdeck' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('fs.read', () => ({ value: `${TOKEN}\n` }))
+  on('process.run', async (_, e) => ({ value: await run(e.argv, e.init) }))
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(typed('crewdeck'))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /needs you to sign in again/ })).toBeUndefined()
+  expect(await ui.find({ key: 'portal-signin-naukri' })).toBeUndefined()
   await ui.unmount()
 })

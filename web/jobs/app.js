@@ -39,8 +39,9 @@ function App() {
   const load = useCallback(async () => {
     try {
       const path = screen === 'today' ? `today${selected ? `?role=${selected}` : ''}` : screen === 'knowledge' ? `knowledge?tab=${tab}` : screen;
-      const [s, d] = await Promise.all([get('state'), get(path)]);
-      setState(s); setData({ screen, tab, d }); setError('');
+      // Sources also lists the signed-in portals (ADR-0008); a Crewdeck without them answers 404 and the section hides.
+      const [s, d, portals] = await Promise.all([get('state'), get(path), screen === 'sources' ? get('portals').catch(() => null) : null]);
+      setState(s); setData({ screen, tab, d, portals: portals?.portals ?? null }); setError('');
     } catch (e) { setError(e.message); }
   }, [screen, selected, tab]);
 
@@ -137,7 +138,7 @@ function App() {
     body = html`<${Preferences} key=${JSON.stringify([d.values, pending])} data=${d} pending=${pending} onNotes=${openNotes} onPreview=${(changes) => preview({ search: changes })}
       onSave=${async (changes, from) => { const r = await run('prefs', { changes, ...(from ? { from } : {}) }, (x) => (x.ok ? 'Saved to jobs/search.md' : null)); if (r?.ok) setPending(null); return r; }} />`;
   }
-  else if (screen === 'sources') body = html`<${Sources} data=${d} state=${state} onAct=${(name, b) => run(name, b)} onFeature=${onFeature} onNotes=${openNotes} />`;
+  else if (screen === 'sources') body = html`<${Sources} data=${d} state=${state} portals=${data.portals} onAct=${(name, b) => run(name, b)} onFeature=${onFeature} onNotes=${openNotes} />`;
   else body = html`<${Settings} data=${d} onSet=${onFeature} />`;
 
   // A link Claude couldn't pick (cooldown, already applied): offer the user's override, set by this click only.

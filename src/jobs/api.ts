@@ -1046,6 +1046,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const op = String(b?.op ?? '');
     try {
       if (op === 'find') return await actions.find({});
+      if (op === 'connectPortal' && Object.hasOwn(actions, 'connectPortal')) return await actions.connectPortal({ id: String(b.id ?? '') }); // portals UI (ADR-0008): the panel's Sign in
       if (op === 'apply') {
         const role = String(b.role ?? '');
         if (!ROLE_ID.test(role) || !todayView(ctx).queue.some((q) => q.id === role)) throw new HttpError(400, 'not one of today\'s picks');
