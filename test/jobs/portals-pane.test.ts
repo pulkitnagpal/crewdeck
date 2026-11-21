@@ -365,3 +365,20 @@ test('the minifier keeps strings and regex literals and only drops whitespace th
   assert.deepEqual(f('x  y', 8), ['x', 'y']);
   assert.equal(f(1, 8), 4);
 });
+
+test('ingest keeps a card\'s short description and its Easy Apply mark (a LinkedIn posting only); any other apply kind is refused', async () => {
+  const w = world();
+  const p = fixturePortal();
+  connect(w.jobsHome);
+  assert.throws(() => parsePageOutput(page([{ ...J(1), apply_kind: 'lever' }]), p), /apply_kind: linkedin_easy/);
+  ingestPage(w.ctx, p, page([J(1, { description: 'Own the weekly metrics review.', apply_kind: 'linkedin_easy' })]));
+  const fx = w.ctx.db.prepare("select description, apply_kind from roles where source_key='portal:fixture'").get() as any;
+  assert.deepEqual([fx.description, fx.apply_kind], ['Own the weekly metrics review.', 'generic'], 'off LinkedIn the mark is ignored');
+  const { loadPortals } = await import('../../src/jobs/portals/catalog.ts');
+  const li = loadPortals().byId.get('linkedin')!;
+  connect(w.jobsHome, 'linkedin');
+  const liJob = (id: string, o: Record<string, string> = {}) => ({ url: `https://www.linkedin.com/jobs/view/${id}`, title: 'Data Analyst', company: 'Example Labs', location: 'India (Remote)', ...o });
+  ingestPage(w.ctx, li, page([liJob('4400000001', { apply_kind: 'linkedin_easy' }), liJob('4400000002')], {}, 'https://www.linkedin.com/jobs/search-results/?keywords=data'));
+  const rows = w.ctx.db.prepare("select url, apply_kind from roles where source_key='portal:linkedin' order by url").all() as any[];
+  assert.deepEqual(rows.map((x) => x.apply_kind ?? null), ['linkedin_easy', null], 'Easy Apply stored; an unmarked LinkedIn posting stays unconfirmed');
+});

@@ -13,6 +13,7 @@ export type Layer = 'json' | 'jsonld' | 'links';
 export type Posting = {
   url: string; title: string; company: string; location: string; description?: string; posted_at?: string; workplace?: 'remote' | 'hybrid' | 'onsite';
   /** ADR-0008 §8: the company's own country (ISO code) when the portal shows it (JSON-LD hiringOrganization, an adapter field). */ company_country?: string;
+  /** A card's own apply mark (LinkedIn's Easy Apply). */ apply_kind?: 'linkedin_easy';
 };
 export type Found = Posting & { by: Layer };
 export type Captured = { url: string; body: string };

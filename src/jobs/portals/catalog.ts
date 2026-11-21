@@ -42,7 +42,9 @@ export const canScan = (p: Portal) => !p.teach && !!p.search.url && !!p.job_url.
 /** A job card: either CSS selectors for its parts, or `react` (the card component's prop holding the job record, read
  * from the page's own data with no request) mapped by `fields` like a JSON adapter. */
 export type CardAdapter = {
-  item: string; title?: string; company?: string; location?: string; posted_at?: string; react?: string; fields?: Record<string, string>;
+  item: string; title?: string; company?: string; location?: string; posted_at?: string; description?: string; react?: string; fields?: Record<string, string>;
+  /** The card's text names how it is applied to (LinkedIn's "Easy Apply"): pattern (regex, case-insensitive) → kind. */
+  apply_hint?: { pattern: string; kind: 'linkedin_easy' };
   /** The job's id from an attribute of the card (id_pattern's first group), its link from url_template. */
   id_attr?: string; id_pattern?: string; url_template?: string;
   /** The parts as the card's paragraphs in order (the last line of each), when its classes are generated. */
@@ -91,8 +93,9 @@ export function normalise(e: any, d: any): Portal {
     },
     job_url: { pattern: String(e?.job_url?.pattern ?? ''), ...(e?.job_url?.keep_params ? { keep_params: strs(e.job_url.keep_params) } : {}), ...(e?.job_url?.canonical ? { canonical: String(e.job_url.canonical) } : {}) },
     ...(e?.cards ? { cards: [].concat(e.cards).filter((c: any) => c && typeof c === 'object').map((c: any) => ({
-      ...Object.fromEntries(['item', 'title', 'company', 'location', 'posted_at', 'react', 'id_attr', 'id_pattern', 'url_template'].filter((k) => typeof c[k] === 'string').map((k) => [k, String(c[k])])),
+      ...Object.fromEntries(['item', 'title', 'company', 'location', 'posted_at', 'description', 'react', 'id_attr', 'id_pattern', 'url_template'].filter((k) => typeof c[k] === 'string').map((k) => [k, String(c[k])])),
       ...(c.fields ? { fields: rec(c.fields) } : {}),
+      ...(c.apply_hint && typeof c.apply_hint.pattern === 'string' ? { apply_hint: { pattern: String(c.apply_hint.pattern), kind: c.apply_hint.kind } } : {}),
       ...(c.lines && typeof c.lines.selector === 'string' ? { lines: { selector: String(c.lines.selector), title: Number(c.lines.title ?? 0), ...(c.lines.company !== undefined ? { company: Number(c.lines.company) } : {}), ...(c.lines.location !== undefined ? { location: Number(c.lines.location) } : {}) } } : {}),
     }) as CardAdapter) } : {}),
     json: (Array.isArray(e?.json) ? e.json : []).map((j: any) => ({ url: String(j?.url ?? ''), ...(j?.state ? { state: String(j.state) } : {}), list: String(j?.list ?? ''), fields: rec(j?.fields), ...(j?.where ? { where: rec(j.where) } : {}), ...(j?.url_template ? { url_template: String(j.url_template) } : {}) })),
@@ -158,6 +161,7 @@ export function portalIssues(p: Portal): string[] {
     if (!c.item) out.push(`${at}: cards need an item selector`);
     if (c.react ? !(c.fields?.title && c.fields?.url) : !(c.title || c.lines)) out.push(`${at}: cards need a title selector, lines, or react with fields.title and fields.url`);
     if (c.id_attr && !(c.id_pattern && regexOk(c.id_pattern) && c.url_template?.includes('{id}'))) out.push(`${at}: cards id_attr needs an id_pattern regex and a url_template with {id}`);
+    if (c.apply_hint && (!regexOk(c.apply_hint.pattern) || c.apply_hint.kind !== 'linkedin_easy')) out.push(`${at}: cards apply_hint needs a regex pattern and kind linkedin_easy`);
     if (c.react && !/^[A-Za-z_$][\w$]*$/.test(c.react)) out.push(`${at}: cards react is a prop name`);
   }
   for (const j of p.json) {

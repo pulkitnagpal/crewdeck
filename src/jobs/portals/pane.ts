@@ -79,7 +79,7 @@ export function planPortals(ctx: Ctx, o: { mode?: PortalsMode; only?: string; po
 
 const KEYS = new Set(['url', 'signals', 'jobs']);
 const SIGNALS = ['sign_in_wall', 'challenge', 'empty'] as const;
-const JOB_FIELDS: Record<string, number> = { url: 500, title: 200, company: 120, location: 120, posted_at: 40, workplace: 10, company_country: 60 };
+const JOB_FIELDS: Record<string, number> = { url: 500, title: 200, company: 120, location: 120, posted_at: 40, workplace: 10, company_country: 60, description: 400, apply_kind: 20 };
 const WORKPLACES = new Set(['remote', 'hybrid', 'onsite']);
 const plainStr = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -111,6 +111,7 @@ export function parsePageOutput(raw: unknown, portal: Portal): { out: PageOutput
     try { const u = new URL(x.url); if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error(); host = u.hostname; } catch { throw new Error(`jobs[${i}].url: an absolute web address`); }
     if (!hostIn(host, portal.hosts)) throw new Error(`jobs[${i}].url: ${host} is not one of ${portal.name}'s hosts`);
     if (x.workplace !== undefined && !WORKPLACES.has(x.workplace as string)) throw new Error(`jobs[${i}].workplace: remote, hybrid or onsite`);
+    if (x.apply_kind !== undefined && x.apply_kind !== 'linkedin_easy') throw new Error(`jobs[${i}].apply_kind: linkedin_easy`);
     const url = canonicalJobUrl(x.url, x.url, portal);
     const title = plainStr(x.title as string);
     if (!url || !title) { dropped++; return; }
@@ -118,6 +119,7 @@ export function parsePageOutput(raw: unknown, portal: Portal): { out: PageOutput
       url, title, company: plainStr(String(x.company ?? '')), location: plainStr(String(x.location ?? '')),
       ...(x.posted_at ? { posted_at: plainStr(x.posted_at as string) } : {}), ...(x.workplace ? { workplace: x.workplace as PaneJob['workplace'] } : {}),
       ...(x.company_country ? { company_country: plainStr(x.company_country as string) } : {}),
+      ...(x.description ? { description: plainStr(x.description as string) } : {}), ...(x.apply_kind ? { apply_kind: 'linkedin_easy' as const } : {}),
     });
   });
   return { out: { url: r.url, signals: { sign_in_wall: s.sign_in_wall as boolean, challenge: s.challenge as boolean, empty: s.empty as boolean }, jobs }, dropped };
@@ -135,7 +137,8 @@ export function toPosting(j: PaneJob, now: Date): Posting {
   const posted = /^\d{9,13}$/.test(j.posted_at ?? '') ? postedAt(Number(j.posted_at), now) : postedAt(j.posted_at, now);
   const location = placeLike(j.location) ? j.location : '';
   const wp = j.workplace ?? workplaceOf(j.location);
-  return { url: j.url, title: j.title, company: j.company, location, ...(posted ? { posted_at: posted } : {}), ...(wp ? { workplace: wp } : {}), ...(j.company_country ? { company_country: j.company_country } : {}) };
+  return { url: j.url, title: j.title, company: j.company, location, ...(posted ? { posted_at: posted } : {}), ...(wp ? { workplace: wp } : {}), ...(j.company_country ? { company_country: j.company_country } : {}),
+    ...(j.description ? { description: j.description } : {}), ...(j.apply_kind ? { apply_kind: j.apply_kind } : {}) };
 }
 
 export type IngestResult = {

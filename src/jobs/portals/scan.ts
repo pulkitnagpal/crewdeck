@@ -65,7 +65,7 @@ export function storePostings(ctx: Ctx, portal: Portal, postings: Posting[], at:
   for (const p of postings) {
     const c = cleanJob({ ...p, description: p.description ?? '', location: p.location || (p.workplace === 'remote' ? 'Remote' : '') }, { features: { linkedin_links: true }, at });
     if (!c.ok) continue;
-    const { id, isNew } = upsertRole(ctx.db, { ...c.role, source: 'portal', source_key: `portal:${portal.id}`, company_country: p.company_country ?? null });
+    const { id, isNew } = upsertRole(ctx.db, { ...c.role, source: 'portal', source_key: `portal:${portal.id}`, company_country: p.company_country ?? null, ...(p.apply_kind ? { apply_kind: p.apply_kind } : {}) });
     stored++;
     if (isNew) { added++; addEvent(ctx.db, id, 'added', `from ${portal.name} (signed-in portal)`, t); }
   }

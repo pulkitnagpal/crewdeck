@@ -97,8 +97,12 @@ export async function scanPage(C, G) {
     if (p) o.posted_at = p;
     if (w && workplaceOf(lo) !== w) o.workplace = w;
     if (cc) o.company_country = cc;
+    // A short description (judging reads it) and the apply kind a card shows (LinkedIn's "Easy Apply" mark).
+    const ds = T(f.description, 300);
+    if (ds) o.description = ds;
+    if (f.apply_kind === 'linkedin_easy') o.apply_kind = 'linkedin_easy';
     const have = found.get(url);
-    if (have) { for (const k of ['company', 'location', 'posted_at', 'workplace', 'company_country']) if (!have[k] && o[k]) have[k] = o[k]; } else if (found.size < MAX) found.set(url, o);
+    if (have) { for (const k of ['company', 'location', 'posted_at', 'workplace', 'company_country', 'description', 'apply_kind']) if (!have[k] && o[k]) have[k] = o[k]; } else if (found.size < MAX) found.set(url, o);
   };
   const fromList = (root, a) => {
     const list = pathValue(root, a.list);
@@ -144,6 +148,7 @@ export async function scanPage(C, G) {
     const q = (root, sel) => { try { return sel ? root.querySelector(sel) : null; } catch (e) { return null; } };
     let items = [];
     try { items = Array.from(d.querySelectorAll(c.item)).slice(0, 200); } catch (e) {}
+    const hint = (el) => { if (!c.apply_hint) return ''; try { return new RegExp(c.apply_hint.pattern, 'i').test(String(el.innerText || el.textContent || '')) ? c.apply_hint.kind : ''; } catch (e) { return ''; } };
     for (const it of items) {
       if (c.react) {
         const key = Object.keys(it).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
@@ -170,7 +175,7 @@ export async function scanPage(C, G) {
         const posted = ps.map((x) => x[x.length - 1]).find((x) => RX.time.test(x)) || '';
         const loc = part(c.lines.location);
         const href = idHref || (q(it, 'a[href]') || { getAttribute: () => '' }).getAttribute('href');
-        job(href, { title: part(c.lines.title), company: part(c.lines.company), location: loc, posted_at: posted, workplace: loc });
+        job(href, { title: part(c.lines.title), company: part(c.lines.company), location: loc, posted_at: posted, workplace: loc, apply_kind: hint(it) });
         continue;
       }
       const t = q(it, c.title);
@@ -178,7 +183,7 @@ export async function scanPage(C, G) {
       const txt = (sel) => { const el = q(it, sel); return el ? (el.getAttribute('title') || el.innerText || el.textContent || '') : ''; };
       const href = idHref || t.getAttribute('href') || (q(t, 'a[href]') || q(it, 'a[href]') || { getAttribute: () => '' }).getAttribute('href');
       const loc = txt(c.location);
-      job(href, { title: t.getAttribute('title') || t.innerText || t.textContent, company: txt(c.company), location: loc, posted_at: txt(c.posted_at), workplace: loc });
+      job(href, { title: t.getAttribute('title') || t.innerText || t.textContent, company: txt(c.company), location: loc, posted_at: txt(c.posted_at), workplace: loc, description: txt(c.description), apply_kind: hint(it) });
     }
   }
   const types = (n) => [].concat(n && n['@type']).map((t) => String(t == null ? '' : t).toLowerCase());

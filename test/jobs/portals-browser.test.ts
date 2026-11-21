@@ -113,13 +113,13 @@ test('pane mode: the page script in a real browser reads JSON, JSON-LD and cards
 
 test('pane script, job cards in a real page: paragraphs with the id on the card (LinkedIn\'s shape) and job records in the page\'s own data (Naukri signed in)', { skip: found ? false : 'no Chromium-based browser on this machine', timeout: 90_000 }, async () => {
   const lines = `<html><body>
-    <div role="button" componentkey="job-card-component-ref-Zz100001"><p>Selected, Data Analyst<br>Data Analyst</p><p>Ember Logistics</p><p>Bengaluru (Remote)</p><p>Posted 2 days ago<br>2 days ago</p></div>
+    <div role="button" componentkey="job-card-component-ref-Zz100001"><p>Selected, Data Analyst<br>Data Analyst</p><p>Ember Logistics</p><p>Bengaluru (Remote)</p><p>Posted 2 days ago<br>2 days ago</p><span>Easy Apply</span></div>
     <div role="button" componentkey="job-card-component-ref-not-an-id"><p>Sneaky</p><p>Elsewhere</p></div>
     <div role="button" componentkey="job-card-component-ref-Zz100002"><p>BI Analyst</p><p>Saffron Retail</p><p>Pune</p></div>
   </body></html>`;
   // A component framework keeps each card's record on the element (React's fiber); the page script sets it like one.
   const records = `<html><body><div id="list"><div class="card">one</div><div class="card">two</div></div><script>
-    const recs = [{ jdURL: '/job/Insights-Analyst-Opal-Mobility-Zz100003', title: 'Insights Analyst', companyName: 'Opal Mobility', placeholders: [{ type: 'location', label: 'Remote' }], createdDate: 1795000000000 },
+    const recs = [{ jdURL: '/job/Insights-Analyst-Opal-Mobility-Zz100003', title: 'Insights Analyst', companyName: 'Opal Mobility', placeholders: [{ type: 'location', label: 'Remote' }], createdDate: 1795000000000, jobDescription: 'Own the <b>weekly</b> insights review.' },
                   { jdURL: 'https://elsewhere.test/job/x-Zz100004', title: 'Off site', companyName: 'Nope' }];
     document.querySelectorAll('.card').forEach((el, i) => { el['__reactFiber$test'] = { memoizedProps: {}, return: { memoizedProps: { jobData: recs[i] } } }; });
   </script></body></html>`;
@@ -130,8 +130,8 @@ test('pane script, job cards in a real page: paragraphs with the id on the card 
   const browser = await chromium.launch({ executablePath: found!.path, headless: true, args: ['--host-resolver-rules=MAP www.portal.test 127.0.0.1, MAP * ~NOTFOUND', ...QUIET] });
   try {
     const p = fixturePortal({ json: [], cards: [
-      { item: 'div[role=button][componentkey^="job-card-component-ref-"]', id_attr: 'componentkey', id_pattern: '^job-card-component-ref-(Zz\\d{6})$', url_template: `http://www.portal.test:${port}/job/Card-{id}`, lines: { selector: 'p', title: 0, company: 1, location: 2 } },
-      { item: '#list .card', react: 'jobData', fields: { url: 'jdURL', title: 'title', company: 'companyName', location: 'placeholders[type=location].label', posted_at: 'createdDate' } },
+      { item: 'div[role=button][componentkey^="job-card-component-ref-"]', id_attr: 'componentkey', id_pattern: '^job-card-component-ref-(Zz\\d{6})$', url_template: `http://www.portal.test:${port}/job/Card-{id}`, lines: { selector: 'p', title: 0, company: 1, location: 2 }, apply_hint: { pattern: '\\beasy apply\\b', kind: 'linkedin_easy' } },
+      { item: '#list .card', react: 'jobData', fields: { url: 'jdURL', title: 'title', company: 'companyName', location: 'placeholders[type=location].label', posted_at: 'createdDate', description: 'jobDescription' } },
     ] });
     const page = await browser.newPage();
     const run = async (path: string): Promise<any> => { await page.goto(`http://www.portal.test:${port}${path}`, { waitUntil: 'load' }); return page.evaluate(pageScript(p, { settleMs: 200 })); };
@@ -140,9 +140,11 @@ test('pane script, job cards in a real page: paragraphs with the id on the card 
       [`http://www.portal.test:${port}/job/Card-Zz100001`, 'Data Analyst', 'Ember Logistics', 'Bengaluru (Remote)', '2 days ago', null],
       [`http://www.portal.test:${port}/job/Card-Zz100002`, 'BI Analyst', 'Saffron Retail', 'Pune', null, null],
     ]);
+    assert.deepEqual(a.jobs.map((j: any) => j.apply_kind ?? null), ['linkedin_easy', null], 'the card that says Easy Apply is marked');
     const b = await run('/records');
     assert.deepEqual(b.jobs.map((j: any) => [j.url, j.title, j.company, j.location, j.posted_at]), [
       [`http://www.portal.test:${port}/job/Insights-Analyst-Opal-Mobility-Zz100003`, 'Insights Analyst', 'Opal Mobility', 'Remote', '1795000000000'],
     ], 'a record pointing off the portal is dropped');
+    assert.equal(b.jobs[0].description, 'Own the weekly insights review.');
   } finally { await browser.close(); site.close(); }
 });

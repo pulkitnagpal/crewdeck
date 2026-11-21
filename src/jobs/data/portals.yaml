@@ -62,6 +62,7 @@ portals:
         id_pattern: '^job-card-component-ref-(\d{6,})$'
         url_template: https://www.linkedin.com/jobs/view/{id}
         lines: { selector: p, title: 0, company: 1, location: 2 }
+        apply_hint: { pattern: '\beasy apply\b', kind: linkedin_easy }
     limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: [12000, 20000], min_hours: 12, pages_per_day: 25 }
     risk: LinkedIn's terms forbid automated access to signed-in pages and it restricts accounts it suspects. Crewdeck keeps to 3 searches every 12 hours and stops at the first check, but the account is yours and so is the risk.
     verified: true
@@ -92,11 +93,11 @@ portals:
     # never gets past a challenge. The page's own cards carry everything a role needs.
     cards:
       # Signed out (and the classic layout): the card's own parts.
-      - { item: '.srp-jobtuple-wrapper', title: 'a.title', company: '.comp-name', location: '.locWdth', posted_at: '.job-post-day' }
+      - { item: '.srp-jobtuple-wrapper', title: 'a.title', company: '.comp-name', location: '.locWdth', posted_at: '.job-post-day', description: '.job-desc' }
       # Signed in (Naukri TopTier, 2026-11-21): cards without links; each card's component holds the search API's job record.
       - item: '#jobs-list-header .cursor-pointer.rounded-3xl'
         react: jobData
-        fields: { url: jdURL, title: title, company: companyName, location: 'placeholders[type=location].label', posted_at: createdDate }
+        fields: { url: jdURL, title: title, company: companyName, location: 'placeholders[type=location].label', posted_at: createdDate, description: jobDescription }
     limits: { searches_per_run: 4, pages_per_search: 1, delay_ms: [8000, 15000], min_hours: 6, pages_per_day: 40 }
     risk: Naukri's terms don't allow automated use of the site. Crewdeck reads a few search pages, slowly, as you; your account carries the risk.
     verified: true

@@ -7,7 +7,7 @@ import type { Portal } from './catalog.ts';
 import { RX, canonUrl, hostIn, pathValue, scanPage, workplaceOf } from './page-runtime.js';
 import { inspectPage } from './inspect-runtime.js';
 
-export type PaneJob = { url: string; title: string; company: string; location: string; posted_at?: string; workplace?: 'remote' | 'hybrid' | 'onsite'; company_country?: string };
+export type PaneJob = { url: string; title: string; company: string; location: string; posted_at?: string; workplace?: 'remote' | 'hybrid' | 'onsite'; company_country?: string; description?: string; apply_kind?: 'linkedin_easy' };
 export type PageOutput = { url: string; signals: { sign_in_wall: boolean; challenge: boolean; empty: boolean }; jobs: PaneJob[] };
 
 /** The most jobs one page returns, and the soft size of the answer (characters of JSON). */
