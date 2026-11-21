@@ -199,7 +199,7 @@ test('portals in the skills (ADR-0008): setup recommends, says the risk once, co
   assert.ok(portals.length > 500, 'a Portals step in Where to look, before Fetch once');
   for (const re of [/`crewdeck jobs portals list`/, /`crewdeck jobs portals connect <id>`/, /`crewdeck jobs portals connect <id> --signup`/, /`crewdeck jobs portals test <id>`/,
     /sites may not allow automation and could limit your account/, /once/, /create nothing without a clear yes in this\s+chat/,
-    /\*\*They\*\* type passwords, one-time codes and CAPTCHAs/, /non-secret fields/, /only after they say yes to using them/, /switched on/]) assert.match(portals, re);
+    /\*\*They\*\* type passwords, one-time codes and CAPTCHAs/, /non-secret fields/, /only after they say yes to using them/, /Switched-on portals are scanned/, /crewdeck jobs portals on <id>/]) assert.match(portals, re);
   // In order: list, risk, connect, sign up, test, switch on.
   const at = ['portals list', 'Say the risk', 'portals connect <id>`', '--signup', 'portals test', 'switched on'].map((x) => portals.indexOf(x));
   assert.ok(at.every((x, i) => x >= 0 && (i === 0 || x > at[i - 1])), `the order: ${at}`);
