@@ -81,7 +81,8 @@ function layoutProblems(page: Page) {
     const GUTTER = 12;
     if (document.documentElement.scrollWidth > vw + 1) out.push(`page overflows: scrollWidth ${document.documentElement.scrollWidth} > ${vw}: ${[...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > vw + 1 && !e.closest('.tabsnav, .tabs, .queue, .rail')).slice(0, 3).map((e) => `${e.tagName.toLowerCase()}.${e.className}`).join(', ')}`);
     const name = (e: Element) => `${e.tagName.toLowerCase()}${e.className && typeof e.className === 'string' ? `.${e.className.split(' ')[0]}` : ''} "${(e.getAttribute('aria-label') || e.textContent || (e as HTMLInputElement).placeholder || '').trim().slice(0, 30)}"`;
-    const shown = (e: Element) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && !e.closest('.sr'); };
+    // A closed <details> still gives its hidden content boxes in Chromium: what it holds is not on screen.
+    const shown = (e: Element) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && !e.closest('.sr') && !e.closest('details:not([open]) > :not(summary)'); };
     // The rows meant to scroll sideways on their own; any other box that does is content cut off.
     const ROWS = '.tabsnav, .tabs, .queue, .rail, .lines';
     for (const e of document.querySelectorAll('body *')) {
@@ -137,7 +138,7 @@ const SCREENS: { name: string; hash: string; ready: string; then?: (p: Page) => 
   { name: 'today-not-interested', hash: 'today', ready: '.qitem', then: async (p) => { await p.locator('.qitem', { hasText: 'Example Studio' }).click(); await p.getByRole('button', { name: 'Not interested' }).click(); await p.getByText('Not interested in Example Studio?').waitFor(); } },
   { name: 'sources', hash: 'sources', ready: '.srow' },
   { name: 'applications', hash: 'applications', ready: 'table' },
-  ...['profile', 'career', 'search', 'memory', 'answers'].map((tab) => ({ name: `knowledge-${tab}`, hash: 'knowledge', ready: '.kb, .tabs', then: async (p: Page) => { await p.getByRole('tab', { name: new RegExp(`^${tab}`, 'i') }).click(); await p.waitForTimeout(300); } })),
+  ...['profile', 'career', 'search', 'memory', 'answers', 'learned'].map((tab) => ({ name: `knowledge-${tab}`, hash: 'knowledge', ready: '.kb, .tabs', then: async (p: Page) => { await p.getByRole('tab', { name: new RegExp(`^${tab}`, 'i') }).click(); await p.waitForTimeout(300); } })),
   { name: 'preferences', hash: 'preferences', ready: '.prefs h2' },
   { name: 'settings', hash: 'settings', ready: '.switch' },
   { name: 'settings-confirm', hash: 'settings', ready: '.switch', then: async (p) => { await p.locator('.switch').first().click(); await p.getByRole('alertdialog').waitFor(); } },

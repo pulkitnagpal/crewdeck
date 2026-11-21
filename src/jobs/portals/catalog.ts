@@ -27,7 +27,18 @@ export type Portal = {
   /** Pane mode: the page's own job cards, read by CSS selectors (the page's text, no extra request). */
   cards?: CardAdapter[];
   limits: Limits; headful: boolean; risk: string; verified: boolean; notes?: string;
+  /** A lightweight entry (`teach: true`): only who it is and where it lives. It has no reader (search, job_url, cards)
+   * until Claude teaches one in the pane (readers.ts, <jobs.home>/portals/readers.yaml); until then it is never scanned. */
+  teach: boolean;
+  /** Its own address (teach entries: where connect opens when there is no login_url). */ home_url?: string;
+  kind?: PortalKind; access?: 'signed-in' | 'public-search'; importance?: number;
+  /** The effective entry carries a reader from the person's readers.yaml (readers.ts). */ reader?: boolean;
+  /** The person added it themselves (readers.yaml `added`, an approved proposal). */ added?: boolean;
 };
+export const PORTAL_KINDS = ['portal', 'board', 'aggregator', 'niche', 'campus', 'staffing', 'freelance', 'government'] as const;
+export type PortalKind = (typeof PORTAL_KINDS)[number];
+/** A teach entry with a reader (or a full entry): search and job URLs to scan. */
+export const canScan = (p: Portal) => !p.teach && !!p.search.url && !!p.job_url.pattern;
 /** A job card: either CSS selectors for its parts, or `react` (the card component's prop holding the job record, read
  * from the page's own data with no request) mapped by `fields` like a JSON adapter. */
 export type CardAdapter = {
@@ -37,7 +48,8 @@ export type CardAdapter = {
   /** The parts as the card's paragraphs in order (the last line of each), when its classes are generated. */
   lines?: { selector: string; title: number; company?: number; location?: number };
 };
-export type PortalCatalog = { portals: Portal[]; byId: Map<string, Portal> };
+export type PortalCatalog = { portals: Portal[]; byId: Map<string, Portal>; /** The file's own entries and defaults (readers overlay them). */ raw?: { defaults: any; byId: Map<string, any> };
+  /** The person's own added portals' raw entries (readers.ts). */ added?: Map<string, any> };
 
 const FILE = join(import.meta.dirname, '..', 'data', 'portals.yaml');
 export const PORTAL_ID = /^[a-z][a-z0-9-]{1,30}$/;
@@ -48,14 +60,26 @@ const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 's
 const rec = (v: unknown): Record<string, string> => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [String(k), String(x)])) : {});
 
 /** One raw entry with the file's defaults applied. Validation is separate (portalIssues) so a test can show every problem. */
-function normalise(e: any, d: any): Portal {
+/** A teach entry's hosts from its home address: the host and its bare domain (subdomains are covered by hostIn). */
+export function hostsFromUrl(url: string): string[] {
+  let h = '';
+  try { h = new URL(url).hostname.toLowerCase(); } catch { return []; }
+  const bare = h.replace(/^www\./, '');
+  return [...new Set([h, bare, `www.${bare}`])];
+}
+
+export function normalise(e: any, d: any): Portal {
   const lim = { ...(d?.limits ?? {}), ...(e?.limits ?? {}) };
   const s = e?.search ?? {};
+  const teach = e?.teach === true;
+  const home = e?.home_url ?? e?.url;
+  const hosts = strs(e?.hosts).length ? strs(e?.hosts) : typeof home === 'string' ? hostsFromUrl(home) : [];
+  const login = String(e?.login_url ?? (typeof home === 'string' ? home : ''));
   return {
     id: String(e?.id ?? ''), name: String(e?.name ?? ''), countries: strs(e?.countries), fields: strs(e?.fields),
-    hosts: strs(e?.hosts).map((h) => h.toLowerCase()), cdn_hosts: strs(e?.cdn_hosts).map((h) => h.toLowerCase()),
+    hosts: hosts.map((h) => h.toLowerCase()), cdn_hosts: strs(e?.cdn_hosts).map((h) => h.toLowerCase()),
     auth_hosts: [...new Set([...strs(d?.auth_hosts), ...strs(e?.auth_hosts)].map((h) => h.toLowerCase()))],
-    signup_url: String(e?.signup_url ?? ''), login_url: String(e?.login_url ?? ''),
+    signup_url: String(e?.signup_url ?? login), login_url: login,
     signed_in: { ...(e?.signed_in?.cookie ? { cookie: String(e.signed_in.cookie) } : {}), ...(e?.signed_in?.url_pattern ? { url_pattern: String(e.signed_in.url_pattern) } : {}), ...(e?.signed_in?.selector ? { selector: String(e.signed_in.selector) } : {}) },
     sign_in_wall: strs(e?.sign_in_wall ?? d?.sign_in_wall),
     search: {
@@ -74,6 +98,9 @@ function normalise(e: any, d: any): Portal {
     json: (Array.isArray(e?.json) ? e.json : []).map((j: any) => ({ url: String(j?.url ?? ''), ...(j?.state ? { state: String(j.state) } : {}), list: String(j?.list ?? ''), fields: rec(j?.fields), ...(j?.where ? { where: rec(j.where) } : {}), ...(j?.url_template ? { url_template: String(j.url_template) } : {}) })),
     limits: { searches_per_run: Number(lim.searches_per_run), pages_per_search: Number(lim.pages_per_search), delay_ms: Array.isArray(lim.delay_ms) ? [Number(lim.delay_ms[0]), Number(lim.delay_ms[1])] : Number(lim.delay_ms), min_hours: Number(lim.min_hours), pages_per_day: Number(lim.pages_per_day) },
     headful: e?.headful === true, risk: String(e?.risk ?? ''), verified: e?.verified === true, ...(e?.notes ? { notes: String(e.notes) } : {}),
+    teach, ...(typeof home === 'string' ? { home_url: String(home) } : {}),
+    ...(e?.kind !== undefined ? { kind: String(e.kind) as PortalKind } : {}), ...(e?.access !== undefined ? { access: String(e.access) as Portal['access'] } : {}),
+    ...(e?.importance !== undefined ? { importance: Number(e.importance) } : {}),
   };
 }
 
@@ -87,6 +114,11 @@ export const hostIn = hostAllowed;
 export function portalIssues(p: Portal): string[] {
   const out: string[] = [];
   const at = `portals ${p.id || '(no id)'}`;
+  if (p.kind !== undefined && !(PORTAL_KINDS as readonly string[]).includes(p.kind)) out.push(`${at}: kind is one of ${PORTAL_KINDS.join(', ')}`);
+  if (p.access !== undefined && p.access !== 'signed-in' && p.access !== 'public-search') out.push(`${at}: access is signed-in or public-search`);
+  if (p.importance !== undefined && ![1, 2, 3].includes(p.importance)) out.push(`${at}: importance is 1, 2 or 3`);
+  if (p.home_url !== undefined && (!httpsUrl(p.home_url) || !hostIn(new URL(p.home_url).hostname, p.hosts))) out.push(`${at}: home_url is an https address on the portal's hosts`);
+  if (p.teach) return [...out, ...teachIssues(p, at)];
   if (!PORTAL_ID.test(p.id)) out.push(`${at}: bad id`);
   if (!p.name) out.push(`${at}: no name`);
   if (!p.countries.length) out.push(`${at}: no countries`);
@@ -101,7 +133,7 @@ export function portalIssues(p: Portal): string[] {
     if (!httpsUrl(p[k])) out.push(`${at}: ${k} is not an https URL`);
     else if (!hostIn(new URL(p[k]).hostname, p.hosts)) out.push(`${at}: ${k} is not on the portal's hosts`);
   }
-  if (!p.signed_in.cookie && !p.signed_in.url_pattern && !p.signed_in.selector) out.push(`${at}: signed_in needs a cookie, url_pattern or selector`);
+  if (!p.signed_in.cookie && !p.signed_in.url_pattern && !p.signed_in.selector && p.access !== 'public-search') out.push(`${at}: signed_in needs a cookie, url_pattern or selector`);
   if (p.signed_in.url_pattern && !regexOk(p.signed_in.url_pattern)) out.push(`${at}: signed_in.url_pattern is not a regex`);
   for (const w of p.sign_in_wall) if (!regexOk(w)) out.push(`${at}: sign_in_wall ${w} is not a regex`);
   for (const k of ['url', 'url_place', 'url_remote'] as const) {
@@ -148,6 +180,30 @@ export function portalIssues(p: Portal): string[] {
   return out;
 }
 
+/** A lightweight entry: who it is and where it lives, nothing to scan yet (a reader adds that, readers.ts). */
+function teachIssues(p: Portal, at: string): string[] {
+  const out: string[] = [];
+  if (!PORTAL_ID.test(p.id)) out.push(`${at}: bad id`);
+  if (!p.name) out.push(`${at}: no name`);
+  if (!p.countries.length) out.push(`${at}: no countries`);
+  for (const c of p.countries) if (c !== 'world' && place(c)?.kind !== 'country') out.push(`${at}: country ${c} is not an ISO country id`);
+  const fams = new Set(FAMILIES());
+  if (!p.fields.length) out.push(`${at}: no fields`);
+  for (const f of p.fields) if (f !== 'any' && !fams.has(f)) out.push(`${at}: field ${f}`);
+  if (!p.home_url) out.push(`${at}: a teach entry needs its home url`);
+  if (!p.hosts.length) out.push(`${at}: no hosts`);
+  for (const h of p.hosts) if (!HOST.test(h)) out.push(`${at}: host ${h}`);
+  if (!httpsUrl(p.login_url) || !hostIn(new URL(p.login_url).hostname, p.hosts)) out.push(`${at}: login_url is not an https address on the portal's hosts`);
+  if (!p.kind) out.push(`${at}: a teach entry needs a kind`);
+  if (!p.access) out.push(`${at}: a teach entry needs access (signed-in or public-search)`);
+  if (p.importance === undefined) out.push(`${at}: a teach entry needs importance (1 to 3)`);
+  if (!p.risk) out.push(`${at}: no risk note`);
+  if (p.verified) out.push(`${at}: a teach entry is never verified (it has nothing to check yet)`);
+  if (!p.notes) out.push(`${at}: a teach entry needs a note`);
+  if (p.search.url || p.job_url.pattern || p.cards?.length || p.json.length) out.push(`${at}: a teach entry has no search, job_url, cards or json (the person's reader adds them)`);
+  return out;
+}
+
 export function catalogProblems(cat: PortalCatalog): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -164,8 +220,9 @@ let cached: PortalCatalog | null = null;
 export function loadPortals(file = FILE): PortalCatalog {
   if (file === FILE && cached) return cached;
   const y = parse(readFileSync(file, 'utf8')) ?? {};
-  const portals = (Array.isArray(y.portals) ? y.portals : []).map((e: any) => normalise(e, y.defaults));
-  const cat: PortalCatalog = { portals, byId: new Map(portals.map((p: Portal) => [p.id, p])) };
+  const list = Array.isArray(y.portals) ? y.portals : [];
+  const portals = list.map((e: any) => normalise(e, y.defaults));
+  const cat: PortalCatalog = { portals, byId: new Map(portals.map((p: Portal) => [p.id, p])), raw: { defaults: y.defaults ?? {}, byId: new Map(list.map((e: any) => [String(e?.id ?? ''), e])) } };
   const bad = catalogProblems(cat);
   if (bad.length) throw new Error(`${file}: ${bad.join('; ')}`);
   if (file === FILE) cached = cat;
@@ -175,8 +232,9 @@ export function loadPortals(file = FILE): PortalCatalog {
 /** Parse a catalog from text without throwing (tests, and `portalIssues` over a hand-made entry). */
 export function parsePortals(text: string): { cat: PortalCatalog; problems: string[] } {
   const y = parse(text) ?? {};
-  const portals = (Array.isArray(y.portals) ? y.portals : []).map((e: any) => normalise(e, y.defaults));
-  const cat: PortalCatalog = { portals, byId: new Map(portals.map((p: Portal) => [p.id, p])) };
+  const list = Array.isArray(y.portals) ? y.portals : [];
+  const portals = list.map((e: any) => normalise(e, y.defaults));
+  const cat: PortalCatalog = { portals, byId: new Map(portals.map((p: Portal) => [p.id, p])), raw: { defaults: y.defaults ?? {}, byId: new Map(list.map((e: any) => [String(e?.id ?? ''), e])) } };
   return { cat, problems: catalogProblems(cat) };
 }
 

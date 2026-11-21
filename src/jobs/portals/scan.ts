@@ -8,7 +8,8 @@ import { type Ctx, notesOf, nowIso, todayOf } from '../ctx.ts';
 import { addEvent, upsertRole } from '../db.ts';
 import { cleanJob } from '../sources.ts';
 import { portalVerdict } from './allow.ts';
-import { type Portal, delayMs, hostIn, loadPortals } from './catalog.ts';
+import { type Portal, canScan, delayMs, hostIn } from './catalog.ts';
+import { effectivePortals } from './readers.ts';
 import { type Extracted, type Found, type Layer, type Posting, extractPostings } from './extract.ts';
 import type { Launch, Loaded } from './profile.ts';
 import { type PortalQuery, type PortalProfile, portalProfile, portalQueries, searchUrl } from './queries.ts';
@@ -166,7 +167,7 @@ export async function scanPortal(ctx: Ctx, portal: Portal, o: ScanOptions & { te
 
 /** Every connected, switched-on portal, one at a time, in the person's order. */
 export async function scanPortals(ctx: Ctx, o: ScanOptions = {}): Promise<PortalsRun> {
-  const cat = o.portals ?? loadPortals().portals;
+  const cat = o.portals ?? effectivePortals(ctx.home).portals;
   const byId = new Map(cat.map((p) => [p.id, p]));
   const state = readPortalsState(ctx.home);
   const out: PortalsRun = { ran: false, portals: [], new: 0 };
@@ -180,6 +181,10 @@ export async function scanPortals(ctx: Ctx, o: ScanOptions = {}): Promise<Portal
   const prefs = notesOf(ctx).search.data.companies?.countries;
   const work = (o.profile ?? portalProfile(ctx)).countries;
   for (const it of wanted) {
+    if (!canScan(byId.get(it.id)!)) {
+      out.portals.push({ id: it.id, name: byId.get(it.id)!.name, ran: false, why: 'needs a reader: Claude sets it up on first connect in the browser pane', queries: [], urls: [], pages: 0, found: 0, new: 0, stored: 0, by: empty() });
+      continue;
+    }
     const verdict = portalVerdict(byId.get(it.id)!.countries, prefs, work);
     if (!verdict.allowed) {
       out.portals.push({ id: it.id, name: byId.get(it.id)!.name, ran: false, why: `skipped: ${verdict.why}`, queries: [], urls: [], pages: 0, found: 0, new: 0, stored: 0, by: empty() });

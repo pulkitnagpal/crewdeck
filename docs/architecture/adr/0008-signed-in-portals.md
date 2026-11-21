@@ -91,8 +91,9 @@ portal (Claude helping, the human typing passwords and codes), and rejected emai
     javascript_tool in the page. It reads, in order, the portal's JSON APIs the page already loaded (same-origin
     resource URLs matching the adapter, fetched again with the person's cookies; or window state such as
     `__NEXT_DATA__`), JSON-LD JobPosting, then job links with their card text, and returns
-    `{ url, signals: { sign_in_wall, challenge, empty }, jobs: [≤ 60 × { url, title, company, location, posted_at?,
-    workplace?, company_country? }] }`, at most about 8 KB. Claude writes that answer to a file and
+    `{ url, signals: { sign_in_wall, challenge, empty }, jobs: [≤ 60 × { url, title, company?, location?, posted_at?,
+    workplace?, company_country? }] }`, at most about 12 KB (an empty company or location is left out, and `workplace`
+    when the location already says Remote or Hybrid: ingest reads it from the location). Claude writes that answer to a file and
     `crewdeck jobs portals ingest <id> --file <f>` checks it strictly (keys, types, sizes, every job address on the
     portal's hosts), applies the signals exactly as a profile scan's stop (pause 6, 24, 72 h; a sign-in wall marks
     `needs_sign_in`; a quiet empty page after a big one), and stores the jobs through the same path (`storePostings`:
@@ -109,9 +110,11 @@ portal (Claude helping, the human typing passwords and codes), and rejected emai
   two-factor and devices; Crewdeck never holds a separate copy of their login.
 - **Nothing to install or keep alive.** No second browser window, no profile folder to lock or clear.
 - **Cost.** Each page costs Claude tokens: the script is sent with every javascript_tool call (about 9.5 KB, roughly
-  3k tokens), and the answer is read once and written once to a file (roughly 70 tokens a job each way). A page of
-  20–25 jobs comes to about 5–7k tokens, a page of 10 about 4–5k; with the default limits (3–4 searches × 1 page per
-  portal) a portal costs about 15–25k tokens per Find. Scans happen only during Find, at most once per `min_hours`.
+  3k tokens), and the answer is read once and written once to a file (roughly 60–70 tokens a job each way, about
+  250–300 characters a job). The answer is capped at 12 KB (amended 2026-11-21 from 8 KB, so a 40-card Naukri page fits
+  whole: 40 × ~280 characters ≈ 11 KB, roughly 3k tokens each way). A page of 20–25 jobs comes to about 5–7k tokens, a
+  full 40-card page about 9–10k, a page of 10 about 4–5k; with the default limits (3–4 searches × 1 page per portal) a
+  portal costs about 15–35k tokens per Find. Scans happen only during Find, at most once per `min_hours`.
 
 ### Consequences
 
@@ -126,5 +129,35 @@ portal (Claude helping, the human typing passwords and codes), and rejected emai
 
 ### Revisit
 
+- If the 12 KB answer still cuts dense pages, drop `posted_at` text in favour of a day count before raising the cap.
 - If the script's size dominates the cost, emit only the layers a portal's adapter uses, or move to a per-portal script.
 - If Claude desktop lets plugins drive the pane, move plan → script → ingest out of the chat.
+
+## Amendment: Teach a portal (2026-11-21)
+
+### Decision
+
+14. **Lightweight catalog entries.** `portals.yaml` may list a site with `teach: true` and only who it is and where it
+    lives: id, name, `home_url`, `login_url` (optional; the home page otherwise), countries, fields, `kind` (portal,
+    board, aggregator, niche, campus, staffing, freelance, government), `access` (signed-in or public-search),
+    `importance` (1–3), notes and risk. Its hosts come from `home_url`. The validator accepts it without search, job-URL,
+    card or JSON parts; `portals list` shows it as "needs a reader (Claude sets it up on first connect)", and plan and
+    scan skip it. The India list (2026-11-21) adds 42 such sites (government notification sites with `kind:
+    government`, public-search) to the 10 full entries.
+15. **Readers per person.** `<jobs.home>/portals/readers.yaml` (0600) overlays the catalog by id with the parts that read
+    a search page (`search`, `job_url`, `cards`, `json`, `sign_in_wall`, `signed_in`, `limits`, `headful`,
+    `login_url`, `signup_url`, `cdn_hosts`), never the hosts, countries or risk. The overlaid entry must pass the
+    catalog's own validator or it is ignored (its problems shown by `crewdeck jobs portals reader <id>`). The same file
+    keeps the sites the person added (`added:`, an approved `portal_add` proposal) as teach entries.
+16. **Teaching in the pane.** `crewdeck jobs portals inspect-script` prints one expression (≈3.7 KB) that returns
+    candidate card selectors with two samples each, job-link path shapes and whether the page has JSON-LD or
+    `__NEXT_DATA__`, never the page (about 2–4 KB back). Claude writes a reader; `crewdeck jobs portals teach <id> --file
+    <reader.json>` validates it and prints the page script to try; `--answer <f> --save` keeps it only when that trial
+    answer has at least 5 jobs and no sign-in wall or challenge. `crewdeck jobs portals reader <id> [--reset]` shows or
+    removes it. One teach costs about 10–15k tokens, once per site.
+
+### Consequences
+
+- Good: a new site costs a catalog line, not code; a broken site is re-taught by the person's Claude without a release.
+- Bad: lightweight entries are unchecked knowledge; a wrong home address only means connect opens the wrong page, and
+  nothing scans a site until a reader has found 5 jobs on a real page.

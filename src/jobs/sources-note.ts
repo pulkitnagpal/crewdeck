@@ -14,6 +14,7 @@ import { catalogEntry } from './catalog.ts';
 import { type Ctx, notesOf, todayOf } from './ctx.ts';
 import { NOTES } from './notes.ts';
 import { type KeyState, readSourcesState } from './sources.ts';
+import { readPortalsState } from './portals/state.ts';
 
 export const SOURCES_COMMENT = ' Where to look, in priority order: the first is fetched first and ranks first. Change it on Jobs → Sources, or ask Claude.';
 const TEMPLATE_FRONT = `tags: jobs\n#${SOURCES_COMMENT}\nsources: []\n`;
@@ -258,10 +259,14 @@ export type SourceRow = {
 export function listSources(ctx: Ctx): SourceRow[] {
   const notes = notesOf(ctx);
   const state = readSourcesState(ctx.home);
+  const portals = readPortalsState(ctx.home).portals;
   return notes.sources.data.items.map((it, i) => {
     const cat = it.linkedin ? catalogEntry('linkedin') : it.provider ? catalogEntry(it.provider) : undefined;
     const kind = it.linkedin ? 'linkedin' : it.portal ? 'portal' : it.employer ? 'employer' : it.url ? 'custom' : cat?.kind ?? (it.careers_url ? 'careers page' : 'unknown');
-    const last = state?.by_key?.[it.linkedin ? 'linkedin' : it.key];
+    const kept = state?.by_key?.[it.linkedin ? 'linkedin' : it.key];
+    // A portal scanned in the pane (ingest) records its scan in the portals state, not in a sources run: the newer wins.
+    const pl = it.portal ? portalLast(ctx, it.portal, portals[it.portal]) : undefined;
+    const last = pl && (!kept || pl.at > kept.at) ? pl : kept;
     const row: SourceRow = {
       position: i + 1, key: it.key, name: it.name, kind, enabled: it.linkedin ? ctx.features.linkedin_search : it.enabled, employer: it.employer,
       fetch: it.fetch, regions: cat?.regions ?? [], ...(it.provider ? { provider: it.provider } : {}), ...(it.careers_url ? { careers_url: it.careers_url } : {}),
@@ -271,6 +276,18 @@ export function listSources(ctx: Ctx): SourceRow[] {
     if (it.linkedin) row.switches = { linkedin_search: ctx.features.linkedin_search, linkedin_links: ctx.features.linkedin_links, easy_apply: ctx.features.easy_apply };
     return row;
   });
+}
+
+/** A portal's last scan from its own state (pane mode's ingest writes there), as a sources line. */
+function portalLast(ctx: Ctx, id: string, st: import('./portals/state.ts').PortalState | undefined): KeyState | undefined {
+  if (!st?.last_scan) return undefined;
+  const since = new Date(Date.parse(st.last_scan) - 60 * 60_000).toISOString();
+  const kept = Number((ctx.db.prepare(`select count(*) n from roles where source_key=? and updated_at >= ? and status not in ('prefiltered_out','expired')`).get(`portal:${id}`, since) as any)?.n ?? 0);
+  const paused = st.pause && Date.parse(st.pause.until) > ctx.clock().getTime() ? st.pause.until : undefined;
+  return {
+    at: st.last_scan, ok: !st.last_error, jobs: st.last_found ?? 0, new: st.last_new ?? 0, kept, refused: 0,
+    ...(st.last_error ? { error: st.last_error } : {}), ...(paused ? { paused_until: paused } : {}),
+  };
 }
 
 /** Every key a new source must avoid: the note's, the state file's (with history) and the tracker's. */

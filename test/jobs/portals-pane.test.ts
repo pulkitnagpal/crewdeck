@@ -96,7 +96,7 @@ test('the script reads the JSON the page loaded (same origin, the person\'s cook
   assert.deepEqual(out.jobs, [
     { url: 'https://www.portal.test/job/Data-Analyst-0-Ab000000', title: 'Data Analyst 0', company: 'Fictional Co 0', location: 'Bengaluru, India', posted_at: '2026-11-17' },
     { url: 'https://www.portal.test/job/Data-Analyst-1-Ab000001', title: 'Data Analyst 1', company: 'Fictional Co 1', location: 'Bengaluru, India' },
-    { url: 'https://www.portal.test/job/bi-analyst-saffron-retail-e5f6g7h8', title: 'BI Analyst', company: 'Saffron Retail', location: 'Remote', posted_at: '2026-11-18', workplace: 'remote', company_country: 'IN' },
+    { url: 'https://www.portal.test/job/bi-analyst-saffron-retail-e5f6g7h8', title: 'BI Analyst', company: 'Saffron Retail', location: 'Remote', posted_at: '2026-11-18', company_country: 'IN' },
   ]);
   // The answer is what ingest accepts.
   assert.equal(parsePageOutput(out, p).out.jobs.length, 3);
@@ -127,11 +127,11 @@ test('signals: a sign-in path or a visible password form with no jobs; strong an
   assert.deepEqual((await run({})).signals, { sign_in_wall: false, challenge: false, empty: true });
 });
 
-test('the answer stays small: at most 60 jobs and about 8 KB, however many the page has', async () => {
+test('the answer stays small: at most 60 jobs and about 12 KB, however many the page has', async () => {
   const p = fixturePortal();
   const out = await runScript(pageScript(p, { settleMs: 0 }), fakePage({ resources: [API], responses: { [API]: apiResults(200) } }).G);
   assert.ok(out.jobs.length <= PAGE_JOBS && out.jobs.length >= 30, `${out.jobs.length} jobs`);
-  assert.ok(JSON.stringify(out).length <= 8_500, `${JSON.stringify(out).length} characters`);
+  assert.ok(JSON.stringify(out).length <= 12_500, `${JSON.stringify(out).length} characters`);
 });
 
 test('one set of rules on both sides: the profile engine\'s pathValue, canonical URLs and card words are the page script\'s', () => {

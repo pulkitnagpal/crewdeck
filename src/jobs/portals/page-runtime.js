@@ -4,7 +4,9 @@
 // no imports and no closures over this module except each other and RX, so the same code runs in Node (extract.ts
 // shares pathValue, canonUrl, workplaceOf and RX; the tests run the real script with `new Function`) and in the page.
 //
-// Comments live outside the function bodies: the script builder drops nothing else, and every byte is a token.
+// Comments live outside the function bodies: the script builder drops nothing else, and every byte is a token. The
+// answer leaves out what the reader can work out: an empty company or location, and `workplace` when the location
+// already says Remote or Hybrid (ingest reads it from the location then), so a 40-card page fits the 12 KB cap.
 
 /** Card-text rules shared with extract.ts (the profile engine's link layer). */
 export const RX = {
@@ -88,10 +90,12 @@ export async function scanPage(C, G) {
   const job = (raw, f) => {
     const url = canonUrl(raw, L.href, C.job, C.hosts), title = T(f.title, 120);
     if (!url || !title) return;
-    const o = { url, title, company: T(f.company, 80), location: T(f.location, 80) };
-    const p = T(f.posted_at, 40), w = workplaceOf(o.location + ' ' + T(f.workplace, 300)), cc = T(f.company_country, 40);
+    const o = { url, title }, co = T(f.company, 80), lo = T(f.location, 80);
+    if (co) o.company = co;
+    if (lo) o.location = lo;
+    const p = T(f.posted_at, 40), w = workplaceOf(lo + ' ' + T(f.workplace, 300)), cc = T(f.company_country, 40);
     if (p) o.posted_at = p;
-    if (w) o.workplace = w;
+    if (w && workplaceOf(lo) !== w) o.workplace = w;
     if (cc) o.company_country = cc;
     const have = found.get(url);
     if (have) { for (const k of ['company', 'location', 'posted_at', 'workplace', 'company_country']) if (!have[k] && o[k]) have[k] = o[k]; } else if (found.size < MAX) found.set(url, o);
@@ -231,7 +235,7 @@ export async function scanPage(C, G) {
   }
   const jobs = [];
   let size = 200;
-  for (const j of found.values()) { size += JSON.stringify(j).length + 1; if (size > (C.budget || 10000)) break; jobs.push(j); }
+  for (const j of found.values()) { size += JSON.stringify(j).length + 1; if (size > (C.budget || 12000)) break; jobs.push(j); }
   const path = L.pathname, empty = jobs.length === 0;
   const wall = C.wall.some((w) => { try { return new RegExp(w).test(path); } catch (e) { return false; } }) || (empty && Array.from(d.querySelectorAll('input[type=password]')).some(vis));
   const text = String((d.body && (d.body.innerText || d.body.textContent)) || '').slice(0, 20000);

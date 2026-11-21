@@ -89,7 +89,7 @@ test('money and dates follow the user\'s pay.locale, pay.currency and time zone'
   assert.equal(todayView(n.ctx).queue.find((q) => q.id === fresh)!.chip.text, 'Closes Nov 29');
 });
 
-test('what Claude knows: five tabs, each naming its note for "Open in Notes"', () => {
+test('what Claude knows: six tabs (learned has no note), each naming its note for "Open in Notes"', () => {
   const w = seeded();
   answerFirstTime(w.ctx, { role: w.id, question: 'video', value: 'https://video.example.com/ada', quote: 'here is my video' });
   const profile = knowledgeView(w.ctx, 'profile');
@@ -107,7 +107,8 @@ test('what Claude knows: five tabs, each naming its note for "Open in Notes"', (
   const answers = knowledgeView(w.ctx, 'answers');
   assert.equal(answers.note, null);
   assert.ok(answers.items.some((i) => i.title === 'Optional video link'));
-  assert.deepEqual(Object.keys(answers.counts), ['profile', 'career', 'search', 'memory', 'answers']);
+  assert.deepEqual(Object.keys(answers.counts), ['profile', 'career', 'search', 'memory', 'answers', 'learned']);
+  assert.equal(knowledgeView(w.ctx, 'learned').note, null);
   assert.ok(answers.counts.career >= 6);
   assert.throws(() => knowledgeView(w.ctx, 'secrets' as any), /tab must be/);
 });

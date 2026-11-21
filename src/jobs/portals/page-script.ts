@@ -1,17 +1,18 @@
 // `crewdeck jobs portals script <id>` (ADR-0008, pane mode): the self-contained JavaScript expression Claude runs in a
 // portal's search page with the browser pane's javascript_tool. It is page-runtime.js's functions, serialised, with the
 // portal's catalog entry embedded: an IIFE with no imports that returns a Promise of
-//   { url, signals: { sign_in_wall, challenge, empty }, jobs: [{ url, title, company, location, posted_at?, workplace?, company_country? }] }
-// (at most 60 jobs, about 8 KB at most). Deterministic: the same catalog entry gives the same text.
+//   { url, signals: { sign_in_wall, challenge, empty }, jobs: [{ url, title, company?, location?, posted_at?, workplace?, company_country? }] }
+// (at most 60 jobs, about 12 KB at most: empty parts and a workplace the location already says are left out). Deterministic: the same catalog entry gives the same text.
 import type { Portal } from './catalog.ts';
 import { RX, canonUrl, hostIn, pathValue, scanPage, workplaceOf } from './page-runtime.js';
+import { inspectPage } from './inspect-runtime.js';
 
 export type PaneJob = { url: string; title: string; company: string; location: string; posted_at?: string; workplace?: 'remote' | 'hybrid' | 'onsite'; company_country?: string };
 export type PageOutput = { url: string; signals: { sign_in_wall: boolean; challenge: boolean; empty: boolean }; jobs: PaneJob[] };
 
 /** The most jobs one page returns, and the soft size of the answer (characters of JSON). */
 export const PAGE_JOBS = 60;
-export const PAGE_BUDGET = 8_000;
+export const PAGE_BUDGET = 12_000;
 
 /** What the in-page code needs from the catalog entry (nothing else of the portal reaches the page). */
 export function pageConfig(p: Portal, o: { settleMs?: number } = {}) {
@@ -79,4 +80,12 @@ export function pageScript(p: Portal, o: { settleMs?: number } = {}): string {
     `return scanPage(${JSON.stringify(pageConfig(p, o))},globalThis);`,
     '})()',
   ].join('\n');
+}
+
+/**
+ * `crewdeck jobs portals inspect-script` (teaching a portal): one expression Claude runs once in a portal's search page;
+ * it returns candidate card selectors with two samples each and job-link shapes (inspect-runtime.js), never the page.
+ */
+export function inspectScript(): string {
+  return ['(()=>{', compact(inspectPage), 'return inspectPage(globalThis);', '})()'].join('\n');
 }

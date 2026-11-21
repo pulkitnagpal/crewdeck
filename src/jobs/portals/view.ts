@@ -2,7 +2,8 @@
 // writes the person's choice to jobs/sources.md. The page API's shapes are the contract in api-stub.ts.
 import type { Ctx } from '../ctx.ts';
 import { changeSources } from '../sources-note.ts';
-import { type Portal, loadPortals } from './catalog.ts';
+import { type Portal, canScan } from './catalog.ts';
+import { effectivePortals } from './readers.ts';
 import { portalItems } from './scan.ts';
 import { type PortalStatus, portalStatus, readPortalsState } from './state.ts';
 
@@ -10,11 +11,13 @@ export type PortalView = {
   id: string; name: string; countries: string[]; fields: string[]; state: PortalStatus;
   /** Scanned in sources runs: connected and its jobs/sources.md row switched on. */ enabled: boolean;
   paused_until?: string; last_scan?: string; last_found?: number; risk: string; signup_url: string; login_url: string; verified: boolean;
+  /** No reader yet (a `teach: true` entry): Claude sets one up on first connect. */ needs_reader: boolean;
+  kind?: string; access?: string; importance?: number; reader?: boolean; added?: boolean;
 };
 export type PortalTestView = { found: number; by: { json: number; jsonld: number; links: number }; sample: { title: string; company: string; url: string }[]; stopped?: string };
 
 /** `mode` (jobs.portals_mode): pane = Claude scans in its browser pane during Find, and Connect opens a Jobs chat. */
-export function portalsView(ctx: Ctx, cat: Portal[] = loadPortals().portals, mode: 'pane' | 'profile' = 'pane'): { mode: 'pane' | 'profile'; portals: PortalView[] } {
+export function portalsView(ctx: Ctx, cat: Portal[] = effectivePortals(ctx.home).portals, mode: 'pane' | 'profile' = 'pane'): { mode: 'pane' | 'profile'; portals: PortalView[] } {
   const st = readPortalsState(ctx.home).portals;
   let items: ReturnType<typeof portalItems> = [];
   try { items = portalItems(ctx); } catch { /* broken notes: nothing switched on */ }
@@ -32,7 +35,9 @@ export function portalsView(ctx: Ctx, cat: Portal[] = loadPortals().portals, mod
         id: p.id, name: p.name, countries: p.countries, fields: p.fields, state, enabled: on && state !== 'not_connected',
         ...(state === 'paused' && s?.pause ? { paused_until: s.pause.until } : {}),
         ...(s?.last_scan ? { last_scan: s.last_scan } : {}), ...(typeof s?.last_found === 'number' ? { last_found: s.last_found } : {}),
-        risk: p.risk, signup_url: p.signup_url, login_url: p.login_url, verified: p.verified,
+        risk: p.risk, signup_url: p.signup_url, login_url: p.login_url, verified: p.verified, needs_reader: !canScan(p),
+        ...(p.kind ? { kind: p.kind } : {}), ...(p.access ? { access: p.access } : {}), ...(p.importance !== undefined ? { importance: p.importance } : {}),
+        ...(p.reader ? { reader: true } : {}), ...(p.added ? { added: true } : {}),
       };
     }),
   };

@@ -5,6 +5,17 @@ Crewdeck is not released yet: versions below name the `crewdeck` plugin's versio
 
 ## [Unreleased] — Jobs v2 P1a: titles are a score
 
+- **42 more Indian job sites** in the portals catalog (campus, staffing, freelance, niche boards and government notice
+  sites such as UPSC, SSC, IBPS and FreeJobAlert). They are listed as "needs a reader": when you connect one, Claude
+  looks at one search page in the pane and sets up how to read it (`crewdeck jobs portals teach`), kept in your own
+  `portals/readers.yaml`. A site you name in Tell (or one a post links to) can be added the same way, after your Approve.
+- **Tell reads X and other social posts** as it reads LinkedIn posts: the visible post and its links, one hop.
+- **Find learns from what you do**: applying, "not interested", setting a pick aside and leaving a pick for a week
+  nudge the order Claude reads roles in (company, title words, source; small and capped, never a rule). See it in
+  What Claude knows → Learned, or `crewdeck jobs learn`.
+- With the LinkedIn portal connected and on, the guest LinkedIn search steps aside; a portal's last scan shows on the
+  Sources list; a full 40-card Naukri page fits one read.
+
 - **Signed-in portals in Claude's browser pane** (plugin 0.9.0, ADR-0008 amended; `jobs.portals_mode: pane`, the
   default): Connect or Sign in on Sources → Portals opens a Jobs chat where you sign in to the site in the pane (or
   import its cookies with the pane's ⋮ menu); Claude reads the portals' search pages there during Find, slowly, and

@@ -21,6 +21,11 @@
 #     __NEXT_DATA__ script tag) with list relative to it. Pane mode re-fetches matching responses with the person's cookies.
 #   limits: searches_per_run, pages_per_search, delay_ms (number, jittered ±40%, or [min, max]), min_hours, pages_per_day
 #   headful: true when the portal refuses a headless browser
+#   teach: true marks a lightweight entry (id, name, home_url, login_url?, countries, fields, kind, access, importance,
+#     notes, risk; no search, job_url, cards or json): hosts come from home_url, and the person's reader
+#     (<jobs.home>/portals/readers.yaml, src/jobs/portals/readers.ts) adds the rest when Claude teaches it
+#   kind: portal, board, aggregator, niche, campus, staffing, freelance or government; access: signed-in or
+#     public-search; importance: 1 (a top site for its field) to 3
 #   risk: said once at connect, in plain words; verified: whether the search and job URLs were checked against the
 #     portal's public pages (never signed in); notes: what was and wasn't checked
 defaults:
@@ -31,6 +36,9 @@ defaults:
 portals:
   - id: linkedin
     name: LinkedIn
+    kind: portal
+    access: signed-in
+    importance: 1
     countries: [world]
     fields: [any]
     hosts: [www.linkedin.com, linkedin.com]
@@ -61,6 +69,9 @@ portals:
 
   - id: naukri
     name: Naukri
+    kind: portal
+    access: signed-in
+    importance: 1
     countries: [in]
     fields: [any]
     hosts: [www.naukri.com, naukri.com, login.naukri.com]
@@ -93,6 +104,9 @@ portals:
 
   - id: instahyre
     name: Instahyre
+    kind: portal
+    access: signed-in
+    importance: 1
     countries: [in]
     fields: [engineering-it, data, product-project, design]
     hosts: [www.instahyre.com, instahyre.com]
@@ -113,6 +127,9 @@ portals:
 
   - id: wellfound
     name: Wellfound
+    kind: portal
+    access: signed-in
+    importance: 1
     countries: [world]
     fields: [engineering-it, data, product-project, design, sales, operations]
     hosts: [wellfound.com, www.wellfound.com]
@@ -135,6 +152,9 @@ portals:
 
   - id: cutshort
     name: Cutshort
+    kind: portal
+    access: public-search
+    importance: 1
     countries: [in]
     fields: [engineering-it, data, product-project, design]
     hosts: [cutshort.io, www.cutshort.io]
@@ -156,6 +176,9 @@ portals:
 
   - id: weekday
     name: Weekday
+    kind: portal
+    access: signed-in
+    importance: 1
     countries: [in]
     fields: [engineering-it, data, product-project, design]
     hosts: [jobs.weekday.works, www.weekday.works, weekday.works]
@@ -173,6 +196,9 @@ portals:
 
   - id: foundit
     name: foundit
+    kind: portal
+    access: public-search
+    importance: 1
     countries: [in]
     fields: [any]
     hosts: [www.foundit.in, foundit.in]
@@ -189,10 +215,13 @@ portals:
     limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: 10000, min_hours: 6, pages_per_day: 30 }
     risk: foundit's terms don't allow automated use; Crewdeck reads a few pages as you, and your account carries the risk.
     verified: false
-    notes: foundit.in answered 403 to a signed-out check (robots.txt included); every URL here is unverified.
+    notes: foundit (formerly Monster India). foundit.in answered 403 to a signed-out check (robots.txt included); every URL here is unverified.
 
   - id: hirist
     name: Hirist
+    kind: niche
+    access: signed-in
+    importance: 1
     countries: [in]
     fields: [engineering-it, data]
     hosts: [www.hirist.tech, hirist.tech]
@@ -207,10 +236,13 @@ portals:
     limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: 10000, min_hours: 6, pages_per_day: 30 }
     risk: Hirist doesn't offer automated access; Crewdeck reads a few pages as you, and your account carries the risk.
     verified: false
-    notes: Checked 2026-11-21 - search pages /k/<skill>-jobs, /c/<category>-jobs and it-jobs-in-<city>, and its asset hosts. Not checked - the job-link pattern (no job links on the home page), the sign-in URLs (shown as buttons without links) and a place filter (so places are not used).
+    notes: A sister site of iimjobs (management roles). Checked 2026-11-21 - search pages /k/<skill>-jobs, /c/<category>-jobs and it-jobs-in-<city>, and its asset hosts. Not checked - the job-link pattern (no job links on the home page), the sign-in URLs (shown as buttons without links) and a place filter (so places are not used).
 
   - id: indeed
     name: Indeed
+    kind: aggregator
+    access: public-search
+    importance: 1
     countries: [in, us, gb]
     fields: [any]
     hosts: [in.indeed.com, www.indeed.com, uk.indeed.com, secure.indeed.com, indeed.com]
@@ -233,6 +265,9 @@ portals:
 
   - id: glassdoor
     name: Glassdoor
+    kind: aggregator
+    access: signed-in
+    importance: 2
     countries: [in, us, gb]
     fields: [any]
     hosts: [www.glassdoor.co.in, www.glassdoor.com, www.glassdoor.co.uk, glassdoor.com]
@@ -251,3 +286,510 @@ portals:
     risk: Glassdoor forbids automated access and puts many pages behind its sign-in wall; Crewdeck stops at the first wall or check. Your account carries the risk.
     verified: false
     notes: robots.txt (checked 2026-11-21) confirms the sign-in and join pages and the /Job/ and /job-listing/ paths. The search parameters and the signed-in check are from earlier knowledge, unchecked.
+
+  # ---- Lightweight entries (teach: true): who each site is and where it lives, nothing to scan yet. Claude teaches a
+  # reader in the browser pane on first connect (crewdeck jobs portals teach); until then `portals list` says
+  # "needs a reader" and nothing scans it. From knowledge (2026-11-21), not live-checked.
+  - id: iimjobs
+    name: "iimjobs"
+    teach: true
+    home_url: https://www.iimjobs.com/
+    countries: [in]
+    fields: [operations, finance-accounting, sales, marketing, product-project, people-hr]
+    kind: niche
+    access: signed-in
+    importance: 1
+    risk: "iimjobs doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Mid and senior management roles; a sister site of Hirist. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: updazz
+    name: "Updazz"
+    teach: true
+    home_url: https://www.updazz.com/
+    countries: [in]
+    fields: [any]
+    kind: niche
+    access: signed-in
+    importance: 3
+    risk: "Updazz doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "From the iimjobs group, for salaried professionals. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: apna
+    name: "apna"
+    teach: true
+    home_url: https://apna.co/
+    countries: [in]
+    fields: [any]
+    kind: portal
+    access: public-search
+    importance: 1
+    risk: "apna may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "The largest for entry-level, blue- and grey-collar jobs; app-first. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: workindia
+    name: "WorkIndia"
+    teach: true
+    home_url: https://www.workindia.in/
+    countries: [in]
+    fields: [operations, sales, hospitality-food, logistics-transport, customer-service, office-admin]
+    kind: portal
+    access: public-search
+    importance: 2
+    risk: "WorkIndia may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Blue-collar and entry-level jobs; app-first. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: shine
+    name: "Shine"
+    teach: true
+    home_url: https://www.shine.com/
+    countries: [in]
+    fields: [any]
+    kind: portal
+    access: public-search
+    importance: 2
+    risk: "Shine may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "HT Media's general job portal. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: timesjobs
+    name: "TimesJobs"
+    teach: true
+    home_url: https://www.timesjobs.com/
+    countries: [in]
+    fields: [any]
+    kind: portal
+    access: public-search
+    importance: 2
+    risk: "TimesJobs may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "The Times group's general job portal. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: internshala
+    name: "Internshala"
+    teach: true
+    home_url: https://internshala.com/
+    countries: [in]
+    fields: [any]
+    kind: campus
+    access: public-search
+    importance: 1
+    risk: "Internshala may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Internships and fresher jobs. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: freshersworld
+    name: "Freshersworld"
+    teach: true
+    home_url: https://www.freshersworld.com/
+    countries: [in]
+    fields: [any]
+    kind: campus
+    access: public-search
+    importance: 2
+    risk: "Freshersworld may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Fresher and entry-level jobs. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: unstop
+    name: "Unstop"
+    teach: true
+    home_url: https://unstop.com/
+    countries: [in]
+    fields: [any]
+    kind: campus
+    access: signed-in
+    importance: 2
+    risk: "Unstop doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Campus hiring and competitions (formerly Dare2Compete). From knowledge, not checked; its reader is taught on first connect."
+
+  - id: uplers
+    name: "Uplers"
+    teach: true
+    home_url: https://www.uplers.com/
+    countries: [in]
+    fields: [engineering-it, design, marketing]
+    kind: staffing
+    access: signed-in
+    importance: 2
+    risk: "Uplers doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Indian talent for remote roles at companies abroad. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: turing
+    name: "Turing"
+    teach: true
+    home_url: https://www.turing.com/jobs
+    countries: [world, in]
+    fields: [engineering-it, data]
+    kind: staffing
+    access: signed-in
+    importance: 2
+    risk: "Turing doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Remote roles at US companies for engineers abroad, India included. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: toptal
+    name: "Toptal"
+    teach: true
+    home_url: https://www.toptal.com/
+    countries: [world, in]
+    fields: [engineering-it, design, finance-accounting, product-project]
+    kind: freelance
+    access: signed-in
+    importance: 3
+    risk: "Toptal doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "A vetted freelance network. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: arc-dev
+    name: "Arc"
+    teach: true
+    home_url: https://arc.dev/
+    countries: [world, in]
+    fields: [engineering-it]
+    kind: staffing
+    access: signed-in
+    importance: 3
+    risk: "Arc doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Remote developer roles. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: workatastartup
+    name: "Work at a Startup (YC)"
+    teach: true
+    home_url: https://www.workatastartup.com/
+    countries: [world, in]
+    fields: [engineering-it, product-project, design, data]
+    kind: board
+    access: signed-in
+    importance: 2
+    risk: "Work at a Startup (YC) doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Y Combinator startups; many hire in India. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: peerlist
+    name: "Peerlist"
+    teach: true
+    home_url: https://peerlist.io/jobs
+    countries: [in, world]
+    fields: [engineering-it, design, product-project]
+    kind: board
+    access: public-search
+    importance: 2
+    risk: "Peerlist may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "A professional network with a jobs board, mostly tech. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: hasjob
+    name: "Hasjob"
+    teach: true
+    home_url: https://hasjob.co/
+    countries: [in]
+    fields: [engineering-it]
+    kind: board
+    access: public-search
+    importance: 3
+    risk: "Hasjob may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "HasGeek's community board for tech jobs; can be quiet. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: naukrigulf
+    name: "Naukrigulf"
+    teach: true
+    home_url: https://www.naukrigulf.com/
+    countries: [ae, sa, qa, kw, om, bh]
+    fields: [any]
+    kind: portal
+    access: signed-in
+    importance: 2
+    risk: "Naukrigulf doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Jobs in the Gulf, much used by Indians moving there (Info Edge, like Naukri). From knowledge, not checked; its reader is taught on first connect."
+
+  - id: foundit-gulf
+    name: "foundit Gulf"
+    teach: true
+    home_url: https://www.founditgulf.com/
+    countries: [ae, sa, qa, kw, om, bh]
+    fields: [any]
+    kind: portal
+    access: public-search
+    importance: 3
+    risk: "foundit Gulf may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "foundit's Gulf site (formerly Monster Gulf). From knowledge, not checked; its reader is taught on first connect."
+
+  - id: jobhai
+    name: "Job Hai"
+    teach: true
+    home_url: https://www.jobhai.com/
+    countries: [in]
+    fields: [operations, sales, logistics-transport, hospitality-food, customer-service]
+    kind: portal
+    access: public-search
+    importance: 3
+    risk: "Job Hai may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Entry-level and blue-collar jobs (Info Edge). From knowledge, not checked; its reader is taught on first connect."
+
+  - id: quikr-jobs
+    name: "QuikrJobs"
+    teach: true
+    home_url: https://www.quikr.com/jobs
+    countries: [in]
+    fields: [operations, sales, logistics-transport, customer-service]
+    kind: portal
+    access: public-search
+    importance: 3
+    risk: "QuikrJobs may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Classifieds jobs section; entry-level and blue-collar. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: olx-jobs
+    name: "OLX Jobs"
+    teach: true
+    home_url: https://www.olx.in/jobs_c4
+    countries: [in]
+    fields: [operations, sales, logistics-transport, customer-service]
+    kind: portal
+    access: public-search
+    importance: 3
+    risk: "OLX Jobs may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Classifieds jobs section; postings vary in quality. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: ncs
+    name: "National Career Service"
+    teach: true
+    home_url: https://www.ncs.gov.in/
+    countries: [in]
+    fields: [any]
+    kind: government
+    access: signed-in
+    importance: 2
+    risk: "National Career Service is a public government site; Crewdeck reads a few of its notice pages slowly, without an account."
+    notes: "The Ministry of Labour and Employment's job portal. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: freejobalert
+    name: "FreeJobAlert"
+    teach: true
+    home_url: https://www.freejobalert.com/
+    countries: [in]
+    fields: [public-sector]
+    kind: government
+    access: public-search
+    importance: 2
+    risk: "FreeJobAlert is a public government site; Crewdeck reads a few of its notice pages slowly, without an account."
+    notes: "Government and public-sector job notifications from many departments. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: sarkari-result
+    name: "Sarkari Result"
+    teach: true
+    home_url: https://www.sarkariresult.com/
+    countries: [in]
+    fields: [public-sector]
+    kind: government
+    access: public-search
+    importance: 2
+    risk: "Sarkari Result is a public government site; Crewdeck reads a few of its notice pages slowly, without an account."
+    notes: "Government job and exam notifications. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: upsc
+    name: "UPSC"
+    teach: true
+    home_url: https://upsc.gov.in/recruitment
+    countries: [in]
+    fields: [public-sector]
+    kind: government
+    access: public-search
+    importance: 2
+    risk: "UPSC is a public government site; Crewdeck reads a few of its notice pages slowly, without an account."
+    notes: "The Union Public Service Commission's recruitment notices. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: ssc
+    name: "SSC"
+    teach: true
+    home_url: https://ssc.gov.in/
+    countries: [in]
+    fields: [public-sector]
+    kind: government
+    access: public-search
+    importance: 2
+    risk: "SSC is a public government site; Crewdeck reads a few of its notice pages slowly, without an account."
+    notes: "The Staff Selection Commission's notices. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: ibps
+    name: "IBPS"
+    teach: true
+    home_url: https://www.ibps.in/
+    countries: [in]
+    fields: [public-sector, finance-accounting]
+    kind: government
+    access: public-search
+    importance: 2
+    risk: "IBPS is a public government site; Crewdeck reads a few of its notice pages slowly, without an account."
+    notes: "Recruitment for public-sector banks. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: employment-news
+    name: "Employment News"
+    teach: true
+    home_url: https://employmentnews.gov.in/
+    countries: [in]
+    fields: [public-sector]
+    kind: government
+    access: public-search
+    importance: 3
+    risk: "Employment News is a public government site; Crewdeck reads a few of its notice pages slowly, without an account."
+    notes: "The government's weekly of central government vacancies. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: join-indian-army
+    name: "Join Indian Army"
+    teach: true
+    home_url: https://joinindianarmy.nic.in/
+    countries: [in]
+    fields: [public-sector]
+    kind: government
+    access: public-search
+    importance: 3
+    risk: "Join Indian Army is a public government site; Crewdeck reads a few of its notice pages slowly, without an account."
+    notes: "Army recruitment notices (the Navy and Air Force have their own sites). From knowledge, not checked; its reader is taught on first connect."
+
+  - id: hosco
+    name: "Hosco"
+    teach: true
+    home_url: https://www.hosco.com/
+    countries: [world, in]
+    fields: [hospitality-food]
+    kind: niche
+    access: public-search
+    importance: 3
+    risk: "Hosco may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Hospitality jobs worldwide, India included. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: efinancialcareers
+    name: "eFinancialCareers"
+    teach: true
+    home_url: https://www.efinancialcareers.com/
+    countries: [world, in]
+    fields: [finance-accounting]
+    kind: niche
+    access: public-search
+    importance: 2
+    risk: "eFinancialCareers may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Banking and finance jobs, India included. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: lawctopus
+    name: "Lawctopus"
+    teach: true
+    home_url: https://www.lawctopus.com/
+    countries: [in]
+    fields: [legal]
+    kind: niche
+    access: public-search
+    importance: 3
+    risk: "Lawctopus may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Law jobs and internships. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: behance-jobs
+    name: "Behance Jobs"
+    teach: true
+    home_url: https://www.behance.net/joblist
+    countries: [world, in]
+    fields: [design, creative-media]
+    kind: board
+    access: public-search
+    importance: 2
+    risk: "Behance Jobs may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Design and creative jobs. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: dribbble-jobs
+    name: "Dribbble Jobs"
+    teach: true
+    home_url: https://dribbble.com/jobs
+    countries: [world, in]
+    fields: [design]
+    kind: board
+    access: public-search
+    importance: 3
+    risk: "Dribbble Jobs may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Design jobs. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: herkey
+    name: "HerKey (JobsForHer)"
+    teach: true
+    home_url: https://www.herkey.com/jobs
+    countries: [in]
+    fields: [any]
+    kind: niche
+    access: signed-in
+    importance: 2
+    risk: "HerKey (JobsForHer) doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Jobs and returnships for women. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: pangian
+    name: "Pangian"
+    teach: true
+    home_url: https://pangian.com/
+    countries: [world, in]
+    fields: [any]
+    kind: board
+    access: public-search
+    importance: 3
+    risk: "Pangian may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Remote jobs. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: upwork
+    name: "Upwork"
+    teach: true
+    home_url: https://www.upwork.com/
+    countries: [world, in]
+    fields: [any]
+    kind: freelance
+    access: signed-in
+    importance: 1
+    risk: "Upwork doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Freelance work. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: freelancer
+    name: "Freelancer"
+    teach: true
+    home_url: https://www.freelancer.in/
+    countries: [world, in]
+    fields: [any]
+    kind: freelance
+    access: public-search
+    importance: 2
+    risk: "Freelancer may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Freelance projects. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: contra
+    name: "Contra"
+    teach: true
+    home_url: https://contra.com/
+    countries: [world, in]
+    fields: [design, engineering-it, marketing]
+    kind: freelance
+    access: signed-in
+    importance: 3
+    risk: "Contra doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Freelance work for independents. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: truelancer
+    name: "Truelancer"
+    teach: true
+    home_url: https://www.truelancer.com/
+    countries: [in]
+    fields: [any]
+    kind: freelance
+    access: public-search
+    importance: 3
+    risk: "Truelancer may not allow automated reading; Crewdeck reads a few of its search pages slowly, as you would."
+    notes: "Freelance projects. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: expertia
+    name: "Expertia AI"
+    teach: true
+    home_url: https://www.expertia.ai/
+    countries: [in]
+    fields: [any]
+    kind: portal
+    access: signed-in
+    importance: 3
+    risk: "Expertia AI doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "An AI-matched hiring platform. From knowledge, not checked; its reader is taught on first connect."
+
+  - id: superset
+    name: "Superset"
+    teach: true
+    home_url: https://joinsuperset.com/
+    countries: [in]
+    fields: [any]
+    kind: campus
+    access: signed-in
+    importance: 3
+    risk: "Superset doesn't offer automated access; Crewdeck reads a few pages as you, slowly, and your account carries the risk."
+    notes: "Campus placements; access usually through a college. From knowledge, not checked; its reader is taught on first connect."

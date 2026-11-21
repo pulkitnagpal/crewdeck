@@ -38,7 +38,7 @@ function fixture(): PortalView[] {
 test('the stub keeps the engine\'s contract: list, connect, toggle, test, disconnect', () => {
   const s = createPortalsStub(fixture());
   const v = s.answer('GET', '/api/jobs/portals', null)!.json as any;
-  assert.deepEqual(Object.keys(v.portals[0]).sort(), ['countries', 'enabled', 'fields', 'id', 'login_url', 'name', 'risk', 'signup_url', 'state', 'verified'].sort());
+  assert.deepEqual(Object.keys(v.portals[0]).sort(), ['countries', 'enabled', 'fields', 'id', 'login_url', 'name', 'needs_reader', 'risk', 'signup_url', 'state', 'verified'].sort());
   assert.deepEqual(s.answer('POST', '/api/jobs/action/connectPortal', { id: 'naukri', signup: true })!.json, { ok: true, opened: true });
   assert.equal(s.answer('POST', '/api/jobs/action/togglePortal', { id: 'naukri', on: true })!.status, 400, 'not connected: no switch');
   assert.deepEqual(s.answer('POST', '/api/jobs/action/togglePortal', { id: 'stepstone', on: false })!.json, { ok: true, enabled: false });

@@ -30,7 +30,7 @@ export function lastLine(r, now = Date.now()) {
   const l = r.last;
   if (!l) return { kind: 'none', text: 'Not fetched yet' };
   // LinkedIn after a stop (1 h, 4 h, 12 h, then 24 h): when it is tried again, in the viewer's clock.
-  if (l.paused_until && Date.parse(l.paused_until) > now) return { kind: 'warn', text: `LinkedIn paused until ${clock(l.paused_until)} · ${ago(l.at, now)}` };
+  if (l.paused_until && Date.parse(l.paused_until) > now) return { kind: 'warn', text: `${r.kind === 'linkedin' ? 'LinkedIn' : r.name} paused until ${clock(l.paused_until)} · ${ago(l.at, now)}` };
   const desc = l.descriptions?.total ? ` · ${n(l.descriptions.full)} of ${n(l.descriptions.total)} with full descriptions` : '';
   if (l.ok) return { kind: 'ok', text: `${plural(l.jobs, 'role')} · ${n(l.new)} new · ${n(l.kept)} match your rules${desc} · ${ago(l.at, now)}` };
   return { kind: 'bad', text: `${l.why ?? l.error ?? 'The last fetch failed'} · ${ago(l.at, now)}` };

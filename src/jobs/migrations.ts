@@ -119,7 +119,13 @@ create table if not exists proposals (
   status text not null default 'pending' check (status in ('pending','done')), updated text not null);
 create index if not exists proposals_status on proposals(status);
 `;
-export const ADDITIVE: { name: string; sql: string }[] = [{ name: 'proposals', sql: PROPOSALS }];
+// learned (Jobs v2 P5): small ranking adjustments from the person's own actions (pipeline/learn.ts), recomputed whole.
+const LEARNED = `
+create table if not exists learned (
+  kind text not null check (kind in ('company','word','source')), key text not null, label text not null,
+  delta integer not null, counts_json text not null default '{}', updated text not null, primary key (kind, key));
+`;
+export const ADDITIVE: { name: string; sql: string }[] = [{ name: 'proposals', sql: PROPOSALS }, { name: 'learned', sql: LEARNED }];
 
 // Additive columns (no user_version step, like ADDITIVE): nullable, no default, added when missing on every open, so a
 // parallel phase's numbered step never collides with them. Each is checked inside BEGIN IMMEDIATE before the ALTER.

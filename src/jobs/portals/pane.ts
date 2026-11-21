@@ -11,7 +11,8 @@
 import { type Ctx, notesOf, todayOf } from '../ctx.ts';
 import { lookupPlace } from '../places.ts';
 import { portalVerdict } from './allow.ts';
-import { type Portal, delayMs, hostIn, loadPortals } from './catalog.ts';
+import { type Portal, canScan, delayMs, hostIn } from './catalog.ts';
+import { effectivePortals } from './readers.ts';
 import { type Posting, canonicalJobUrl, postedAt, workplaceOf } from './extract.ts';
 import { PAGE_JOBS, type PageOutput, type PaneJob } from './page-script.ts';
 import { type PortalProfile, portalProfile, portalQueries, searchUrl } from './queries.ts';
@@ -24,7 +25,7 @@ export type PortalPlan = { mode: PortalsMode; pages: PlanPage[]; skipped: { port
 
 /** Pages ingested within this long of the last one belong to the same scan (their counts add up). */
 export const SCAN_WINDOW_MS = 60 * 60_000;
-/** The largest script answer ingest reads (the script aims under 10 KB). */
+/** The largest script answer ingest reads (the script aims under 12 KB). */
 export const INGEST_MAX_BYTES = 128 * 1024;
 
 /**
@@ -35,7 +36,7 @@ export function planPortals(ctx: Ctx, o: { mode?: PortalsMode; only?: string; po
   const mode = o.mode ?? 'pane';
   const out: PortalPlan = { mode, pages: [], skipped: [] };
   if (mode !== 'pane') return { ...out, skipped: [{ portal: '*', name: 'Portals', why: 'profile mode: Crewdeck scans portals itself in every sources run' }] };
-  const cat = o.portals ?? loadPortals().portals;
+  const cat = o.portals ?? effectivePortals(ctx.home).portals;
   const byId = new Map(cat.map((p) => [p.id, p]));
   const state = readPortalsState(ctx.home).portals;
   const ids = o.only ? [o.only] : portalItems(ctx).filter((it) => it.enabled).map((it) => it.id);
@@ -48,6 +49,7 @@ export function planPortals(ctx: Ctx, o: { mode?: PortalsMode; only?: string; po
     if (!p) { if (o.only) throw new Error(`no portal "${id}" (crewdeck jobs portals list shows them)`); continue; }
     const st: PortalState = state[id] ?? {};
     const skip = (why: string) => out.skipped.push({ portal: id, name: p.name, why });
+    if (!canScan(p)) { skip(`needs a reader: Claude sets it up on first connect (crewdeck jobs portals teach ${id})`); continue; }
     if (!st.connected) { skip(`not connected (sign in: Jobs page → Sources → Portals → Connect)`); continue; }
     if (st.needs_sign_in) { skip(`${p.name} needs you to sign in again: Jobs page → Sources → Portals → Sign in`); continue; }
     if (st.pause && Date.parse(st.pause.until) > now.getTime()) { skip(`paused until ${st.pause.until} (${st.pause.reason})`); continue; }

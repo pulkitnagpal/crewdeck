@@ -126,6 +126,7 @@ function PortalRow({ p, mode, onAct, say }) {
       <div class="head"><h3 id=${id}>${p.name}</h3>
         <span class=${cls('chip', line.kind)}>${line.chip}</span>
         ${line.text ? html`<span class="small soft">${line.text}</span>` : null}</div>
+      ${p.needs_reader ? html`<p class="small soft">Needs a reader: Claude sets it up on first connect.</p>` : null}
       ${pane ? html`<p class="small" role="status"><span class="dot busy" aria-hidden="true"></span> ${pane}</p>`
         : opened && !connected ? html`<p class="small" role="status"><span class="dot busy" aria-hidden="true"></span> Waiting for you to sign in, in the ${p.name} window</p>` : null}
       ${busy === 'test' && !isPane ? html`<p class="small soft" role="status"><span class="dot busy" aria-hidden="true"></span> Scanning one search, slowly (up to a minute)</p>` : null}
