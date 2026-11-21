@@ -141,8 +141,10 @@ test('/crewdeck opens the Today panel: to-dos, jobs, tickets; ticking and adding
   expect((await ui.find({ key: 'todo-5' }))?.props.label).toBe('☐ Build my portfolio')
   await ui.press({ key: 'notes' })
   await ui.press({ key: 'open-jobs' })
-  // On desktop, pages are opened by Claude in its browser pane (asked in the chat).
-  expect(pane).toEqual(['Open http://crewdeck.localhost:4848/#notes/journal/2026-11-20 in the browser pane.', 'Open http://crewdeck.localhost:4848/#jobs in the browser pane.'])
+  // Pages open at once in the default browser: no chat turn is spent.
+  expect(pane).toEqual([])
+  expect(s.opened).toEqual(['http://crewdeck.localhost:4848/#notes/journal/2026-11-20', 'http://crewdeck.localhost:4848/#jobs'])
+  s.opened.length = 0
   // Apply and Find now go to Crewdeck, which queues the work and opens the Jobs chat in front: the panel opens nothing itself.
   await ui.press({ key: 'apply-c0ffee000001' })
   expect(s.calls.at(-1)).toEqual({ path: '/api/today/jobs', body: { op: 'apply', role: 'c0ffee000001' }, token: true })

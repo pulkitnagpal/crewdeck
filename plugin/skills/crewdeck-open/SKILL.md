@@ -18,8 +18,8 @@ yourself.
    what Jobs is waiting on, open tickets) and starts Crewdeck if needed. You can't type it for them.
 2. **The full page.** Run `crewdeck open --print` (add `jobs` or `notes` for those views, as in `crewdeck open jobs
    --print`). It starts Crewdeck if it isn't running and prints the address. Then:
-   - in Claude desktop, open that address in the browser pane (your browser tool for local pages);
-   - anywhere else, run `crewdeck open` (or `crewdeck open jobs`) to open it in the person's default browser.
+   - run `crewdeck open` (or `crewdeck open jobs`) to open it in the person's default browser. Use the browser pane
+     only when the person asks for it.
 3. **The jobs session.** Jobs work happens in a Claude Code session opened in the jobs folder. `crewdeck open session`
    opens one in Claude desktop: tell the person to confirm the folder and press Enter on the hello it fills in.
 4. **A board for a project.** When the person wants their project (the folder this session is in, or one they name)

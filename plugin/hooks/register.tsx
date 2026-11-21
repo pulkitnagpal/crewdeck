@@ -414,14 +414,10 @@ function isJobsSessionLink(url: string): boolean {
 }
 
 /**
- * A Crewdeck page, from a button: in Claude desktop it opens in Claude's own browser pane, which only Claude can drive
- * (its browser tools aren't open to plugins), so the button asks Claude in the chat; elsewhere the default browser.
+ * A Crewdeck page, from a button: the person's default browser, at once. (Claude's browser pane is driven only by Claude,
+ * so opening there cost a whole chat turn; the default browser costs nothing.)
  */
-async function openPage($: Dollar, url: string, surface?: string): Promise<void> {
-  if (surface === 'desktop' && /^http:\/\/[a-z0-9.\-]+(:\d+)?\//.test(url)) {
-    void $.prompt.submit({ text: `Open ${url} in the browser pane.` })
-    return
-  }
+async function openPage($: Dollar, url: string, _surface?: string): Promise<void> {
   await openUrl($, url)
 }
 
