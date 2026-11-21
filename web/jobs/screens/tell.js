@@ -34,7 +34,7 @@ function Item({ p, it, onApprove, onReject }) {
         <button type="button" class="btn small quiet" onClick=${() => onReject(p.id, it.n)} aria-label=${`Reject: ${it.line}`}>Reject</button>
       </span>
     </div>
-    <span class="hint">${it.reason}${it.error ? html` · <span class="bad">Not applied: ${it.error}</span>` : null}</span>
+    <span class="hint">${it.starts ? `Starts ${it.starts} · ` : ''}${it.reason}${it.error ? html` · <span class="bad">Not applied: ${it.error}</span>` : null}</span>
     ${it.evidence ? html`<${More} summary="Where this comes from"><p>“${it.evidence}”</p></${More}>` : null}
   </li>`;
 }
@@ -42,8 +42,11 @@ function Item({ p, it, onApprove, onReject }) {
 /** Pending proposal items, then a quiet line for what Crewdeck applied on its own (Undo). Nothing at all when empty. */
 export function Proposals({ data, onApprove = noop, onReject = noop, onApproveAll = noop, onUndo = noop }) {
   const pending = (data?.pending ?? []).filter((p) => p.items.some((i) => i.status === 'pending'));
-  const applied = [...(data?.pending ?? []), ...(data?.recent ?? [])].flatMap((p) => p.items.filter((i) => i.can_undo).map((it) => ({ p, it })));
-  if (!pending.length && !applied.length) return null;
+  const undoable = [...(data?.pending ?? []), ...(data?.recent ?? [])].flatMap((p) => p.items.filter((i) => i.can_undo).map((it) => ({ p, it })));
+  // ADR-0008 §9: approved for a later day ("from tomorrow…"): shown with its date, Undo cancels it before it starts.
+  const waiting = undoable.filter(({ it }) => it.status === 'scheduled');
+  const applied = undoable.filter(({ it }) => it.status !== 'scheduled');
+  if (!pending.length && !applied.length && !waiting.length) return null;
   const count = pending.reduce((n, p) => n + p.items.filter((i) => i.status === 'pending').length, 0);
   return html`<section class="card proposals" aria-labelledby="proposals-h">
     <header class="phead">
@@ -54,6 +57,8 @@ export function Proposals({ data, onApprove = noop, onReject = noop, onApproveAl
       <p class="small soft">${p.summary} · ${ORIGIN[p.origin] ?? ''}</p>
       <ul class="plist">${p.items.filter((i) => i.status === 'pending').map((it) => html`<${Item} key=${it.n} p=${p} it=${it} onApprove=${onApprove} onReject=${onReject} />`)}</ul>
     </div>`)}
+    ${waiting.length ? html`<ul class="plist">${waiting.map(({ p, it }) => html`<li class="pitem" key=${`${p.id}.${it.n}`}><div class="pline"><span class="what">${it.line}</span>
+        <button type="button" class="linkbtn" onClick=${() => onUndo(p.id, it.n)} aria-label=${`Undo: ${it.line}`}>Undo</button></div><span class="hint">Starts ${it.starts}</span></li>`)}</ul>` : null}
     ${applied.length ? html`<${More} summary=${`Applied from your words: ${plural(applied.length, 'change')}`}>
       <ul class="plist">${applied.map(({ p, it }) => html`<li class="pitem" key=${`${p.id}.${it.n}`}><div class="pline"><span class="what">${it.done ?? it.line}</span>
         <button type="button" class="linkbtn" onClick=${() => onUndo(p.id, it.n)} aria-label=${`Undo: ${it.done ?? it.line}`}>Undo</button></div></li>`)}</ul>

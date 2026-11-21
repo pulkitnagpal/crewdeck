@@ -8,6 +8,9 @@ import { parse } from 'yaml';
 import { place, within } from '../places.ts';
 import { type Directory, type Size, loadDirectory } from './seed.ts';
 import { type Pick, type WorkMode, seekerPlaces, selectCompanies } from './select.ts';
+import { directoryCountry } from '../company-country.ts';
+import { countryAllowed, countryPrefText, noCountryPref } from '../country-pref.ts';
+import type { CompanyCountries } from '../schema.ts';
 
 export const PLAN_FILE = join(import.meta.dirname, '..', 'data', 'source-plan.yaml');
 export const API_IDS = ['usajobs', 'nhs-jobs', 'teaching-vacancies', 'ba-jobsuche', 'reed', 'adzuna', 'jooble', 'himalayas', 'remotive', 'arbeitnow'] as const;
@@ -28,6 +31,7 @@ export type PlanProfile = {
   careersPages?: string[];
   freelance?: boolean;
   size?: Size;
+  /** jobs/search.md → companies.countries (ADR-0008 §8): company sets follow it. */ companyCountries?: CompanyCountries;
 };
 export type PlannedSource = { kind: 'api' | 'company-feeds' | 'watchlist' | 'careers-pages' | 'manual'; id: string; params: Record<string, unknown>; reason: string };
 export type Plan = { sources: PlannedSource[]; coverage: { score: number; note: string }; rows: string[] };
@@ -115,6 +119,16 @@ export function planSources(p: PlanProfile, opts: { table?: PlanTable; directory
   const missing: string[] = [];
   let weakCompanies = false;
   const used: string[] = [];
+  const prefs = noCountryPref(p.companyCountries) ? null : p.companyCountries!;
+  /** A company's known home country breaks the preference. */
+  const barred = (c: Pick) => { const cc = dir.byId.get(c.id) ? directoryCountry(dir.byId.get(c.id)!) : null; return !!prefs && !!cc && !countryAllowed(cc, prefs); };
+  /** It hires mostly in a country the preference bars (ranked after the rest, never dropped for it). */
+  const leansBarred = (c: Pick) => !!prefs && (dir.byId.get(c.id)?.regions ?? []).some((r) => place(r)?.kind === 'country' && !countryAllowed(r, prefs));
+  // A local set looks only where the person can work on site: when the preference bars every one of those countries
+  // (e.g. "only non-Indian companies" for someone in India), its employers are that country's, so it is skipped.
+  const localCountries = places.filter((x) => place(x)?.kind === 'country');
+  const localBarred = !!prefs && localCountries.length > 0 && localCountries.every((x) => !countryAllowed(x, prefs));
+  let skippedLocal = false;
 
   const taken = new Set<string>();
   for (const row of rows) {
@@ -138,13 +152,15 @@ export function planSources(p: PlanProfile, opts: { table?: PlanTable; directory
         const preferRemote = !!s.set?.prefer_remote;
         const key = `company-feeds:${preferRemote ? 'remote' : 'local'}`;
         if (seen.has(key)) continue;
+        if (!preferRemote && localBarred) { skippedLocal = true; continue; }
         // A remote-friendly set looks worldwide; a local set looks only where the person can work on site/hybrid.
         const sel = selectCompanies({
           families: p.families, countries: preferRemote ? p.countries : p.countries,
           workModes: preferRemote ? ['remote'] : (modes.filter((m) => m !== 'remote').length ? modes.filter((m) => m !== 'remote') : ['hybrid']),
-          size: s.set?.size ?? p.size, limit: COMPANIES_PER_SET,
+          size: s.set?.size ?? p.size, limit: prefs ? COMPANIES_PER_SET * 3 : COMPANIES_PER_SET,
         }, dir);
-        const picks: Pick[] = sel.picks.filter((c) => !taken.has(c.id) && (!preferRemote || c.remote === true || c.reasons.some((r) => r.startsWith('hires in'))));
+        let picks: Pick[] = sel.picks.filter((c) => !taken.has(c.id) && !barred(c) && (!preferRemote || c.remote === true || c.reasons.some((r) => r.startsWith('hires in'))));
+        if (prefs) picks = [...picks.filter((c) => !leansBarred(c)), ...picks.filter(leansBarred)].slice(0, COMPANIES_PER_SET);
         for (const c of picks) taken.add(c.id);
         if (!picks.length) { weakCompanies = true; continue; }
         seen.add(key);
@@ -172,6 +188,7 @@ export function planSources(p: PlanProfile, opts: { table?: PlanTable; directory
   const notes = [best?.coverage.note ?? 'no plan row matched'];
   if (weakCompanies && best?.sources.some((s) => s.kind === 'company-feeds')) { score *= 0.85; notes.push('the company directory has few verified employers for this field and place'); }
   if (p.freelance) { score = Math.min(score, 0.3); if (!/freelance/i.test(notes[0])) notes.push('freelance gigs mostly live on marketplaces and agency portals, not job feeds'); }
+  if (skippedLocal) notes.push(`skipped the local company set: you want ${countryPrefText(prefs!)}`);
   const plannedNames = missing.map((m) => t.planned[m]?.split(' — ')[0] ?? m);
   if (plannedNames.length) notes.push(`not available yet: ${plannedNames.join(', ')}`);
   return { sources: out, coverage: { score: Math.round(score * 100) / 100, note: notes.join('; ') }, rows: used };

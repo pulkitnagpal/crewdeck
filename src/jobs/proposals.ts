@@ -6,22 +6,29 @@
 // The one exception: the person's own direct words (origin "person", the item's evidence found word for word in the tell
 // request they typed) apply at once for the low-risk kinds (add a target, add a place, add a link, watch a company). They
 // still show as an applied proposal the person can undo. Anything quoted or fetched always waits for a click.
+//
+// ADR-0008 §9 ("from tomorrow…"): any item may carry `effective_from` (YYYY-MM-DD). Approving (or auto-applying) it before
+// that day stores it as `scheduled`; applyDue applies it on the first server start or sources run on or after the day.
+// Undo before then cancels it.
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { type Ctx, nowIso, todayOf } from './ctx.ts';
 import type { Db } from './db.ts';
 import { NOTES, readNote } from './notes.ts';
 import { setFields } from './edit.ts';
 import { changeSources } from './sources-note.ts';
 import { remember } from './kb/ops.ts';
-import { PAY_PERIODS, WORKPLACES } from './schema.ts';
+import { ISO2, PAY_PERIODS, PORTAL_ID, WORKPLACES, sourceItems } from './schema.ts';
+import { place, placeName } from './places.ts';
 import { FAMILIES } from './catalog.ts';
 
-export const PROPOSAL_KINDS = ['target_add', 'target_remove', 'place', 'work_mode', 'pay', 'profile_fact', 'answer', 'watch_company', 'add_link', 'source_add', 'source_remove', 'exclude'] as const;
+export const PROPOSAL_KINDS = ['target_add', 'target_remove', 'place', 'work_mode', 'pay', 'profile_fact', 'answer', 'watch_company', 'add_link', 'source_add', 'source_remove', 'exclude', 'company_countries', 'portal_toggle'] as const;
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
 export const ORIGINS = ['person', 'quoted', 'fetched'] as const;
 export type Origin = (typeof ORIGINS)[number];
 /** Kinds the person's own direct words may apply at once (still listed, and undoable). */
-export const AUTO_KINDS: ReadonlySet<ProposalKind> = new Set(['target_add', 'place', 'add_link', 'watch_company']);
+export const AUTO_KINDS: ReadonlySet<ProposalKind> = new Set(['target_add', 'place', 'add_link', 'watch_company', 'company_countries', 'portal_toggle']);
 /** Kinds never taken from fetched material (design §8.7: nothing writes profile answers from fetched text). */
 const PERSONAL_KINDS: ReadonlySet<ProposalKind> = new Set(['profile_fact', 'answer']);
 export const PLACE_FIELDS = ['onsite', 'remote_from', 'relocate_to', 'authorized_in'] as const;
@@ -29,17 +36,19 @@ export const EXCLUDE_FIELDS = ['companies', 'industries', 'title_words'] as cons
 export const MAX_ITEMS = 20;
 export const MAX_SUMMARY = 300;
 
-export type ItemStatus = 'pending' | 'approved' | 'rejected';
+export type ItemStatus = 'pending' | 'scheduled' | 'approved' | 'rejected';
 export type ProposalItem = {
   kind: ProposalKind; payload: Record<string, any>; reason: string; evidence?: string;
+  /** The day it takes effect (YYYY-MM-DD, the person's time zone): before it, an approved item waits as `scheduled`. */ effective_from?: string;
   status: ItemStatus;
+  /** A scheduled item: how it was approved, so it applies later exactly as it would have then. */ wait?: { quote?: string; where?: string; auto?: boolean };
   /** Applied at once from the person's own words. */ auto?: boolean;
   /** What applying it did, for the line shown and for undo (a source key, a request id). */ done?: string; undo?: Record<string, unknown>;
   /** When it was approved, rejected or undone. */ decided?: string; undone?: boolean;
   /** Approving it failed: the writer's message (the item stays pending). */ error?: string;
 };
 export type Proposal = { id: number; created: string; updated: string; origin: Origin; summary: string; request: number | null; status: 'pending' | 'done'; items: ProposalItem[] };
-export type ProposalInput = { origin: Origin; summary: string; request?: number; items: Pick<ProposalItem, 'kind' | 'payload' | 'reason' | 'evidence'>[] };
+export type ProposalInput = { origin: Origin; summary: string; request?: number; items: Pick<ProposalItem, 'kind' | 'payload' | 'reason' | 'evidence' | 'effective_from'>[] };
 
 /** How an approved item reaches the world outside the notes (the server queues a link request; tests record it). */
 export type ApplyEnv = {
@@ -132,6 +141,30 @@ export function checkPayload(kind: ProposalKind, raw: unknown): Record<string, a
     }
     case 'source_remove': onlyKeys(p, ['key'], w); return { key: typeof p.key === 'string' && /^[a-z0-9][a-z0-9-]{0,60}$/.test(p.key) ? p.key : bad(`${w}.key is a source key (crewdeck jobs sources list)`) };
     case 'exclude': onlyKeys(p, ['field', 'value'], w); return { field: oneOf(p.field, EXCLUDE_FIELDS, `${w}.field`), value: text(p.value, 200, `${w}.value`) };
+    case 'company_countries': {
+      // The whole list for each side given (like work_mode); an empty list clears that side.
+      onlyKeys(p, ['only', 'exclude'], w);
+      const out: Record<string, string[]> = {};
+      for (const side of ['only', 'exclude'] as const) {
+        if (p[side] === undefined) continue;
+        if (!Array.isArray(p[side]) || (p[side] as unknown[]).length > 50) bad(`${w}.${side} must be a list of at most 50 country codes`);
+        out[side] = [...new Set((p[side] as unknown[]).map((c, i) => {
+          const code = typeof c === 'string' ? c.trim().toLowerCase() : '';
+          if (!ISO2.test(code) || place(code)?.kind !== 'country') bad(`${w}.${side}[${i}]: ${JSON.stringify(c)} is not a two-letter country code (in, us, de …)`);
+          return code;
+        }))];
+      }
+      if (!Object.keys(out).length) bad(`${w}: give only, exclude or both (lists of country codes)`);
+      const both = (out.only ?? []).filter((c) => (out.exclude ?? []).includes(c));
+      if (both.length) bad(`${w}: ${both.join(', ')} is in both only and exclude`);
+      return out;
+    }
+    case 'portal_toggle': {
+      onlyKeys(p, ['portal', 'on'], w);
+      const portal = typeof p.portal === 'string' && PORTAL_ID.test(p.portal) ? p.portal : bad(`${w}.portal is a portal id (lowercase letters, digits and -)`);
+      if (typeof p.on !== 'boolean') bad(`${w}.on is true (switch it on) or false (switch it off)`);
+      return { portal, on: p.on };
+    }
   }
   return bad(`unknown kind ${kind}`);
 }
@@ -149,14 +182,19 @@ export function checkProposal(raw: unknown): ProposalInput {
   if (p.items.length > MAX_ITEMS) bad(`items: at most ${MAX_ITEMS}`);
   const items = p.items.map((it: any, i: number) => {
     if (!it || typeof it !== 'object' || Array.isArray(it)) bad(`items[${i}] must be a map`);
-    onlyKeys(it, ['kind', 'payload', 'reason', 'evidence'], `items[${i}]`);
+    onlyKeys(it, ['kind', 'payload', 'reason', 'evidence', 'effective_from'], `items[${i}]`);
     const kind = oneOf(it.kind, PROPOSAL_KINDS, `items[${i}].kind`);
     if (origin === 'fetched' && PERSONAL_KINDS.has(kind)) bad(`items[${i}]: a ${kind} comes only from the person's own words or their own file, never from a fetched page`);
     const evidence = text(it.evidence, 500, `items[${i}].evidence`, false);
-    return { kind, payload: checkPayload(kind, it.payload), reason: text(it.reason, 300, `items[${i}].reason`)!, ...(evidence ? { evidence } : {}) };
+    const from = it.effective_from;
+    if (from !== undefined && !isDay(from)) bad(`items[${i}].effective_from is a date, YYYY-MM-DD (e.g. 2026-11-22)`);
+    return { kind, payload: checkPayload(kind, it.payload), reason: text(it.reason, 300, `items[${i}].reason`)!, ...(evidence ? { evidence } : {}), ...(from ? { effective_from: from as string } : {}) };
   });
   return { origin, summary, ...(request ? { request } : {}), items };
 }
+
+/** A real calendar day written YYYY-MM-DD. */
+const isDay = (v: unknown): boolean => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
 
 // ---- the store ----
 
@@ -175,7 +213,8 @@ export function listProposals(db: Db, o: { days?: number; limit?: number; now?: 
 }
 
 function save(db: Db, p: Proposal, at: string) {
-  const status = p.items.some((i) => i.status === 'pending') ? 'pending' : 'done';
+  // A scheduled item keeps its proposal open (listed with "Starts <date>") until it applies or is undone.
+  const status = p.items.some((i) => i.status === 'pending' || i.status === 'scheduled') ? 'pending' : 'done';
   db.prepare('update proposals set items_json = ?, status = ?, updated = ? where id = ?').run(JSON.stringify(p.items), status, at, p.id);
   p.status = status; p.updated = at;
 }
@@ -193,8 +232,10 @@ export function addProposal(env: ApplyEnv, input: ProposalInput, o: { told?: str
     .run(at, at, input.origin, input.summary, input.request ?? null, JSON.stringify(items)).lastInsertRowid);
   const p = getProposal(env.ctx.db, id);
   const told = o.told ? norm(o.told) : '';
+  const today = todayOf(env.ctx);
   p.items.forEach((it, i) => {
     if (input.origin !== 'person' || !AUTO_KINDS.has(it.kind) || !told || !it.evidence || !told.includes(norm(it.evidence))) return;
+    if (later(it, today)) return schedule(env, it, { auto: true });
     try { applyAt(env, p, i, { auto: true }); } catch (e: any) { it.error = String(e?.message ?? e).slice(0, 300); }
   });
   save(env.ctx.db, p, nowIso(env.ctx));
@@ -217,9 +258,12 @@ export function approve(env: ApplyEnv, id: number, n?: number, o: { quote?: stri
   const idx = pick(p, n, (it) => it.status === 'pending');
   let applied = 0;
   const failed: string[] = [];
+  const today = todayOf(env.ctx);
   for (const i of idx) {
     const it = p.items[i];
     if (it.status !== 'pending') throw new ProposalError(`item ${i + 1} is already ${it.status}`);
+    // Approved for a later day: it waits (and counts as approved for the caller).
+    if (later(it, today)) { schedule(env, it, o); applied++; continue; }
     try { applyAt(env, p, i, o); applied++; } catch (e: any) { it.error = String(e?.message ?? e).slice(0, 300); failed.push(`item ${i + 1}: ${it.error}`); }
   }
   save(env.ctx.db, p, nowIso(env.ctx));
@@ -236,11 +280,56 @@ export function reject(env: ApplyEnv, id: number, n?: number): Proposal {
   return p;
 }
 
-/** Undo an item Crewdeck applied at once from the person's words (its target, place, watched company or link). */
+/** An item approved for a day still to come. */
+const later = (it: ProposalItem, today: string) => !!it.effective_from && it.effective_from > today;
+function schedule(env: ApplyEnv, it: ProposalItem, o: { quote?: string; where?: string; auto?: boolean }) {
+  const wait = Object.fromEntries(Object.entries({ quote: o.quote?.trim() || undefined, where: o.where, auto: o.auto || undefined }).filter(([, v]) => v !== undefined));
+  Object.assign(it, { status: 'scheduled', decided: nowIso(env.ctx), wait, error: undefined, done: `starts ${it.effective_from}`, ...(o.auto ? { auto: true } : {}) });
+}
+
+/**
+ * Apply every scheduled item whose day has come (effective_from on or before `today`, the person's day): called on the
+ * server's start and at each sources run. One that fails stays scheduled with the reason and is tried again next time.
+ */
+export function applyDue(env: ApplyEnv, today: string = todayOf(env.ctx)): { applied: number; failed: string[] } {
+  let applied = 0;
+  const failed: string[] = [];
+  const rows = env.ctx.db.prepare(`select id from proposals where status = 'pending' and items_json like '%"scheduled"%' order by id`).all() as any[];
+  for (const r of rows) {
+    const p = getProposal(env.ctx.db, Number(r.id));
+    let touched = false;
+    p.items.forEach((it, i) => {
+      if (it.status !== 'scheduled' || !it.effective_from || it.effective_from > today) return;
+      touched = true;
+      const o = it.wait ?? {};
+      try {
+        applyAt(env, p, i, { ...o, where: o.where ?? `on ${it.effective_from}, as approved` });
+        delete it.wait;
+        applied++;
+      } catch (e: any) {
+        it.error = String(e?.message ?? e).slice(0, 300);
+        failed.push(`proposal ${p.id} item ${i + 1}: ${it.error}`);
+      }
+    });
+    if (touched) save(env.ctx.db, p, nowIso(env.ctx));
+  }
+  return { applied, failed };
+}
+
+/**
+ * Undo an item Crewdeck applied at once from the person's words (its target, place, watched company, link, company
+ * countries or portal switch), or cancel any item still waiting for its day.
+ */
 export function undo(env: ApplyEnv, id: number, n: number): Proposal {
   const p = getProposal(env.ctx.db, id);
   const [i] = pick(p, n, () => false);
   const it = p.items[i];
+  if (it.status === 'scheduled') {
+    Object.assign(it, { status: 'rejected', undone: true, decided: nowIso(env.ctx), done: `cancelled before ${it.effective_from}`, error: undefined });
+    delete it.wait;
+    save(env.ctx.db, p, nowIso(env.ctx));
+    return p;
+  }
   if (it.status !== 'approved' || !it.auto || it.undone) throw new ProposalError(`item ${n} was not applied by Crewdeck on its own: change it in Preferences or Sources`);
   const because = `undone on the Jobs page: ${it.done ?? it.kind}`;
   const u = it.undo ?? {};
@@ -248,6 +337,13 @@ export function undo(env: ApplyEnv, id: number, n: number): Proposal {
   else if (it.kind === 'place' && u.field) removeFromList(env.ctx, ['places', String(u.field)], String(u.value), because);
   else if (it.kind === 'watch_company' && u.key) changeSources(env.ctx, { op: 'remove', key: String(u.key) });
   else if (it.kind === 'add_link' && u.request && !(env.cancelLink?.(Number(u.request)) ?? false)) throw new ProposalError('Claude already added that link: skip the role on Today instead');
+  else if (it.kind === 'company_countries' && u.before) {
+    const before = u.before as Record<string, string[] | null>;
+    setFields(searchFile(env.ctx), 'search', Object.entries(before).map(([k, v]) => ({ segs: ['companies', 'countries', k], raw: JSON.stringify(v ?? []) })), { because, today: todayOf(env.ctx) });
+  } else if (it.kind === 'portal_toggle' && u.key) {
+    if (u.added) changeSources(env.ctx, { op: 'remove', key: String(u.key) });
+    else changeSources(env.ctx, { op: u.was === false ? 'disable' : 'enable', key: String(u.key) });
+  }
   Object.assign(it, { status: 'rejected', undone: true, decided: nowIso(env.ctx) });
   save(env.ctx.db, p, nowIso(env.ctx));
   return p;
@@ -367,6 +463,28 @@ function applyAt(env: ApplyEnv, p: Proposal, i: number, o: { quote?: string; whe
       done = addToList(ctx, segs, pl.value, because) ? `now excluded: ${pl.value}` : `${pl.value} was already excluded`;
       break;
     }
+    case 'company_countries': {
+      const now = rawSearch(ctx)?.companies?.countries ?? {};
+      const sides = Object.keys(pl) as ('only' | 'exclude')[];
+      const before = Object.fromEntries(sides.map((k) => [k, strList(now[k])]));
+      setFields(searchFile(ctx), 'search', sides.map((k) => ({ segs: ['companies', 'countries', k], raw: JSON.stringify(pl[k]) })), { because, today: todayOf(ctx) });
+      done = countriesLine(pl);
+      undoInfo = { before };
+      break;
+    }
+    case 'portal_toggle': {
+      const row = sourceItems(readNote(join(ctx.vault, NOTES.sources)).doc.toJS() ?? {}).items.find((x) => x.portal === pl.portal);
+      if (row) {
+        if (row.enabled !== pl.on) changeSources(ctx, { op: pl.on ? 'enable' : 'disable', key: row.key });
+        done = row.enabled === pl.on ? `the portal ${row.name} was already ${pl.on ? 'on' : 'off'}` : `switched ${pl.on ? 'on' : 'off'} the portal ${row.name}`;
+        undoInfo = row.enabled === pl.on ? undefined : { key: row.key, was: row.enabled };
+      } else {
+        const r = changeSources(ctx, { op: 'add', source: { portal: pl.portal, name: portalName(pl.portal), ...(pl.on ? {} : { enabled: false }) } });
+        done = `${pl.on ? 'added' : 'added, switched off,'} the portal ${portalName(pl.portal)} (source ${r.key})`;
+        undoInfo = { key: r.key, added: true };
+      }
+      break;
+    }
   }
   Object.assign(it, { status: 'approved', decided: nowIso(ctx), done, error: undefined, ...(o.auto ? { auto: true } : {}), ...(undoInfo ? { undo: undoInfo } : {}) });
 }
@@ -387,8 +505,32 @@ export function itemLine(it: ProposalItem): string {
     source_add: () => `Add the source ${p.name ?? p.provider ?? p.careers_url ?? p.url}`,
     source_remove: () => `Remove the source ${p.key}`,
     exclude: () => `Exclude ${({ companies: 'the company', industries: 'the industry', title_words: 'titles with' } as Record<string, string>)[p.field]} ${p.value}`,
+    company_countries: () => countriesLine(p),
+    portal_toggle: () => `Switch ${p.on ? 'on' : 'off'} the portal ${portalName(p.portal)}`,
   };
   return what[it.kind]();
+}
+
+/** "Only companies headquartered outside India" (one line, the person reads it). */
+function countriesLine(p: Record<string, any>): string {
+  const n = (cs: string[]) => cs.map((c) => placeName(c)).join(', ');
+  const parts: string[] = [];
+  if (p.only) parts.push(p.only.length ? `only companies headquartered in ${n(p.only)}` : 'companies from any country');
+  if (p.exclude) parts.push(p.exclude.length ? `${p.only?.length ? 'never' : 'only'} companies headquartered ${p.only?.length ? 'in' : 'outside'} ${n(p.exclude)}` : 'no country excluded');
+  const t = parts.join('; ');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/** A portal's name from the portals catalog when there is one (ADR-0008 §6), else its id. */
+function portalName(id: string): string {
+  try {
+    const file = join(import.meta.dirname, 'data', 'portals.yaml');
+    if (!existsSync(file)) return id;
+    const y = parseYaml(readFileSync(file, 'utf8')) as any;
+    const list: any[] = Array.isArray(y) ? y : Array.isArray(y?.portals) ? y.portals : [];
+    const hit = list.find((x) => x?.id === id);
+    return typeof hit?.name === 'string' && hit.name.trim() ? hit.name.trim() : id;
+  } catch { return id; }
 }
 
 /** What the page and the panel see: every item with its number and line; never more than the proposal holds. */
@@ -396,7 +538,10 @@ export function proposalView(p: Proposal) {
   return {
     id: p.id, created: p.created, origin: p.origin, summary: p.summary, status: p.status, request: p.request,
     items: p.items.map((it, i) => ({ n: i + 1, kind: it.kind, line: itemLine(it), reason: it.reason, evidence: it.evidence ?? null, status: it.status,
-      auto: !!it.auto, undone: !!it.undone, done: it.done ?? null, error: it.error ?? null, can_undo: it.status === 'approved' && !!it.auto && !it.undone })),
+      auto: !!it.auto, undone: !!it.undone, done: it.done ?? null, error: it.error ?? null,
+      // "Starts <date>" while it waits for its day; null once applied, cancelled, or without a date.
+      starts: it.status === 'scheduled' || it.status === 'pending' ? it.effective_from ?? null : null,
+      can_undo: (it.status === 'approved' && !!it.auto && !it.undone) || it.status === 'scheduled' })),
   };
 }
 

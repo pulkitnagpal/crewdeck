@@ -121,6 +121,29 @@ create index if not exists proposals_status on proposals(status);
 `;
 export const ADDITIVE: { name: string; sql: string }[] = [{ name: 'proposals', sql: PROPOSALS }];
 
+// Additive columns (no user_version step, like ADDITIVE): nullable, no default, added when missing on every open, so a
+// parallel phase's numbered step never collides with them. Each is checked inside BEGIN IMMEDIATE before the ALTER.
+// roles.company_country (ADR-0008 §8): the company's own country (an ISO code) when a feed or a portal said.
+export const ADDITIVE_COLUMNS: { table: string; column: string; sql: string }[] = [
+  { table: 'roles', column: 'company_country', sql: 'alter table roles add column company_country text' },
+];
+
+const hasColumn = (db: DatabaseSync, table: string, column: string) => !!db.prepare('select 1 from pragma_table_info(?) where name = ?').get(table, column);
+
+function addColumns(db: DatabaseSync) {
+  for (const step of ADDITIVE_COLUMNS) {
+    if (hasColumn(db, step.table, step.column)) continue;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      if (!hasColumn(db, step.table, step.column)) db.exec(step.sql);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+}
+
 /** Every schema step, in order; step N leaves user_version = N. */
 export const MIGRATIONS: { version: number; sql: string }[] = [{ version: 1, sql: V1 }, { version: 2, sql: V2 }, { version: 3, sql: V3 }, { version: 4, sql: V4 }, { version: 5, sql: V5 }];
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -144,5 +167,6 @@ export function migrate(db: DatabaseSync): number {
     }
   }
   for (const step of ADDITIVE) db.exec(step.sql);
+  addColumns(db);
   return version(db);
 }

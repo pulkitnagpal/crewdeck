@@ -46,6 +46,7 @@ export function planProfile(ctx: Ctx): PlanProfile {
     watchlist: watch,
     careersPages: watch.map((w) => w.url).filter((u): u is string => !!u),
     freelance: (s.employment_types ?? []).some((t: string) => /freelance|contract/i.test(t)),
+    companyCountries: s.companies?.countries,
   };
 }
 

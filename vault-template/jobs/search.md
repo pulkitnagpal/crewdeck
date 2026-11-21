@@ -30,6 +30,8 @@ exclude:
   companies: []
   industries: []             # e.g. [gambling, crypto]
   travel: off                # the lowest travel that rules a job out: off | occasional | frequent
+companies:                   # where the companies themselves are from (headquartered), as country codes (in, us, de …)
+  countries: { only: [], exclude: [] }   # e.g. exclude: [in] = only non-Indian companies; unknown companies go to the judge
 pay:
   currency: ""               # your currency code, e.g. EUR, USD, INR
   floor: 0                   # your minimum in that currency per period; 0 = no floor
