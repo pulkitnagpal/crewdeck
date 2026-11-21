@@ -134,18 +134,29 @@ export async function scanPage(C, G) {
       } catch (e) { }
     }
   }
-  // The portal's own job cards (catalog `cards`): read from the page as shown, before JSON-LD and the link heuristics.
-  if (C.cards) {
+  // The portal's own job cards (catalog `cards`), before JSON-LD and the link heuristics: by CSS selectors, or (`react`)
+  // the job record the card's component already holds, read from the page with no request.
+  for (const c of C.cards || []) {
     const q = (root, sel) => { try { return sel ? root.querySelector(sel) : null; } catch (e) { return null; } };
     let items = [];
-    try { items = Array.from(d.querySelectorAll(C.cards.item)).slice(0, 200); } catch (e) {}
+    try { items = Array.from(d.querySelectorAll(c.item)).slice(0, 200); } catch (e) {}
     for (const it of items) {
-      const t = q(it, C.cards.title);
+      if (c.react) {
+        const key = Object.keys(it).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
+        let fb = key ? it[key] : null, rec = null;
+        for (let i = 0; fb && i < 8 && !rec; i++, fb = fb.return) { const v = fb.memoizedProps && fb.memoizedProps[c.react]; if (v && typeof v === 'object') rec = v; }
+        if (!rec) continue;
+        const f = {};
+        for (const k of Object.keys(c.fields || {})) f[k] = pathValue(rec, c.fields[k]);
+        if (f.url) job(T(f.url, 2000), { ...f, workplace: f.location });
+        continue;
+      }
+      const t = q(it, c.title);
       if (!t) continue;
       const txt = (sel) => { const el = q(it, sel); return el ? (el.getAttribute('title') || el.innerText || el.textContent || '') : ''; };
       const href = t.getAttribute('href') || (q(t, 'a[href]') || q(it, 'a[href]') || { getAttribute: () => '' }).getAttribute('href');
-      const loc = txt(C.cards.location);
-      job(href, { title: t.getAttribute('title') || t.innerText || t.textContent, company: txt(C.cards.company), location: loc, posted_at: txt(C.cards.posted_at), workplace: loc });
+      const loc = txt(c.location);
+      job(href, { title: t.getAttribute('title') || t.innerText || t.textContent, company: txt(c.company), location: loc, posted_at: txt(c.posted_at), workplace: loc });
     }
   }
   const types = (n) => [].concat(n && n['@type']).map((t) => String(t == null ? '' : t).toLowerCase());

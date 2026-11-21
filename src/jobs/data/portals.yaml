@@ -77,11 +77,17 @@ portals:
     job_url: { pattern: '^/job-listings-[a-z0-9-]+-\d{6,}$' }
     # No json adapter: the search API asks for a reCAPTCHA token on any repeat request (checked 2026-11-21), and Crewdeck
     # never gets past a challenge. The page's own cards carry everything a role needs.
-    cards: { item: '.srp-jobtuple-wrapper', title: 'a.title', company: '.comp-name', location: '.locWdth', posted_at: '.job-post-day', experience: '.expwdth' }
+    cards:
+      # Signed out (and the classic layout): the card's own parts.
+      - { item: '.srp-jobtuple-wrapper', title: 'a.title', company: '.comp-name', location: '.locWdth', posted_at: '.job-post-day' }
+      # Signed in (Naukri TopTier, 2026-11-21): cards without links; each card's component holds the search API's job record.
+      - item: '#jobs-list-header .cursor-pointer.rounded-3xl'
+        react: jobData
+        fields: { url: jdURL, title: title, company: companyName, location: 'placeholders[type=location].label', posted_at: createdDate }
     limits: { searches_per_run: 4, pages_per_search: 1, delay_ms: [8000, 15000], min_hours: 6, pages_per_day: 40 }
     risk: Naukri's terms don't allow automated use of the site. Crewdeck reads a few search pages, slowly, as you; your account carries the risk.
     verified: true
-    notes: Checked in Claude's browser pane on 2026-11-21 (signed out) - the search URL with k, jobAge and wfhType, the job-listings pattern and the srp-jobtuple-wrapper cards. Not checked yet - the nauk_at cookie and /mnjuser/ signed-in path.
+    notes: Checked in Claude's browser pane on 2026-11-21 (signed out) - the search URL with k, jobAge and wfhType, the job-listings pattern and the srp-jobtuple-wrapper cards. Signed in (same day) - the nauk_at cookie, /mnjuser/homepage, and the TopTier layout whose cards hold jobData.
 
   - id: instahyre
     name: Instahyre
