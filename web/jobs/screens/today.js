@@ -143,7 +143,9 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onSour
   // One quiet line (progressive disclosure): the count and the funnel; the reasons and the fixes open under it.
   return html`<details class="why">
     <summary>
-      <span class="whyhead"><b>Why so few?</b> <span class="count">Find ${f.need} jobs: ${f.picked} picked</span> <span class="soft funnel">· ${f.short ?? f.line}</span></span>
+      ${f.waiting > 0
+        ? html`<span class="whyhead"><b>${n(f.waiting)} more to judge</b> <span class="soft funnel">· ${f.picked} picked so far: Find again to judge them</span></span>`
+        : html`<span class="whyhead"><b>Why so few?</b> <span class="count">Find ${f.need} jobs: ${f.picked} picked</span> <span class="soft funnel">· ${f.short ?? f.line}</span></span>`}
       <span class="whymore" aria-hidden="true">Details</span>
     </summary>
     <div class="whybody">

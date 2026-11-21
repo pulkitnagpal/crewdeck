@@ -125,3 +125,17 @@ test('DB migration v5: a v4 tracker gains workplace, remote_countries, valid_thr
   assert.equal((db.prepare('select title from roles').get() as any).title, 'Data Analyst');
   db.close();
 });
+
+test('details: a role stored with an empty location and a page that names none keeps its row (no NOT NULL failure; regression 2026-11-21)', async () => {
+  const srv = await serve((_req, res) => { res.writeHead(200, { 'content-type': 'text/html' }).end(`<html><body><main><h1>Data Analyst</h1><p>${'We build routing tools for freight. '.repeat(20)}</p></main></body></html>`); });
+  try {
+    const w = world('berlin-analyst');
+    const net = { testHosts: testHosts('noloc.example.test') };
+    const id = role(w.ctx, { company: 'Example Noloc', title: 'Senior Data Analyst', url: `${srv.base('noloc.example.test')}/p`, location: '' });
+    const r = await fetchDetails(w.ctx, { net, ...quick });
+    assert.equal(r.tried, 1);
+    assert.equal(row(w, id).location, '');
+    assert.ok(['ok', 'none'].includes(row(w, id).detail_status), row(w, id).detail_status);
+    assert.equal(r.errors, 0);
+  } finally { await srv.close(); }
+});

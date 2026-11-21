@@ -35,6 +35,18 @@ export function runPrefilter(ctx: Ctx) {
   const tracker = trackerCheck(ctx.db, trackerRules(notes.search.data), at);
   const dropped: { id: string; rule: string; reason: string }[] = [];
   let kept = 0;
+  // Jobs v2 (P1a, ADR-0003): titles became a score, not a drop. Roles an older Crewdeck dropped only on the built-in title
+  // gate are checked again under the current rules, once (their reason changes either way), within the last 30 days.
+  if (!compiled.regex.title_gate) {
+    const since = new Date(ctx.clock().getTime() - 30 * 86_400_000).toISOString();
+    tx(ctx.db, () => {
+      for (const row of ctx.db.prepare(`select r.*, c.name company from roles r join companies c on c.id=r.company_id where r.status='prefiltered_out' and r.status_reason like 'title_gate:%' and r.first_seen >= ?`).all(since) as any[]) {
+        const v = check(ctx, row, compiled, tracker);
+        if (v.keep) setStatus(ctx.db, row.id, 'new', 'titles are a score now: checked again', at);
+        else ctx.db.prepare('update roles set status_reason=? where id=?').run(`${v.rule}: ${v.reason}`, row.id);
+      }
+    });
+  }
   tx(ctx.db, () => {
     for (const row of ctx.db.prepare(`select r.*, c.name company from roles r join companies c on c.id=r.company_id where r.status='new' and r.eligibility is null order by r.first_seen`).all() as any[]) {
       const v = check(ctx, row, compiled, tracker);

@@ -81,7 +81,8 @@ test('Today: "Why so few?" after a finished Find that picked fewer than asked; g
     assert.match(today.find.summary, /^Find 5 jobs: 1 picked\. 1,480 fetched → /);
     const pv = (await s.call('POST', '/api/jobs/preview', s.page(), {})).json;
     const out = render(html`<${Today} data=${today} state=${(await s.get('state')).json} preview=${pv} />`).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-    assert.match(out, /Why so few\? Find 5 jobs: 1 picked/);
+    // A Find that stopped at its budget with roles still waiting says so (and how to judge them), not "Why so few?".
+    assert.match(out, /215 more to judge · 1 picked so far: Find again to judge them/);
     assert.match(out, /1,480 fetched → [\d,]+ passed your rules \([\d,]+ other occupations set aside\) → 10 judged → 1 fit from 1 company/);
     assert.match(out, /[\d,]+ of the 1,\d{3} that passed your rules are other occupations: set aside, not judged/);
     assert.match(out, /The judge's most common reasons: requires US work authorisation \(6\)/);

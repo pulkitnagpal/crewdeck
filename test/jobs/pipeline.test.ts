@@ -248,3 +248,18 @@ test('C2: status by hand never reaches picked or prepared from outside the pipel
   setRoleStatus(w.ctx, fresh, 'new');
   assert.equal(status(w, fresh), 'new');
 });
+
+test('prefilter: roles an older Crewdeck dropped only on the built-in title gate are checked again once (titles are a score now)', () => {
+  const w = world('berlin-analyst');
+  const syn = role(w.ctx, { company: 'Example Synonym', title: 'Analytics Engineer', location: 'Berlin' }, 'prefiltered_out');
+  const far = role(w.ctx, { company: 'Example Far', title: 'Senior Data Analyst', location: 'Tokyo, Japan' }, 'prefiltered_out');
+  const other = role(w.ctx, { company: 'Example Other', title: 'Senior Data Analyst', location: 'Berlin' }, 'prefiltered_out');
+  w.ctx.db.prepare("update roles set status_reason='title_gate: title is not one of your target titles' where id in (?, ?)").run(syn, far);
+  w.ctx.db.prepare("update roles set status_reason='pay: below your floor' where id=?").run(other);
+  runPrefilter(w.ctx);
+  const st = (id: string) => w.ctx.db.prepare('select status, status_reason from roles where id=?').get(id) as any;
+  assert.equal(st(syn).status, 'new', 'a title the old gate dropped is back for judging');
+  assert.equal(st(far).status, 'prefiltered_out', 'a role that breaks another rule stays dropped');
+  assert.doesNotMatch(st(far).status_reason, /^title_gate/, 'with its real reason now, so it is not checked again');
+  assert.equal(st(other).status_reason, 'pay: below your floor', 'other drops are left alone');
+});

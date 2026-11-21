@@ -156,7 +156,7 @@ export async function fetchDetails(ctx: Ctx, o: DetailOptions = {}): Promise<Det
   const deadline = Date.now() + (o.deadlineMs ?? 10 * 60_000);
   const wait = o.sleep ?? sleep, pace = o.paceMs ?? 250;
   const save = ctx.db.prepare(`update roles set description=?, pay_text=coalesce(pay_text, ?), posted_at=coalesce(posted_at, ?),
-      location=coalesce(nullif(location, ''), ?), employment_type=coalesce(employment_type, ?), workplace=coalesce(?, workplace),
+      location=coalesce(nullif(location, ''), ?, location), employment_type=coalesce(employment_type, ?), workplace=coalesce(?, workplace),
       remote_countries=coalesce(?, remote_countries), valid_through=coalesce(?, valid_through), detail_status=?, detail_at=?, updated_at=? where id=?`);
   const mark = ctx.db.prepare('update roles set detail_status=?, detail_at=? where id=?');
 
@@ -197,7 +197,11 @@ export async function fetchDetails(ctx: Ctx, o: DetailOptions = {}): Promise<Det
       for (let i = 0; i < list.length; i++) {
         if (blocked.has(h) || Date.now() > deadline) { out.deferred += list.length - i; break; }
         if (i > 0 && pace > 0) await wait(pace);
-        await one(list[i]);
+        // One role's bad row never stops the run: it is marked and the next one is read.
+        try { await one(list[i]); } catch (e: any) {
+          out.errors++;
+          try { mark.run('error', nowIso(ctx), list[i].id); addEvent(ctx.db, list[i].id, 'details', `not stored: ${String(e?.message ?? e).slice(0, 200)}`, nowIso(ctx)); } catch {}
+        }
       }
     }
   };

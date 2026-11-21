@@ -423,7 +423,9 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
   const p1 = runPrefilter(ctx);
   // Every rule-passing role without a full description, not only the best-ranked (P1b).
   const { fetchDetails } = await import('./pipeline/details.ts');
-  state.details = await fetchDetails(ctx, { net: o.net, ...o.detailOptions, limit: o.details ?? o.detailOptions?.limit ?? 1000 });
+  // Descriptions are a bonus: a failure here never loses the run's fetched roles.
+  try { state.details = await fetchDetails(ctx, { net: o.net, ...o.detailOptions, limit: o.details ?? o.detailOptions?.limit ?? 1000 }); }
+  catch (e: any) { state.details = { tried: 0, error: String(e?.message ?? e).slice(0, 300) } as any; }
   // Any text read (even one too short to count as full) can decide a rule: the prefilter runs again.
   const p2 = state.details.tried ? runPrefilter(ctx) : { kept: p1.kept, dropped: 0 };
   state.prefilter = { kept: p2.kept, dropped: p1.dropped + p2.dropped };

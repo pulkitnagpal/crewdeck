@@ -24,7 +24,7 @@ import { COOLDOWN_SCOPES, EMPLOYMENT, LANGUAGE_LEVELS, PAY_PERIODS, SHIFTS, TRAV
 import { setFields } from './edit.ts';
 import { LEVELS_WANTED, MATCH_MODES, targetsOf } from './titles.ts';
 import { runPreview } from './preview.ts';
-import { funnelSummary } from './funnel.ts';
+import { findFunnel, funnelSummary } from './funnel.ts';
 import { readFindRun } from './pipeline/rank.ts';
 import { checkRoleUrl, isLinkedinHost, isXHost } from './fields.ts';
 import { canonicalJobUrl, linkedinJobId } from './linkedin.ts';
@@ -459,8 +459,11 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const run = readFindRun(c.jobs.home);
     const last = requests.ofLane(LANE, 'find')[0];
     if (!run?.funnel || (last && isOpen(last)) || ctx.clock().getTime() - Date.parse(run.started) > 24 * 3_600_000) return null;
-    if (run.funnel.picked >= run.funnel.need) return null;
-    return { funnel: run.funnel, summary: funnelSummary(run.funnel), request: last ? { id: last.id, status: last.status, count: Number(last.payload?.count ?? run.funnel.need) } : null };
+    // Sources fetched since that Find: its counts are stale, so the card shows the pool as it is now (waiting roles too).
+    const fetchedAt = readSourcesState(c.jobs.home)?.finished;
+    const funnel = fetchedAt && Date.parse(fetchedAt) > Date.parse(run.funnel.at) ? { ...findFunnel(ctx, run.funnel.need), picked: run.funnel.picked } : run.funnel;
+    if (funnel.picked >= funnel.need) return null;
+    return { funnel, summary: funnelSummary(funnel), request: last ? { id: last.id, status: last.status, count: Number(last.payload?.count ?? run.funnel.need) } : null };
   }
 
   /** Today, with the apply panel of the selected role and what Claude is doing for it. */
