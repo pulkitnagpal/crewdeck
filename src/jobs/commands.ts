@@ -384,7 +384,16 @@ const cmds: Record<string, (args: string[]) => unknown> = {
     if (flag(args, 'request')) return answerForRequest(args);
     return answerCmd(args);
   },
-  learn: (args) => withCtx((ctx) => {
+  learn: (args) => withCtx(async (ctx) => {
+    // No role: what the ranking learned from the person's own actions (P5).
+    if (positional(args)[0] === undefined) {
+      const { LEARN_CAPS, LEARN_POINTS, learnedLine, refreshLearned } = await import('./pipeline/learn.ts');
+      const l = refreshLearned(ctx);
+      if (args.includes('--json')) return json({ rows: l.rows, points: LEARN_POINTS, caps: LEARN_CAPS });
+      if (!l.rows.length) return say('Nothing learned yet: applying, "not interested" and picks left for a week nudge the order Find reads roles in.');
+      for (const r of l.rows) say(`${r.kind.padEnd(7)} ${learnedLine(r)}`);
+      return say(`(each role moves at most ${LEARN_CAPS.total} rank points; rules and eligibility never change)`);
+    }
     const usage = 'usage: crewdeck jobs learn <role> --label-file <f> [--answer-file f] [--quote-file f] [--options-file f] [--claims-file f] [--required] [--sensitive]';
     const role = roleArg(positional(args)[0], usage);
     const opts = optText(args, 'options-file');
@@ -493,6 +502,7 @@ knowledge and answers:
   form <role> --fields-file f [--lang xx]   store questions read from a form by hand (ID, bank, tax numbers never)
   draft <role> --brief out.json | --answers f
   answer <role> --question Qn --text-file f (--quote-file f [--everywhere] | --claims-file f [--instruction-file f])
+  learn [--json]                          what the ranking learned from your actions (applied, not interested, set aside, ignored picks)
   learn <role> --label-file f [--answer-file f] [--quote-file f] [--options-file f] [--claims-file f] [--required] [--sensitive]
   undo | knowledge <words>
   fill-plan <role> --fields-file f [--page-url-file f]

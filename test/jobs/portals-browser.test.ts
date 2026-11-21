@@ -89,7 +89,9 @@ test('pane mode: the page script in a real browser reads JSON, JSON-LD and cards
     // The page's own API answer (fetched again), then the JSON-LD's two (their links repeat them: counted once).
     assert.deepEqual(a.jobs.map((j: any) => [j.title, j.company]), [['Product Analyst', 'Opal Mobility'], ['Data Analyst', 'Ember Logistics'], ['BI Analyst', 'Saffron Retail']]);
     assert.equal(a.jobs[0].url, `http://www.portal.test:${port}/job/Product-Analyst-Opal-Mobility-Zz123456`);
-    assert.equal(a.jobs[2].workplace, 'remote');
+    // Its location already says Remote: the answer leaves `workplace` out (ingest reads it from the location).
+    assert.equal(a.jobs[2].location, 'Remote');
+    assert.equal(a.jobs[2].workplace, undefined);
 
     const b = await run('/jobs/remote-analytics-jobs');
     assert.deepEqual(b.jobs.map((j: any) => ({ title: j.title, company: j.company, location: j.location, posted_at: j.posted_at })), [
@@ -135,7 +137,7 @@ test('pane script, job cards in a real page: paragraphs with the id on the card 
     const run = async (path: string): Promise<any> => { await page.goto(`http://www.portal.test:${port}${path}`, { waitUntil: 'load' }); return page.evaluate(pageScript(p, { settleMs: 200 })); };
     const a = await run('/search');
     assert.deepEqual(a.jobs.map((j: any) => [j.url, j.title, j.company, j.location, j.posted_at ?? null, j.workplace ?? null]), [
-      [`http://www.portal.test:${port}/job/Card-Zz100001`, 'Data Analyst', 'Ember Logistics', 'Bengaluru (Remote)', '2 days ago', 'remote'],
+      [`http://www.portal.test:${port}/job/Card-Zz100001`, 'Data Analyst', 'Ember Logistics', 'Bengaluru (Remote)', '2 days ago', null],
       [`http://www.portal.test:${port}/job/Card-Zz100002`, 'BI Analyst', 'Saffron Retail', 'Pune', null, null],
     ]);
     const b = await run('/records');

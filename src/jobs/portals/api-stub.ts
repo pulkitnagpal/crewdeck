@@ -8,6 +8,7 @@ export type PortalState = 'not_connected' | 'connected' | 'needs_sign_in' | 'pau
 export type PortalView = {
   id: string; name: string; countries: string[]; fields: string[]; state: PortalState; enabled: boolean;
   paused_until?: string; last_scan?: string; last_found?: number; risk: string; signup_url: string; login_url: string; verified: boolean;
+  needs_reader?: boolean;
 };
 export type PortalTest = { found: number; by: { json: number; jsonld: number; links: number }; sample: { title: string; company: string; url: string }[]; stopped?: string };
 export type StubAnswer = { status: number; json: unknown };
@@ -21,7 +22,7 @@ export const STUB_RISK = 'Crewdeck scans this site with your account at a slow p
 export function stubPortal(id: string, o: Partial<PortalView> = {}): PortalView {
   return {
     id, name: id.replace(/(^|-)(\w)/g, (_, s, c) => `${s ? ' ' : ''}${c.toUpperCase()}`), countries: ['in'], fields: ['software'], state: 'not_connected', enabled: false,
-    risk: STUB_RISK, signup_url: `https://${id}.example.com/register`, login_url: `https://${id}.example.com/login`, verified: true, ...o,
+    risk: STUB_RISK, signup_url: `https://${id}.example.com/register`, login_url: `https://${id}.example.com/login`, verified: true, needs_reader: false, ...o,
   };
 }
 

@@ -326,6 +326,17 @@ export type SourceOptions = SpawnOptions & {
   portalsMode?: 'pane' | 'profile';
 };
 
+export const LINKEDIN_PORTAL_ON = 'skipped: the LinkedIn portal is connected and switched on, so LinkedIn is read signed in (Sources → Portals), not by the guest search';
+
+/** The `linkedin` portal is connected and its jobs/sources.md row switched on (ADR-0008): the guest search steps aside. */
+export async function linkedinPortalOn(ctx: Ctx): Promise<boolean> {
+  try {
+    const { readPortalsState } = await import('./portals/state.ts');
+    if (!readPortalsState(ctx.home).portals.linkedin?.connected) return false;
+    return notesOf(ctx).sources.data.items.some((it) => it.portal === 'linkedin' && it.enabled);
+  } catch { return false; }
+}
+
 /** Hours LinkedIn is paused after 1, 2, 3, 4+ stops in a row. */
 export const LINKEDIN_PAUSE_HOURS = [1, 4, 12, 24];
 
@@ -388,6 +399,8 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
   if (prev?.linkedin_pause) state.linkedin_pause = prev.linkedin_pause;
   const runLinkedin = async () => {
     if (!ctx.features.linkedin_search) { state.linkedin = { ran: false, why: 'LinkedIn search is off' }; return; }
+    // Signed in beats the guest search: with the linkedin portal connected and switched on, its scans cover LinkedIn.
+    if (await linkedinPortalOn(ctx)) { state.linkedin = { ran: false, why: LINKEDIN_PORTAL_ON }; return; }
     if (!liWanted) { state.linkedin = { ran: false, why: FETCHED_BEFORE }; return; }
     const { localClock } = await import('./pipeline/details.ts');
     const pause = state.linkedin_pause;

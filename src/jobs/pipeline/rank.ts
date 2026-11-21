@@ -17,9 +17,11 @@ import { clip, plainText } from '../text.ts';
 import type { NetOptions } from '../net/netguard.ts';
 import { type Funnel, findFunnel } from '../funnel.ts';
 import { trackerCheck, trackerRules } from './tracker.ts';
+import { learnedDelta, refreshLearned } from './learn.ts';
 
 export type Ranked = { id: string; company: string; company_id: number; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string; posted_at: string | null; first_seen: string;
-  /** Title/occupation fit 0..1; below OTHER_OCCUPATION_FIT another occupation (ranked last, never judged). */ fit: number };
+  /** Title/occupation fit 0..1; below OTHER_OCCUPATION_FIT another occupation (ranked last, never judged). */ fit: number;
+  /** P5: the part of `rank` learned from the person's own actions (learn.ts; capped, never a rule). */ learned: number };
 export type Candidate = { id: string; company: string; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string };
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -84,7 +86,9 @@ export function rankRoles(ctx: Ctx): Ranked[] {
   if (dropped.length) tx(ctx.db, () => { for (const d of dropped) setStatus(ctx.db, d.id, 'prefiltered_out', d.reason, now); });
   const priority = priorityBonus(notes);
   const other = (r: { fit: number }) => (r.fit < OTHER_OCCUPATION_FIT ? 1 : 0);
-  return keep.map((r) => ({ ...r, rank: rankScore(r, notes, at, priority, compiled), fit: titleFitOf(compiled, r).fit }))
+  // P5: the person's own actions nudge the order (never the rules): applied, not interested, set aside, ignored picks.
+  const learned = refreshLearned(ctx);
+  return keep.map((r) => { const d = learnedDelta(r, learned); return { ...r, rank: rankScore(r, notes, at, priority, compiled) + d, learned: d, fit: titleFitOf(compiled, r).fit }; })
     .sort((a, b) => other(a) - other(b) || b.rank - a.rank || String(b.posted_at ?? b.first_seen).localeCompare(String(a.posted_at ?? a.first_seen)) || a.id.localeCompare(b.id));
 }
 

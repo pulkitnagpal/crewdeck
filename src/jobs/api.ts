@@ -44,7 +44,7 @@ import { type SourceOp, changeSources, isKey, listSources, refreshSourcesList } 
 import { type SchedulerOptions, createSourceScheduler } from './schedule.ts';
 import { type ResolveState, sourcesScreen } from './sources-view.ts';
 import type { ResolveResult } from './resolve.ts';
-import { loadPortals } from './portals/catalog.ts';
+import { effectivePortals } from './portals/readers.ts';
 import { disconnectPortal } from './portals/connect.ts';
 import { type PortalTestView, portalsNeedingSignIn, portalsView, togglePortal } from './portals/view.ts';
 import { type ApplyEnv, ProposalError, addProposal, applyDue, approve as approveProposal, checkProposal, listProposals, pendingCount, proposalView, reject as rejectProposal, undo as undoProposal } from './proposals.ts';
@@ -412,7 +412,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   /** ADR-0008: pane (default) = Claude signs in and scans in its browser pane, in a Jobs chat; profile = Crewdeck's own browser. */
   const portalsMode = (): 'pane' | 'profile' => (c.jobs.portals_mode === 'profile' ? 'profile' : 'pane');
   const portalArg = (v: unknown) => {
-    const p = typeof v === 'string' ? loadPortals().byId.get(v) : undefined;
+    const p = typeof v === 'string' ? effectivePortals(c.jobs.home).byId.get(v) : undefined;
     if (!p) throw new HttpError(400, 'unknown portal');
     return p;
   };
@@ -1119,9 +1119,9 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     if (r.kind === 'find') return { daily_picks: notesOf(ctx).search.data.schedule.daily_picks, prepare_ahead: notesOf(ctx).search.data.schedule.prepare_ahead };
     if (r.kind === 'source') return { source: listSources(ctx).find((x) => x.key === r.payload?.key) ?? null };
     if (r.kind === 'connect') {
-      const p = r.ref ? loadPortals().byId.get(r.ref) : undefined;
+      const p = r.ref ? effectivePortals(c.jobs.home).byId.get(r.ref) : undefined;
       const v = p ? portalsView(ctx, [p], portalsMode()).portals[0] : undefined;
-      return { mode: portalsMode(), portal: p && v ? { id: p.id, name: p.name, login_url: p.login_url, signup_url: p.signup_url, hosts: p.hosts, state: v.state, enabled: v.enabled, risk: p.risk } : null };
+      return { mode: portalsMode(), portal: p && v ? { id: p.id, name: p.name, login_url: p.login_url, signup_url: p.signup_url, hosts: p.hosts, state: v.state, enabled: v.enabled, risk: p.risk, needs_reader: v.needs_reader, ...(p.home_url ? { home_url: p.home_url } : {}), ...(p.access ? { access: p.access } : {}) } : null };
     }
     if (r.kind === 'quick_apply') {
       // Each role with its playbook, in the order to walk them; today's Easy Apply number as it stands.

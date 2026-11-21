@@ -10,6 +10,11 @@
 // ADR-0008 §9 ("from tomorrow…"): any item may carry `effective_from` (YYYY-MM-DD). Approving (or auto-applying) it before
 // that day stores it as `scheduled`; applyDue applies it on the first server start or sources run on or after the day.
 // Undo before then cancels it.
+//
+// `portal_add` (a job site the person named, or one a post linked to): a site Crewdeck already knows becomes a
+// `portal_toggle` (a catalog portal) or a `source_add` (a catalog board, an employer's ATS page) when it is stored;
+// otherwise approving it adds a `teach: true` entry to <jobs.home>/portals/readers.yaml (Claude teaches its reader on
+// first connect). It is never applied on its own, whatever the origin, and Undo removes the entry.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -21,9 +26,11 @@ import { changeSources } from './sources-note.ts';
 import { remember } from './kb/ops.ts';
 import { ISO2, PAY_PERIODS, PORTAL_ID, WORKPLACES, sourceItems } from './schema.ts';
 import { place, placeName } from './places.ts';
-import { FAMILIES } from './catalog.ts';
+import { FAMILIES, loadCatalog } from './catalog.ts';
+import { hostIn } from './portals/catalog.ts';
+import { addPortal, effectivePortals, idFromUrl, removeAddedPortal } from './portals/readers.ts';
 
-export const PROPOSAL_KINDS = ['target_add', 'target_remove', 'place', 'work_mode', 'pay', 'profile_fact', 'answer', 'watch_company', 'add_link', 'source_add', 'source_remove', 'exclude', 'company_countries', 'portal_toggle'] as const;
+export const PROPOSAL_KINDS = ['target_add', 'target_remove', 'place', 'work_mode', 'pay', 'profile_fact', 'answer', 'watch_company', 'add_link', 'source_add', 'source_remove', 'exclude', 'company_countries', 'portal_toggle', 'portal_add'] as const;
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
 export const ORIGINS = ['person', 'quoted', 'fetched'] as const;
 export type Origin = (typeof ORIGINS)[number];
@@ -159,6 +166,16 @@ export function checkPayload(kind: ProposalKind, raw: unknown): Record<string, a
       if (both.length) bad(`${w}: ${both.join(', ')} is in both only and exclude`);
       return out;
     }
+    case 'portal_add': {
+      onlyKeys(p, ['name', 'url', 'countries', 'fields'], w);
+      const url = webUrl(p.url, `${w}.url`);
+      const countries = words(p.countries, 12, `${w}.countries`).map((c) => c.toLowerCase());
+      for (const c of countries) if (c !== 'world' && (!ISO2.test(c) || place(c)?.kind !== 'country')) bad(`${w}.countries: "${c}" is not a two-letter country code (in, us …) or world`);
+      const fields = words(p.fields, 10, `${w}.fields`);
+      const known = FAMILIES();
+      for (const f of fields) if (f !== 'any' && !known.includes(f)) bad(`${w}.fields: "${f}" is not a field Crewdeck knows (${known.slice(0, 6).join(', ')}, …)`);
+      return { name: text(p.name, 80, `${w}.name`), url, ...(countries.length ? { countries } : {}), ...(fields.length ? { fields } : {}) };
+    }
     case 'portal_toggle': {
       onlyKeys(p, ['portal', 'on'], w);
       const portal = typeof p.portal === 'string' && PORTAL_ID.test(p.portal) ? p.portal : bad(`${w}.portal is a portal id (lowercase letters, digits and -)`);
@@ -227,7 +244,7 @@ const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
  */
 export function addProposal(env: ApplyEnv, input: ProposalInput, o: { told?: string } = {}): Proposal {
   const at = nowIso(env.ctx);
-  const items: ProposalItem[] = input.items.map((i) => ({ ...i, status: 'pending' }));
+  const items: ProposalItem[] = input.items.map((i) => ({ ...(i.kind === 'portal_add' ? routePortalAdd(env.ctx, i) : i), status: 'pending' }));
   const id = Number(env.ctx.db.prepare(`insert into proposals(created, updated, origin, summary, request_id, items_json, status) values (?, ?, ?, ?, ?, ?, 'pending')`)
     .run(at, at, input.origin, input.summary, input.request ?? null, JSON.stringify(items)).lastInsertRowid);
   const p = getProposal(env.ctx.db, id);
@@ -330,7 +347,8 @@ export function undo(env: ApplyEnv, id: number, n: number): Proposal {
     save(env.ctx.db, p, nowIso(env.ctx));
     return p;
   }
-  if (it.status !== 'approved' || !it.auto || it.undone) throw new ProposalError(`item ${n} was not applied by Crewdeck on its own: change it in Preferences or Sources`);
+  // An added portal can always be taken back (it only made an entry in the person's readers file).
+  if (it.status !== 'approved' || it.undone || (!it.auto && it.kind !== 'portal_add')) throw new ProposalError(`item ${n} was not applied by Crewdeck on its own: change it in Preferences or Sources`);
   const because = `undone on the Jobs page: ${it.done ?? it.kind}`;
   const u = it.undo ?? {};
   if (it.kind === 'target_add' && u.target) removeTarget(env.ctx, String(u.target), because);
@@ -340,6 +358,10 @@ export function undo(env: ApplyEnv, id: number, n: number): Proposal {
   else if (it.kind === 'company_countries' && u.before) {
     const before = u.before as Record<string, string[] | null>;
     setFields(searchFile(env.ctx), 'search', Object.entries(before).map(([k, v]) => ({ segs: ['companies', 'countries', k], raw: JSON.stringify(v ?? []) })), { because, today: todayOf(env.ctx) });
+  } else if (it.kind === 'portal_add' && u.portal) {
+    removeAddedPortal(env.ctx.home, String(u.portal));
+    const row = sourceItems(readNote(join(env.ctx.vault, NOTES.sources)).doc.toJS() ?? {}).items.find((x) => x.portal === u.portal);
+    if (row) changeSources(env.ctx, { op: 'remove', key: row.key });
   } else if (it.kind === 'portal_toggle' && u.key) {
     if (u.added) changeSources(env.ctx, { op: 'remove', key: String(u.key) });
     else changeSources(env.ctx, { op: u.was === false ? 'disable' : 'enable', key: String(u.key) });
@@ -472,6 +494,16 @@ function applyAt(env: ApplyEnv, p: Proposal, i: number, o: { quote?: string; whe
       undoInfo = { before };
       break;
     }
+    case 'portal_add': {
+      const u = new URL(pl.url);
+      const cat = effectivePortals(ctx.home);
+      let id = idFromUrl(pl.url);
+      for (let i = 2; cat.byId.has(id) && i < 50; i++) id = `${idFromUrl(pl.url).slice(0, 27)}-${i}`;
+      const p = addPortal(ctx.home, { id, name: pl.name, home_url: `https://${u.host}${u.pathname === '/' ? '/' : u.pathname}`, countries: pl.countries ?? [], fields: pl.fields ?? [] }, cat);
+      done = `added the job site ${p.name} (${p.id}): connect it on Sources → Portals, and Claude sets up its reader`;
+      undoInfo = { portal: p.id };
+      break;
+    }
     case 'portal_toggle': {
       const row = sourceItems(readNote(join(ctx.vault, NOTES.sources)).doc.toJS() ?? {}).items.find((x) => x.portal === pl.portal);
       if (row) {
@@ -507,6 +539,7 @@ export function itemLine(it: ProposalItem): string {
     exclude: () => `Exclude ${({ companies: 'the company', industries: 'the industry', title_words: 'titles with' } as Record<string, string>)[p.field]} ${p.value}`,
     company_countries: () => countriesLine(p),
     portal_toggle: () => `Switch ${p.on ? 'on' : 'off'} the portal ${portalName(p.portal)}`,
+    portal_add: () => `Add the job site ${p.name} (${hostName(p.url)})`,
   };
   return what[it.kind]();
 }
@@ -519,6 +552,30 @@ function countriesLine(p: Record<string, any>): string {
   if (p.exclude) parts.push(p.exclude.length ? `${p.only?.length ? 'never' : 'only'} companies headquartered ${p.only?.length ? 'in' : 'outside'} ${n(p.exclude)}` : 'no country excluded');
   const t = parts.join('; ');
   return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+const hostName = (url: string) => { try { return new URL(url).host.replace(/^www\./, ''); } catch { return url; } };
+
+/** ATS hosts: an employer's careers page there is a source (source_add with careers_url), not a portal. */
+const ATS_HOSTS = ['greenhouse.io', 'lever.co', 'ashbyhq.com', 'myworkdayjobs.com', 'keka.com', 'darwinbox.in', 'darwinbox.com', 'zohorecruit.com', 'zohorecruit.in', 'smartrecruiters.com', 'workable.com', 'recruitee.com', 'teamtailor.com', 'personio.de', 'personio.com', 'breezy.hr', 'jobvite.com', 'icims.com', 'freshteam.com'];
+const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * A `portal_add` for a site Crewdeck already knows becomes what it really is: the catalog portal switched on, an
+ * employer's ATS page as a source, or a catalog board as a source. Otherwise it stays a portal_add.
+ */
+export function routePortalAdd(ctx: Ctx, it: ProposalInput['items'][number]): ProposalInput['items'][number] {
+  const pl = it.payload;
+  let host = '';
+  try { host = new URL(pl.url).hostname.toLowerCase(); } catch { return it; }
+  const note = (r: string) => `${it.reason} (${r})`.slice(0, 300);
+  const portal = effectivePortals(ctx.home).portals.find((p) => hostIn(host, p.hosts));
+  if (portal) return { ...it, kind: 'portal_toggle', payload: { portal: portal.id, on: true }, reason: note(`already one of Crewdeck's portals: ${portal.name}`) };
+  if (hostIn(host, ATS_HOSTS)) return { ...it, kind: 'source_add', payload: { careers_url: pl.url, name: pl.name }, reason: note('an employer\'s careers page: watched as a source') };
+  const label = squash(host.replace(/^(www|jobs|careers)\./, '').split('.')[0] ?? '');
+  const board = label.length >= 4 ? loadCatalog().sources.find((c) => c.runnable && !c.retired && !c.blocked && c.needs !== 'careers_url' && c.kind !== 'ats' && (squash(c.id) === label || squash(c.name) === label)) : undefined;
+  if (board) return { ...it, kind: 'source_add', payload: { provider: board.id, name: board.name }, reason: note(`a job board Crewdeck reads: ${board.name}`) };
+  return it;
 }
 
 /** A portal's name from the portals catalog when there is one (ADR-0008 §6), else its id. */
@@ -541,7 +598,7 @@ export function proposalView(p: Proposal) {
       auto: !!it.auto, undone: !!it.undone, done: it.done ?? null, error: it.error ?? null,
       // "Starts <date>" while it waits for its day; null once applied, cancelled, or without a date.
       starts: it.status === 'scheduled' || it.status === 'pending' ? it.effective_from ?? null : null,
-      can_undo: (it.status === 'approved' && !!it.auto && !it.undone) || it.status === 'scheduled' })),
+      can_undo: (it.status === 'approved' && (!!it.auto || it.kind === 'portal_add') && !it.undone) || it.status === 'scheduled' })),
   };
 }
 

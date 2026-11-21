@@ -13,6 +13,7 @@ import { chipFor as kindChip, detectApplyKind } from './apply-kind.ts';
 import { currentAnswers } from './kb/ops.ts';
 import { targetsOf } from './titles.ts';
 import { isActive } from './memory.ts';
+import { learnedLine, storedLearned } from './pipeline/learn.ts';
 
 const PERIOD: Record<string, string> = { year: 'a year', month: 'a month', week: 'a week', day: 'a day', hour: 'an hour' };
 
@@ -183,7 +184,7 @@ export function applicationsView(ctx: Ctx) {
   return { rows };
 }
 
-export const KNOWLEDGE_TABS = ['profile', 'career', 'search', 'memory', 'answers'] as const;
+export const KNOWLEDGE_TABS = ['profile', 'career', 'search', 'memory', 'answers', 'learned'] as const;
 export type KnowledgeTab = (typeof KNOWLEDGE_TABS)[number];
 type Item = { id: string; title: string; text: string; source: string; used: string; quote?: string };
 
@@ -235,6 +236,11 @@ function answerItems(db: Db): Item[] {
       order by a.id desc`).all() as any[]).map((a) => ({ id: `a${a.id}`, title: a.question, text: a.text, source: a.company ?? '', used: '' }));
 }
 
+/** P5: what the ranking learned from the person's own actions (as the last ranking stored it), briefly. */
+function learnedItems(ctx: Ctx): Item[] {
+  return storedLearned(ctx).slice(0, 12).map((r) => ({ id: `l-${r.kind}-${r.key}`, title: learnedLine(r).split(':')[0], text: learnedLine(r).split(': ').slice(1).join(': '), source: 'From what you did', used: '' }));
+}
+
 /** What Claude knows, by tab; each tab names the note to open in Notes (answers live in the tracker). */
 export function knowledgeView(ctx: Ctx, tab: KnowledgeTab = 'profile') {
   if (!(KNOWLEDGE_TABS as readonly string[]).includes(tab)) throw new Error(`tab must be one of ${KNOWLEDGE_TABS.join(', ')}`);
@@ -242,9 +248,9 @@ export function knowledgeView(ctx: Ctx, tab: KnowledgeTab = 'profile') {
   const locale = notes.search.data.pay?.locale || undefined;
   const lists: Record<KnowledgeTab, () => Item[]> = {
     profile: () => profileItems(ctx.db, notes.profile.data), career: () => careerItems(ctx.db, notes.career.data), search: () => searchItems(notes),
-    memory: () => memoryItems(ctx.db, notes.memory.data.items, locale), answers: () => answerItems(ctx.db),
+    memory: () => memoryItems(ctx.db, notes.memory.data.items, locale), answers: () => answerItems(ctx.db), learned: () => learnedItems(ctx),
   };
-  const note: Record<KnowledgeTab, string | null> = { profile: NOTES.profile, career: NOTES.career, search: NOTES.search, memory: NOTES.memory, answers: null };
+  const note: Record<KnowledgeTab, string | null> = { profile: NOTES.profile, career: NOTES.career, search: NOTES.search, memory: NOTES.memory, answers: null, learned: null };
   const counts = Object.fromEntries(KNOWLEDGE_TABS.map((t) => [t, t === tab ? -1 : lists[t]().length])) as Record<KnowledgeTab, number>;
   const items = lists[tab]();
   counts[tab] = items.length;

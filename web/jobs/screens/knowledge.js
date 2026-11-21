@@ -1,13 +1,14 @@
 // What Claude knows about the user, by note: each item with its source, and the note to open in Notes.
 import { html, noop, More } from '../lib.js';
 
-const TABS = [['profile', 'Profile'], ['career', 'Career'], ['search', 'Search'], ['memory', 'Memory'], ['answers', 'Answers']];
+const TABS = [['profile', 'Profile'], ['career', 'Career'], ['search', 'Search'], ['memory', 'Memory'], ['answers', 'Answers'], ['learned', 'Learned']];
 const ABOUT = {
   profile: 'Who you are and your standard answers.',
   career: 'Your resume facts, word for word.',
   search: 'What you are looking for.',
   memory: 'What you told Claude, with the date.',
   answers: 'Answers you approved on application forms.',
+  learned: 'How your actions reorder what Claude reads first.',
 };
 /** The longer word on each tab, one More away. */
 const MORE = {
@@ -16,6 +17,7 @@ const MORE = {
   search: 'From jobs/search.md.',
   memory: 'In your own words, as you said them along the way.',
   answers: 'The latest answer you approved for each question, kept in the tracker per role.',
+  learned: 'Applying, "not interested", setting a pick aside and leaving a pick for a week nudge the order a little. Never a rule: nothing is hidden or let through because of it. Only your actions count, never Claude\'s.',
 };
 const EMPTY = {
   profile: 'Nothing here yet. Set up Jobs, or tell Claude about yourself.',
@@ -23,6 +25,7 @@ const EMPTY = {
   search: 'Nothing here yet. Set your search on Preferences.',
   memory: 'Nothing yet. Say "remember…" to Claude.',
   answers: 'No approved answers yet.',
+  learned: 'Nothing learned yet. It comes from what you apply to and pass on.',
 };
 
 export function Knowledge({ data, onTab = noop, onNotes = noop }) {
