@@ -177,8 +177,9 @@ it everywhere. Write each with `me set`.
    5. `crewdeck jobs portals test <id>` scans one search and prints what it found and how (the page's data, job
       markup or links) with a few titles. Show them that. Nothing found, or it stopped at a challenge: say so plainly;
       the portal stays off.
-   6. Then it is switched on: the switch on its row, Jobs page → **Sources** → **Portals** (they can switch it off
-      there at any time, or remove it with `crewdeck jobs portals disconnect <id>`). Switched-on portals are scanned in
+   6. With their yes, switch it on: `crewdeck jobs portals on <id>` (they can switch it off any time with
+      `crewdeck jobs portals off <id>` or the switch on its row, Jobs page → **Sources** → **Portals**, or remove it with
+      `crewdeck jobs portals disconnect <id>`). Switched-on portals are scanned in
       every fetch from then on.
 
 ## 6. Fetch once, then preview until they are happy

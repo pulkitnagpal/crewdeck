@@ -69,10 +69,9 @@ takes effect on the first fetch or Crewdeck start on or after it; Undo cancels i
 - "From tomorrow just scan non-Indian companies or portals": origin `person`, every item with `effective_from` set to
   tomorrow in their time zone and `evidence` copied from their words:
   - one `company_countries` item `{ "exclude": ["in"] }` (only non-Indian companies);
-  - the portals: if `crewdeck jobs --help` lists a `portals` command, run `portals list` with it and add one
-    `portal_toggle` item `{ "portal": <id>, "on": false }` for each portal that is switched on and serves India only;
-    portals for several countries stay on. No `portals` command in this Crewdeck: no toggle items; say in the result
-    line that company feeds follow the new rule and portals aren't set up yet.
+  - the portals: run `crewdeck jobs portals list` and add one `portal_toggle` item `{ "portal": <id>, "on": false }`
+    for each portal that is switched on and serves India only; portals for several countries stay on (the company
+    rule still applies to what they find).
   Both kinds apply on their own from their own words (and wait for the date), so nothing waits for Approve; the result
   line says what starts when, for example "From 22 November: only companies headquartered outside India; Naukri and
   foundit switched off. Undo on Today until then".
