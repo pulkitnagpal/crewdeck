@@ -30,7 +30,13 @@ export type Portal = {
 };
 /** A job card: either CSS selectors for its parts, or `react` (the card component's prop holding the job record, read
  * from the page's own data with no request) mapped by `fields` like a JSON adapter. */
-export type CardAdapter = { item: string; title?: string; company?: string; location?: string; posted_at?: string; react?: string; fields?: Record<string, string> };
+export type CardAdapter = {
+  item: string; title?: string; company?: string; location?: string; posted_at?: string; react?: string; fields?: Record<string, string>;
+  /** The job's id from an attribute of the card (id_pattern's first group), its link from url_template. */
+  id_attr?: string; id_pattern?: string; url_template?: string;
+  /** The parts as the card's paragraphs in order (the last line of each), when its classes are generated. */
+  lines?: { selector: string; title: number; company?: number; location?: number };
+};
 export type PortalCatalog = { portals: Portal[]; byId: Map<string, Portal> };
 
 const FILE = join(import.meta.dirname, '..', 'data', 'portals.yaml');
@@ -61,8 +67,9 @@ function normalise(e: any, d: any): Portal {
     },
     job_url: { pattern: String(e?.job_url?.pattern ?? ''), ...(e?.job_url?.keep_params ? { keep_params: strs(e.job_url.keep_params) } : {}), ...(e?.job_url?.canonical ? { canonical: String(e.job_url.canonical) } : {}) },
     ...(e?.cards ? { cards: [].concat(e.cards).filter((c: any) => c && typeof c === 'object').map((c: any) => ({
-      ...Object.fromEntries(['item', 'title', 'company', 'location', 'posted_at', 'react'].filter((k) => typeof c[k] === 'string').map((k) => [k, String(c[k])])),
+      ...Object.fromEntries(['item', 'title', 'company', 'location', 'posted_at', 'react', 'id_attr', 'id_pattern', 'url_template'].filter((k) => typeof c[k] === 'string').map((k) => [k, String(c[k])])),
       ...(c.fields ? { fields: rec(c.fields) } : {}),
+      ...(c.lines && typeof c.lines.selector === 'string' ? { lines: { selector: String(c.lines.selector), title: Number(c.lines.title ?? 0), ...(c.lines.company !== undefined ? { company: Number(c.lines.company) } : {}), ...(c.lines.location !== undefined ? { location: Number(c.lines.location) } : {}) } } : {}),
     }) as CardAdapter) } : {}),
     json: (Array.isArray(e?.json) ? e.json : []).map((j: any) => ({ url: String(j?.url ?? ''), ...(j?.state ? { state: String(j.state) } : {}), list: String(j?.list ?? ''), fields: rec(j?.fields), ...(j?.where ? { where: rec(j.where) } : {}), ...(j?.url_template ? { url_template: String(j.url_template) } : {}) })),
     limits: { searches_per_run: Number(lim.searches_per_run), pages_per_search: Number(lim.pages_per_search), delay_ms: Array.isArray(lim.delay_ms) ? [Number(lim.delay_ms[0]), Number(lim.delay_ms[1])] : Number(lim.delay_ms), min_hours: Number(lim.min_hours), pages_per_day: Number(lim.pages_per_day) },
@@ -117,7 +124,8 @@ export function portalIssues(p: Portal): string[] {
   if (!p.job_url.pattern || !regexOk(p.job_url.pattern)) out.push(`${at}: job_url.pattern is missing or not a regex`);
   for (const c of p.cards ?? []) {
     if (!c.item) out.push(`${at}: cards need an item selector`);
-    if (c.react ? !(c.fields?.title && c.fields?.url) : !c.title) out.push(`${at}: cards need a title selector, or react with fields.title and fields.url`);
+    if (c.react ? !(c.fields?.title && c.fields?.url) : !(c.title || c.lines)) out.push(`${at}: cards need a title selector, lines, or react with fields.title and fields.url`);
+    if (c.id_attr && !(c.id_pattern && regexOk(c.id_pattern) && c.url_template?.includes('{id}'))) out.push(`${at}: cards id_attr needs an id_pattern regex and a url_template with {id}`);
     if (c.react && !/^[A-Za-z_$][\w$]*$/.test(c.react)) out.push(`${at}: cards react is a prop name`);
   }
   for (const j of p.json) {

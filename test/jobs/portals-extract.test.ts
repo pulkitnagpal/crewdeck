@@ -53,8 +53,9 @@ test('layer json: a search response in Naukri\'s shape (fixture), off-site items
   assert.deepEqual(fromJson([{ url: 'https://www.naukri.com/jobapi/v3/search', body: '{oops' }], naukri, 'https://www.naukri.com/', NOW), []);
 });
 
-test('layer json: LinkedIn\'s voyager cards (fixture) through where + url_template', () => {
-  const li = loadPortals().byId.get('linkedin')!;
+test('layer json: voyager-shaped cards (fixture) through where + url_template', () => {
+  // The shipped LinkedIn entry reads its cards (re-requesting voyager needs its CSRF token); the layer keeps this adapter.
+  const li = { ...loadPortals().byId.get('linkedin')!, json: [{ url: '/voyager/api/voyagerJobsDashJobCards', list: 'included', where: { $type: 'JobPostingCard$' }, fields: { id: 'entityUrn ~ \\((\\d{6,}),', title: 'jobPostingTitle', company: 'primaryDescription.text', location: 'secondaryDescription.text' }, url_template: 'https://www.linkedin.com/jobs/view/{id}' }] };
   const got = fromJson([{ url: 'https://www.linkedin.com/voyager/api/voyagerJobsDashJobCards?decorationId=x&q=jobSearch', body: fixture('linkedin-voyager.json') }], li, 'https://www.linkedin.com/jobs/search/', NOW);
   assert.deepEqual(got.map((x) => [x.url, x.title, x.company, x.workplace]), [
     ['https://www.linkedin.com/jobs/view/4100000001', 'Product Analyst', 'Marigold Fintech', 'hybrid'],

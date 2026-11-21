@@ -46,16 +46,18 @@ portals:
       recency: { 1: r86400, 7: r604800, 30: r2592000 }
       page: { start: 0, step: 25, omit_first: true }
     job_url: { pattern: '^/jobs/view/(?:[^/]*-)?(\d{6,})/?$', canonical: 'https://www.linkedin.com/jobs/view/{id}' }
-    json:
-      - url: '/voyager/api/voyagerJobsDashJobCards'
-        list: included
-        where: { $type: 'JobPostingCard$' }
-        fields: { id: 'entityUrn ~ \((\d{6,}),', title: jobPostingTitle, company: primaryDescription.text, location: secondaryDescription.text }
+    # No json adapter: re-requesting voyager needs LinkedIn's CSRF token and is the riskiest thing to send it. The signed-in
+    # list (2026-11-21, /jobs/search-results/) carries each job's id on its card and its parts as paragraphs in order.
+    cards:
+      - item: 'div[role=button][componentkey^="job-card-component-ref-"]'
+        id_attr: componentkey
+        id_pattern: '^job-card-component-ref-(\d{6,})$'
         url_template: https://www.linkedin.com/jobs/view/{id}
+        lines: { selector: p, title: 0, company: 1, location: 2 }
     limits: { searches_per_run: 3, pages_per_search: 1, delay_ms: [12000, 20000], min_hours: 12, pages_per_day: 25 }
     risk: LinkedIn's terms forbid automated access to signed-in pages and it restricts accounts it suspects. Crewdeck keeps to 3 searches every 12 hours and stops at the first check, but the account is yours and so is the risk.
-    verified: false
-    notes: Search parameters and /jobs/view/<id> are the ones Crewdeck's guest search already uses; the signed-in search page answered 429 to a check on 2026-11-21, so it was not read again. The voyager response shape is unverified.
+    verified: true
+    notes: Checked signed in, in Claude's browser pane on 2026-11-21 - /jobs/search/ redirects to /jobs/search-results/ keeping the filters (past week, remote, India); 25 cards a page, each with its id in componentkey.
 
   - id: naukri
     name: Naukri

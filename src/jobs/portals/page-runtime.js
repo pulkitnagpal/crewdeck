@@ -151,10 +151,28 @@ export async function scanPage(C, G) {
         if (f.url) job(T(f.url, 2000), { ...f, workplace: f.location });
         continue;
       }
+      // The link: from the card's id attribute, else the title's (or the card's first) link.
+      let idHref = '';
+      if (c.id_attr) {
+        let m = null;
+        try { m = new RegExp(c.id_pattern).exec(it.getAttribute(c.id_attr) || ''); } catch (e) {}
+        if (!m || !/^[\w-]{1,100}$/.test(m[1] || '')) continue;
+        idHref = c.url_template.replace('{id}', encodeURIComponent(m[1]));
+      }
+      if (c.lines) {
+        // Each part is the last line of the n-th paragraph (cards whose first paragraph reads "Selected, <title>\n<title>").
+        const ps = Array.from(it.querySelectorAll(c.lines.selector)).map((p) => String(p.innerText || p.textContent || '').split('\n').map((x) => x.trim()).filter(Boolean));
+        const part = (n) => (n === undefined || !ps[n] ? '' : ps[n][ps[n].length - 1]);
+        const posted = ps.map((x) => x[x.length - 1]).find((x) => RX.time.test(x)) || '';
+        const loc = part(c.lines.location);
+        const href = idHref || (q(it, 'a[href]') || { getAttribute: () => '' }).getAttribute('href');
+        job(href, { title: part(c.lines.title), company: part(c.lines.company), location: loc, posted_at: posted, workplace: loc });
+        continue;
+      }
       const t = q(it, c.title);
       if (!t) continue;
       const txt = (sel) => { const el = q(it, sel); return el ? (el.getAttribute('title') || el.innerText || el.textContent || '') : ''; };
-      const href = t.getAttribute('href') || (q(t, 'a[href]') || q(it, 'a[href]') || { getAttribute: () => '' }).getAttribute('href');
+      const href = idHref || t.getAttribute('href') || (q(t, 'a[href]') || q(it, 'a[href]') || { getAttribute: () => '' }).getAttribute('href');
       const loc = txt(c.location);
       job(href, { title: t.getAttribute('title') || t.innerText || t.textContent, company: txt(c.company), location: loc, posted_at: txt(c.posted_at), workplace: loc });
     }
