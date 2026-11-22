@@ -86,6 +86,9 @@ Payload `{ url, force? }`. The user chose this role: it is not judged, it is add
    or "this site is filled by hand: the answers are on the page" when Prepare found that).
 
 ## Prepare (link picks, Find's top picks, prepare requests)
+**Model:** run these steps in a subagent with `model: "sonnet"` (the Agent tool), never on this chat's own model when it is
+Opus or Fable: drafting answers from the person's facts needs Sonnet's care, not more. Driving the browser pane (Apply,
+portals) stays in this chat.
 Every question on the application must be known before the user is asked to approve anything. Nothing is filled here.
 1. `crewdeck jobs view today --role <role id>` shows the role (`detail.url` is its application address, `detail.apply`
    says `fill` or `copy`).
@@ -281,7 +284,7 @@ offers more than what is left of the Easy Apply forms per day (`daily_quick_appl
 The first message is `Crewdeck: judge saved roles (request <id>)`. Payload `{ roles }`: the ids the user saved (new or on
 the bench, at most 80); `context.roles` lists them with company, title and status, `context.daily_picks` and
 `context.prepare_ahead` the user's numbers. Run the **Judge saved roles** section of the **jobs-daily-run** skill with this
-request id for progress lines: judge exactly those roles with the light model, store the verdicts, pick, and prepare the
+request id for progress lines: judge exactly those roles with Haiku subagents (`model: "haiku"`), store the verdicts, pick, and prepare the
 first `prepare_ahead` of the picks. Roles outside the payload are never judged here. Close it `done` with one line (how many
 fit, how many were picked and prepared).
 

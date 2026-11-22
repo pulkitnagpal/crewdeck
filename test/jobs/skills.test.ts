@@ -87,7 +87,9 @@ test('skills: the six playbooks, each with a name that matches its folder and a 
   assert.match(daily, /Never prepare more than `P` here/);
   assert.doesNotMatch(daily, /prepare each pick/i);
   assert.match(daily, /batches of 10/);
-  assert.match(daily, /light, fast model/);
+  assert.match(daily, /model: "haiku"/);
+  // Preparing runs on Sonnet in a subagent, never on the chat's own (maybe Opus or Fable) model.
+  assert.match(daily, /model: "sonnet"/);
   assert.match(daily, /candidates --budget 40 --batch 10 --need N --start/);
   assert.match(daily, /run\.done/, 'the skill stops where the budgeted candidates say so');
   assert.match(daily, /judged 20 of 40; 112 left in the pool/, 'the Find result reports judged and remaining');
@@ -251,11 +253,11 @@ test('every crewdeck command in the skills, the generated workspace CLAUDE.md an
 
 // ---- the plugin ----
 
-test('the plugin is named crewdeck (0.11.0) everywhere; the bridge keeps its token and proof', () => {
+test('the plugin is named crewdeck (0.11.1) everywhere; the bridge keeps its token and proof', () => {
   const p = JSON.parse(read('plugin', '.claude-plugin', 'plugin.json'));
   assert.equal(p.name, 'crewdeck');
   assert.equal(p.displayName, 'Crewdeck');
-  assert.equal(p.version, '0.11.0');
+  assert.equal(p.version, '0.11.1');
   // The plugin installs the Crewdeck release it pins (install-script.ts): the app's version, which a plugin-only fix doesn't bump.
   assert.match(read('plugin', 'hooks', 'install-script.ts'), new RegExp(`CREWDECK_VERSION = '${JSON.parse(read('package.json')).version.replace(/\./g, '\\.')}'`));
   const m = JSON.parse(read('.claude-plugin', 'marketplace.json'));

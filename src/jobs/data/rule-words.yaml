@@ -42,7 +42,12 @@ languages:
     places_after: [in, from, of, within]
     not_before: [not]
     only_after: [only]
-    reside: ["must|need to|needs to|required to|have to + be? + located|based|residing|reside|live|living|resident + in|within"]
+    reside:
+      - "must|need to|needs to|required to|have to + be? + located|based|residing|reside|live|living|resident + in|within"
+      # "This position is fully remote and can be based in the US or Canada" (We Work Remotely, 2026-11-22): a remote
+      # role's "can/may/should be based in <places>" names where it can be done, like "must be".
+      - "can|may|should|will + be + located|based|done|performed|worked + in|from|within"
+      - "open to + candidates|applicants|people|residents|those|anyone + located|based|living|residing + in|within"
     except: [excluding, excludes, except, except for, other than]
     not_open:
       - "not|no longer + open|available|eligible|accepting|considering|hiring"
