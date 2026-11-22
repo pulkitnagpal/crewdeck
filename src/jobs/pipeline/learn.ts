@@ -1,7 +1,8 @@
 // Learning from what the person does (Jobs v2 P5, the learning loop's ranking part): plain code, no Claude, no tokens.
 // The person's own actions nudge the order Find reads candidates in, never the rules or eligibility:
 //   applied           → that company, the title's words and the role's source rank a little higher;
-//   not interested    → that company and the title's words a little lower (their reason is already remembered);
+//   not interested    → that company and the title's words a little lower (their reason is already remembered); a role hidden
+//                       in Explore with a reason (one-tap chip) is the same thing, a plain hide with no reason says nothing;
 //   set aside         → a pick they moved to judged_out themselves (`crewdeck jobs status <role> judged_out`), a little lower;
 //   ignored           → a pick left untouched for 7 days, slightly lower.
 // Claude's own verdicts (judge, including a "no" at Prepare) never count: only the person's actions do. Every adjustment
@@ -45,7 +46,7 @@ export function personActions(ctx: Ctx): Act[] {
   // not judge's "at prepare" verdict); a pick left untouched since the cutoff day.
   return (ctx.db.prepare(`select * from (select r.company_id, c.name company, r.title, r.source_key, case
       when r.status='applied' then 'applied'
-      when r.status='skipped' and exists (select 1 from events e where e.role_id=r.id and e.kind='skip') then 'not_interested'
+      when (r.status='skipped' or exists (select 1 from saved_roles h where h.role_id=r.id and h.state='hidden')) and exists (select 1 from events e where e.role_id=r.id and e.kind='skip') then 'not_interested'
       when r.status='judged_out' and r.picked_on is not null and coalesce((select e.detail from events e where e.role_id=r.id and e.kind='status' order by e.id desc limit 1), '') not like 'judged_out: at prepare:%' then 'set_aside'
       when r.status in ('picked','prepared') and r.source<>'pasted' and r.picked_on is not null and r.picked_on <= ? then 'ignored'
       end signal from roles r join companies c on c.id=r.company_id) where signal is not null order by signal, company_id`).all(cutoff) as any[])

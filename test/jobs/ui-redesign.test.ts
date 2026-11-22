@@ -131,7 +131,10 @@ test('every Claude action carries the same small spark; the free ones never do',
   const withSaved = render(html`<${Explore} data=${{ ...x, counts: { ...x.counts, saved: 3 }, judgeable: 3 }} />`);
   assert.match(withSaved, /<span class="spark">.*?<\/span>Judge these 3<\/button>/);
   const rows = withSaved.split('<tbody>')[1]!.split('</tbody>')[0]!;
-  assert.equal(sparks(rows), 0, 'the rows\' own buttons are free');
+  // Save and Hide are free; Check fit and Apply (one Claude check, then the application) carry the spark, 1.5k tokens said on the first.
+  assert.equal(sparks(rows), 6, 'Check fit and Apply on each of the three rows, nothing else');
+  assert.doesNotMatch(rows, /<button[^>]*aria-label="(Save|Hide)[^"]*"[^>]*><span class="spark"/);
+  assert.match(rows, /<span class="spark">.*?<\/span>Check fit<span class="tok">~1\.5k tokens<\/span>/);
   // Sources: Refresh, Connect and Add a company are free; the Find sheet's Find has it.
   const sheet = render(html`<${FindSheet} portals=${[]} />`);
   assert.match(sheet, /<span class="spark">.*?<\/span>Find<\/button>/);
@@ -430,6 +433,12 @@ test('Explore in the page: words and chips filter (free), Save and Hide, Judge t
   const tab = async () => (await page.locator('.tabsnav button', { hasText: 'Explore' }).textContent()) ?? '';
   assert.match(await tab(), /Explore\s*3/, 'the default view\'s 3, not the pool\'s 5');
   await page.getByRole('button', { name: 'Hide Data Analyst at Bravo Data' }).click();
+  await page.getByRole('button', { name: 'Too junior' }).waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Too junior' }).waitFor({ state: 'detached' });
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Hide Data Analyst at Bravo Data'); // Esc closes it and the focus returns to Hide
+  await page.getByRole('button', { name: 'Hide Data Analyst at Bravo Data' }).click();
+  await page.getByRole('button', { name: 'Too junior' }).click();
   await page.waitForFunction(() => document.querySelectorAll('.xrow').length === 2);
   // The tab's number is cached for 30 s (it runs the rules over the pool), so it is not asserted to drop here.
   await page.close();
@@ -473,4 +482,107 @@ test('D41 on the redesign in light and dark: nothing under 14 px, AA contrast; t
 test('the redesign\'s pages put nothing from data into inline styles or HTML; Applied and Sources keep their words', () => {
   const out = render(html`<${Portals} portals=${[{ id: 'x', name: '<b>x</b>', countries: [], fields: [], state: 'not_connected', enabled: false, risk: 'r', signup_url: 'javascript:alert(1)', login_url: '', verified: true, needs_reader: false, blurb: '<i>a</i>' }]} />`);
   assert.doesNotMatch(out, /<b>x<\/b>|<i>a<\/i>/);
+});
+
+// ---- one-tap reasons, Find more and Pick from, Check fit and Apply (in a real browser) ----
+
+test('For you: Not interested opens one-tap reasons (first chip focused, Esc closes and the focus returns); a tap skips and remembers; the quiet link goes to the Tell box', { skip: noBrowser, timeout: 90_000 }, async () => {
+  const skipMe = preparedRole(s.w, 'Skip Me Co');
+  const page = await open(1280, 860, 'today');
+  await page.locator('.qitem', { hasText: 'Skip Me Co' }).click();
+  const opener = page.getByRole('button', { name: 'Not interested' });
+  await opener.click();
+  const chips = page.getByRole('group', { name: 'Why? Pick one' });
+  await chips.waitFor();
+  assert.deepEqual(await chips.getByRole('button').allTextContents(), ['Wrong location', 'Too junior', 'Too senior', 'Not my stack', "Don't like the company", 'Pay too low', 'Already applied elsewhere', 'Other…']);
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Wrong location', 'the keyboard can pick at once');
+  await page.keyboard.press('Escape');
+  await chips.waitFor({ state: 'detached' });
+  await page.waitForFunction(() => document.activeElement?.textContent === 'Not interested');
+  // Other… opens the free-text field (and the title words), nothing else.
+  await opener.click();
+  await chips.waitFor();
+  assert.equal(await page.getByRole('textbox', { name: 'In your words' }).count(), 0);
+  await chips.getByRole('button', { name: 'Other…' }).click();
+  await page.getByRole('textbox', { name: 'In your words' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Skip and remember' }).isDisabled(), true, 'words needed for Other');
+  // The quiet link: Tell Crewdeck's input takes the focus.
+  await page.getByRole('button', { name: 'Tell Crewdeck a general rule' }).click();
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Tell Crewdeck');
+  // One tap = done: no typing.
+  await opener.click();
+  await chips.getByRole('button', { name: 'Too senior' }).click();
+  await page.waitForFunction(() => !document.body.textContent?.includes('Skip Me Co'), null, { timeout: 15_000 });
+  assert.equal((s.w.ctx.db.prepare('select status from roles where id=?').get(skipMe) as any).status, 'skipped');
+  assert.equal((s.w.ctx.db.prepare(`select detail from events where role_id=? and kind='skip'`).get(skipMe) as any).detail, 'Too senior');
+  await page.close();
+});
+
+test('Explore: Check fit and Apply send one request each; the verdict shows on the row; Apply anyway after a no; Hide takes a reason; nothing under 14 px or AA in light and dark', { skip: noBrowser, timeout: 120_000 }, async () => {
+  const mk = (company: string) => role(s.w.ctx, { company, title: 'Data Engineer', description: 'SQL and pipelines', source_key: 'arbeitnow', posted_at: new Date(Date.now() - 3_600_000).toISOString() });
+  const check = mk('Check Co'), apply = mk('Apply Co'), no = mk('No Co'), hide = mk('Hide Co');
+  const { judge } = await import('../../src/jobs/pipeline/pick.ts');
+  judge(s.w.ctx, [{ role: no, eligible: 'no', score: 5, evidence: 'On-site in Mumbai only', reason: 'not remote' }]);
+  const page = await open(1280, 860, 'explore');
+  await page.getByRole('searchbox', { name: 'Search jobs' }).fill('Engineer');
+  await page.locator('.xrow', { hasText: 'Check Co' }).waitFor();
+  const row = (name: string) => page.locator('.xrow', { hasText: name });
+  const waitReq = async (kind: 'judge' | 'apply', n: number) => { for (let i = 0; i < 100 && s.q.ofLane('jobs', kind).filter((r) => r.status === 'new').length < n; i++) await new Promise((r) => setTimeout(r, 50)); };
+  await row('Check Co').getByRole('button', { name: /^Check fit: Data Engineer at Check Co/ }).click();
+  await page.waitForFunction(() => /Checking…/.test(document.body.textContent ?? ''));
+  assert.deepEqual(s.q.ofLane('jobs', 'judge').filter((r) => r.status === 'new').map((r) => r.payload), [{ roles: [check], check: true }]);
+  await row('Apply Co').getByRole('button', { name: /^Apply: Data Engineer at Apply Co/ }).click();
+  await page.waitForFunction(() => /Applying…/.test(document.body.textContent ?? ''));
+  assert.deepEqual(s.q.ofLane('jobs', 'apply').filter((r) => r.status === 'new').map((r) => r.payload), [{ role: apply, check_first: true }]);
+  // A no on the row: the reason and the quote, and Apply anyway (not Apply, not Check fit).
+  const nr = row('No Co');
+  assert.match((await nr.textContent()) ?? '', /Fit: no.*not remote.*On-site in Mumbai only/);
+  assert.equal(await nr.getByRole('button', { name: /^Check fit/ }).count(), 0);
+  assert.equal(await nr.getByRole('button', { name: /^Apply:/ }).count(), 0);
+  await nr.getByRole('button', { name: /^Apply anyway/ }).click();
+  await waitReq('apply', 2);
+  assert.deepEqual(s.q.ofLane('jobs', 'apply').filter((r) => r.status === 'new').map((r) => r.payload).sort((a, b) => String(a!.role).localeCompare(String(b!.role))),
+    [{ role: apply, check_first: true }, { role: no }].sort((a, b) => a.role.localeCompare(b.role)), 'Apply anyway: the same request kind, without check_first');
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const items = await audit(page, '.app');
+    assert.deepEqual(items.filter((x) => x.size < 14), [], `${scheme}: 14 px`);
+    assert.deepEqual(items.filter((x) => x.ratio < 4.5), [], `${scheme}: AA`);
+  }
+  // Hide: a popover of reasons; one tap hides and remembers.
+  await row('Hide Co').getByRole('button', { name: /^Hide Data Engineer at Hide Co/ }).click();
+  await page.getByRole('group', { name: /Why hide Data Engineer at Hide Co/ }).waitFor();
+  await page.getByRole('button', { name: 'Pay too low' }).click();
+  await page.waitForFunction(() => !document.body.textContent?.includes('Hide Co'));
+  assert.equal((s.w.ctx.db.prepare('select status from roles where id=?').get(hide) as any).status, 'skipped');
+  assert.equal((s.w.ctx.db.prepare(`select detail from events where role_id=? and kind='skip'`).get(hide) as any).detail, 'Pay too low');
+  await page.close();
+  for (const r of [...s.q.ofLane('jobs', 'judge'), ...s.q.ofLane('jobs', 'apply')]) if (r.status === 'new' || r.status === 'picked') s.q.cancel(r.id, 'jobs');
+});
+
+test('For you: Find more like these opens the Find sheet with the last Find\'s settings and Pick from; it sends { more: true } and the chosen sources', { skip: noBrowser, timeout: 90_000 }, async () => {
+  const page = await open(1280, 860, 'today');
+  await page.locator('.top .find').click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByRole('radio', { name: '80' }).click();
+  await sheet.getByLabel('Prepare the top').selectOption('5');
+  await sheet.getByRole('button', { name: 'Find', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'detached' });
+  for (const r of s.q.ofLane('jobs', 'find')) if (r.status === 'new') s.q.cancel(r.id, 'jobs');
+  await page.getByRole('button', { name: 'Find more like these' }).click();
+  await sheet.waitFor();
+  assert.match((await sheet.locator('h2').textContent()) ?? '', /Find more like these/);
+  assert.equal(await sheet.getByRole('radio', { name: '80' }).getAttribute('aria-checked'), 'true', 'the last Find\'s budget');
+  assert.equal(await sheet.getByLabel('Prepare the top').inputValue(), '5', 'and its prepare');
+  await sheet.getByText(/available/).first().waitFor();
+  assert.equal(await sheet.getByRole('radio', { name: /^All sources/ }).isChecked(), true);
+  await sheet.getByRole('radio', { name: /^Or choose/ }).check();
+  await sheet.getByRole('checkbox', { name: /Arbeitnow/ }).check();
+  assert.match((await sheet.locator('.sheet-sec').filter({ hasText: 'Best matches' }).textContent()) ?? '', /From \d+ available in 1 chosen source/);
+  await sheet.getByRole('button', { name: 'Find', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'detached' });
+  const req = s.q.ofLane('jobs', 'find').find((r) => r.status === 'new')!;
+  assert.deepEqual(req.payload, { count: 5, portals: ['linkedin'], budget: 80, prepare: 5, from: ['arbeitnow'], more: true });
+  s.q.cancel(req.id, 'jobs');
+  await page.close();
 });

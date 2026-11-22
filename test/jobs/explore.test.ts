@@ -43,7 +43,7 @@ test('the pool: roles that passed the rules; applied, expired, prefiltered and h
   assert.deepEqual(r.counts, { feeds: 2, accounts: 1, saved: 0, others: 1 });
   assert.equal(exploreCount(ctx.db), 4, 'the tab number counts every open role, other occupations included');
   const row = r.rows.find((x) => x.id === id.A)!;
-  assert.deepEqual(Object.keys(row).sort(), ['company', 'group', 'id', 'location', 'posted_at', 'saved', 'source_label', 'status', 'title', 'url', 'workplace']);
+  assert.deepEqual(Object.keys(row).sort(), ['company', 'group', 'id', 'location', 'posted_at', 'saved', 'source_label', 'status', 'title', 'url', 'verdict', 'workplace']);
   assert.equal(row.group, 'feeds');
   assert.equal(r.rows.find((x) => x.id === id.B)!.group, 'accounts');
   assert.equal(r.rows.find((x) => x.id === id.B)!.status, 'picked');

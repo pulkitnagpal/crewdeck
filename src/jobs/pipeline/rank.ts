@@ -7,7 +7,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { ensureHome } from '../../config.ts';
-import { type Ctx, notesOf, nowIso } from '../ctx.ts';
+import { type Ctx, notesOf, nowIso, todayOf } from '../ctx.ts';
 import { setStatus, tx } from '../db.ts';
 import type { JobNotes } from '../notes.ts';
 import { type Compiled, compileRules, prefilter, titleFitOf } from '../rules.ts';
@@ -16,7 +16,7 @@ import { fold } from '../places.ts';
 import { clip, plainText } from '../text.ts';
 import type { NetOptions } from '../net/netguard.ts';
 import { type Funnel, findFunnel } from '../funnel.ts';
-import { trackerCheck, trackerRules } from './tracker.ts';
+import { todayPickIds, trackerCheck, trackerRules } from './tracker.ts';
 import { learnedDelta, refreshLearned } from './learn.ts';
 import { fuse, hybridEnabled } from '../search/hybrid.ts';
 
@@ -69,8 +69,28 @@ export function rankScore(row: { title: string; description?: string; source?: s
   return score;
 }
 
+/**
+ * "Pick from" (the Find sheet's `from`): a role's source_key matches a key when it is that key or sits under it
+ * (`ats` takes `ats:greenhouse:atlan`; `portal:naukri` only Naukri's roles; `linkedin` LinkedIn's). No keys: every source.
+ */
+export const FROM_KEY = /^[a-z0-9][a-z0-9:_.-]{0,79}$/;
+export const MAX_FROM = 30;
+/** A `from` list (a comma-separated flag or the Find payload's array): lowercase keys, no duplicates, at most MAX_FROM. */
+export function cleanFrom(v: unknown): string[] {
+  const list = typeof v === 'string' ? v.split(',') : Array.isArray(v) ? v : null;
+  if (!list || list.length > MAX_FROM) throw new Error(`from: give a list of at most ${MAX_FROM} source keys (linkedin, portal:naukri, api:himalayas, ats …)`);
+  const keys = list.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+  for (const k of keys) if (!FROM_KEY.test(k)) throw new Error(`"${k.slice(0, 40)}" is not a source key (linkedin, portal:naukri, api:himalayas, ats …)`);
+  return [...new Set(keys)];
+}
+export function fromMatches(sourceKey: string | null | undefined, from?: string[] | null): boolean {
+  if (!from?.length) return true;
+  const k = String(sourceKey ?? '');
+  return !!k && from.some((f) => k === f || k.startsWith(`${f}:`));
+}
+
 /** Unjudged roles that passed the prefilter, best first. Roles of a company with a company rule are dropped here. */
-export function rankRoles(ctx: Ctx): Ranked[] {
+export function rankRoles(ctx: Ctx, o: { from?: string[] } = {}): Ranked[] {
   const notes = notesOf(ctx);
   const compiled = compileRules(notes);
   const at = ctx.clock(), now = nowIso(ctx);
@@ -95,6 +115,7 @@ export function rankRoles(ctx: Ctx): Ranked[] {
   const hybrid = base.length && hybridEnabled(ctx)
     ? fuse(ctx, keep, { notes, title: new Map(base.map((b) => [b.r.id, b.score])), fit: new Map(base.map((b) => [b.r.id, b.fit])), learned }).by : null;
   return base.map(({ r, score, fit }) => { const f = hybrid?.get(r.id); const d = f ? f.learned : learnedDelta(r, learned); return { ...r, rank: f ? f.score : score + d, learned: d, fit }; })
+    .filter((r) => fromMatches(r.source_key, o.from))
     .sort((a, b) => other(a) - other(b) || b.rank - a.rank || String(b.posted_at ?? b.first_seen).localeCompare(String(a.posted_at ?? a.first_seen)) || a.id.localeCompare(b.id));
 }
 
@@ -127,7 +148,8 @@ export async function fetchDescriptions(ctx: Ctx, o: { top?: number; net?: NetOp
 
 // ---- Find within a budget ----
 
-export type FindRun = { started: string; budget: number; judged: string[]; need?: number; funnel?: Funnel };
+export type FindRun = { started: string; budget: number; judged: string[]; need?: number; funnel?: Funnel;
+  /** How many picks the day had when this Find began (`pick --add` adds to that, so running it again never adds twice). */ base?: { day: string; picked: number } };
 const RUN_TTL_MS = 6 * 3_600_000;
 const runFile = (home: string) => join(home, 'state', 'find.json');
 
@@ -160,10 +182,10 @@ export function refreshFunnel(ctx: Ctx): Funnel | null {
 }
 
 /** Companies with an eligible role `pick` could take now (the same filter as pick's pool). */
-export function pickableCompanies(ctx: Ctx): number {
+export function pickableCompanies(ctx: Ctx, from?: string[]): number {
   const tracker = trackerCheck(ctx.db, trackerRules(notesOf(ctx).search.data), nowIso(ctx));
-  const rows = ctx.db.prepare(`select r.id, r.company_id, r.title from roles r where r.eligibility='yes' and r.status in ('new','bench')`).all() as any[];
-  return new Set(rows.filter((r) => !tracker.check(r)).map((r) => Number(r.company_id))).size;
+  const rows = ctx.db.prepare(`select r.id, r.company_id, r.title, r.source_key from roles r where r.eligibility='yes' and r.status in ('new','bench')`).all() as any[];
+  return new Set(rows.filter((r) => fromMatches(r.source_key, from) && !tracker.check(r)).map((r) => Number(r.company_id))).size;
 }
 
 export type Budgeted = {
@@ -177,22 +199,22 @@ export type Budgeted = {
  * The next batch for Claude to judge in this Find: rank order, never a role already judged, never past the budget, and
  * nothing once `need` companies have an eligible role. `start` begins a new Find (else one older than 6 h starts fresh).
  */
-export function budgetedCandidates(ctx: Ctx, o: { budget: number; batch: number; need: number; start?: boolean }): Budgeted {
+export function budgetedCandidates(ctx: Ctx, o: { budget: number; batch: number; need: number; start?: boolean; from?: string[] }): Budgeted {
   if (!Number.isInteger(o.budget) || o.budget < 1 || o.budget > 80) throw new Error('--budget must be from 1 to 80 (at most 80 postings are judged per Find)');
   if (!Number.isInteger(o.batch) || o.batch < 1 || o.batch > 20) throw new Error('--batch must be from 1 to 20');
   if (!Number.isInteger(o.need) || o.need < 1 || o.need > 50) throw new Error('--need must be from 1 to 50');
   const now = ctx.clock();
   let run = readFindRun(ctx.home);
-  if (o.start || !run || now.getTime() - Date.parse(run.started) > RUN_TTL_MS || !existsSync(runFile(ctx.home))) run = { started: now.toISOString(), budget: o.budget, judged: [] };
+  if (o.start || !run || now.getTime() - Date.parse(run.started) > RUN_TTL_MS || !existsSync(runFile(ctx.home))) run = { started: now.toISOString(), budget: o.budget, judged: [], base: { day: todayOf(ctx), picked: todayPickIds(ctx.db, todayOf(ctx)).length } };
   run.budget = o.budget;
   run.need = o.need;
   // Other occupations (title fit below the floor) are ranked last and never spend the judge's budget (ADR-0003).
-  const all = rankRoles(ctx);
+  const all = rankRoles(ctx, { from: o.from });
   const ranked = all.filter((r) => r.fit >= OTHER_OCCUPATION_FIT);
   // The funnel is stored with the run (design §24.7): the page's card and Claude's close line read the same numbers.
   run.funnel = findFunnel(ctx, o.need);
   writeFindRun(ctx.home, run);
-  const passed = pickableCompanies(ctx);
+  const passed = pickableCompanies(ctx, o.from);
   const remaining = Math.max(0, run.budget - run.judged.length);
   const why = passed >= o.need ? 'enough' : remaining === 0 ? 'budget' : ranked.length === 0 ? 'pool' : null;
   const batch = why ? [] : ranked.slice(0, Math.min(o.batch, remaining)).map(toCandidate);

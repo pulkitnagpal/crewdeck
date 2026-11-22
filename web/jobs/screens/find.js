@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, noop, plural, Icon, Spark } from '../lib.js';
 import { effectiveState } from './portals.js';
 
+const n = (x) => Number(x ?? 0).toLocaleString('en-US');
 export const BUDGETS = [20, 40, 80];
 export const PREPARES = [3, 5, 0];
 /** What one page read, one posting judged and one pick prepared cost, in tokens (the sheet's estimate). */
@@ -24,17 +25,33 @@ export const readable = (portals) => (Array.isArray(portals) ? portals : []).fil
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
-export function FindSheet({ portals = null, titles = [], found = 0, quota = 5, onClose = noop, onFind = noop, onSources = noop }) {
+/**
+ * How many unjudged roles the chosen sources hold ("N available"): `pool` is GET /api/jobs/find-pool ({ total, sources: [{ key,
+ * label, unjudged }] }); `from` the chosen keys (null: every source). Null when the pool is not known yet.
+ */
+export function availableFrom(pool, from) {
+  if (!pool) return null;
+  if (!from) return pool.total;
+  return pool.sources.filter((s) => from.has(s.key)).reduce((n, s) => n + s.unjudged, 0);
+}
+
+/** `initial` is the last Find's own settings ({ portals, budget, prepare, from }): "Find more like these" opens with them. */
+export function FindSheet({ portals = null, titles = [], found = 0, quota = 5, pool = null, initial = null, more = false, onClose = noop, onFind = noop, onSources = noop }) {
   const accounts = readable(portals);
-  const [picked, setPicked] = useState(null);
-  const [budget, setBudget] = useState(40);
-  const [prepare, setPrepare] = useState(3);
+  const [picked, setPicked] = useState(() => (Array.isArray(initial?.portals) ? new Set(initial.portals) : null));
+  const [budget, setBudget] = useState(BUDGETS.includes(initial?.budget) ? initial.budget : 40);
+  const [prepare, setPrepare] = useState(PREPARES.includes(initial?.prepare) ? initial.prepare : 3);
+  // Pick from: null is every source (the default); a Set is the sources the person chose.
+  const [from, setFrom] = useState(() => (Array.isArray(initial?.from) && initial.from.length ? new Set(initial.from) : null));
   const [busy, setBusy] = useState(false);
   const box = useRef(null);
   // The accounts start ticked, once the list is known.
   const on = picked ?? new Set(accounts.map((p) => p.id));
   const pages = accounts.filter((p) => on.has(p.id)).reduce((n, p) => n + (p.pages ?? p.searches ?? 3), 0);
-  const est = estimate({ pages, judged: budget, prepared: Math.min(prepare, quota) });
+  const available = availableFrom(pool, from);
+  // Fewer available than the budget (a source or two chosen): only those are read, so the estimate says so.
+  const judgedN = from && available !== null ? Math.min(budget, available) : budget;
+  const est = estimate({ pages, judged: judgedN, prepared: Math.min(prepare, quota) });
 
   // Focus: into the dialog on open (before the first paint), back to the opener on close; Tab stays inside; Esc closes.
   useLayoutEffect(() => {
@@ -60,9 +77,11 @@ export function FindSheet({ portals = null, titles = [], found = 0, quota = 5, o
     const j = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? Math.min(BUDGETS.length - 1, i + 1) : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? Math.max(0, i - 1) : i;
     if (j !== i) { e.preventDefault(); setBudget(BUDGETS[j]); e.currentTarget.parentElement.querySelectorAll('button')[j]?.focus(); }
   };
+  const toggleFrom = (key) => { const next = new Set(from ?? []); if (next.has(key)) next.delete(key); else next.add(key); setFrom(next); };
+  const chooseNone = !!from && from.size === 0;
   const go = async () => {
     setBusy(true);
-    const ok = await onFind({ count: quota, portals: accounts.filter((p) => on.has(p.id)).map((p) => p.id), budget, prepare });
+    const ok = await onFind({ count: quota, portals: accounts.filter((p) => on.has(p.id)).map((p) => p.id), budget, prepare, ...(from && from.size ? { from: [...from] } : {}), ...(more ? { more: true } : {}) });
     setBusy(false);
     if (ok !== false) onClose();
   };
@@ -71,7 +90,7 @@ export function FindSheet({ portals = null, titles = [], found = 0, quota = 5, o
   return html`<div class="scrim" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
     <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="find-h" ref=${box}>
       <div class="sheet-head">
-        <div class="grow"><h2 id="find-h">Find jobs for you</h2><p class="soft">Claude reads, judges and prepares. You decide what it spends.</p></div>
+        <div class="grow"><h2 id="find-h">${more ? 'Find more like these' : 'Find jobs for you'}</h2><p class="soft">${more ? 'Claude reads further down the ranking and adds new picks to today\'s. You decide what it spends.' : 'Claude reads, judges and prepares. You decide what it spends.'}</p></div>
         <button type="button" class="iconbtn" aria-label="Close" onClick=${onClose}><${Icon} name="close" size=${14} /></button>
       </div>
       <div class="sheet-sec">
@@ -83,6 +102,20 @@ export function FindSheet({ portals = null, titles = [], found = 0, quota = 5, o
             ${Array.isArray(portals) ? html` <button type="button" class="linkbtn" onClick=${() => { onClose(); onSources(); }}>Connect an account</button>` : null}</p>`}
         ${accounts.length && shown.length ? html`<p class="soft small">Searches cover all your titles: ${shown.join(', ')}${titles.length > shown.length ? ', …' : ''}.</p>` : null}
       </div>
+      ${pool ? html`<div class="sheet-sec">
+        <h3 class="eyebrow" id="from-l">Pick from</h3>
+        <div role="radiogroup" aria-labelledby="from-l">
+          <label class="checkrow"><input type="radio" name="pick-from" checked=${!from} onChange=${() => setFrom(null)} />
+            <span class="grow">All sources (default)</span><span class="soft">${n(pool.total)} available</span></label>
+          <label class="checkrow"><input type="radio" name="pick-from" checked=${!!from} onChange=${() => setFrom(from ?? new Set())} />
+            <span class="grow">Or choose</span></label>
+        </div>
+        ${from ? html`<div role="group" aria-label="Sources to pick from">${pool.sources.length ? pool.sources.map((s) => html`<label class="checkrow sub" key=${s.key}>
+            <input type="checkbox" checked=${from.has(s.key)} onChange=${() => toggleFrom(s.key)} />
+            <span class="grow">${s.label}</span><span class="soft">${n(s.unjudged)} available</span></label>`)
+          : html`<p class="soft">No source has roles waiting to be judged.</p>`}</div>` : null}
+        ${chooseNone ? html`<p class="soft small" role="status">Choose at least one source, or go back to All sources.</p>` : null}
+      </div>` : null}
       <div class="sheet-sec">
         <h3 class="eyebrow">Judge</h3>
         <div class="optrow">
@@ -91,7 +124,9 @@ export function FindSheet({ portals = null, titles = [], found = 0, quota = 5, o
             ${BUDGETS.map((n) => html`<button type="button" role="radio" key=${n} aria-checked=${budget === n ? 'true' : 'false'} onKeyDown=${arrow} onClick=${() => setBudget(n)}>${n}</button>`)}
           </div>
         </div>
-        <p class="soft small">From ${Number(found).toLocaleString('en-US')} already found, best first. It stops early once ${quota} companies fit.</p>
+        <p class="soft small">${from && available !== null
+          ? `From ${n(available)} available in ${plural(from.size, 'chosen source', 'chosen sources')}, best first.${available < budget ? ` Only ${n(available)} to read: Claude reads all of them.` : ''}`
+          : `From ${Number(found).toLocaleString('en-US')} already found, best first.`} It stops early once ${quota} companies fit.</p>
         <div class="optrow">
           <label class="grow" for="prepare-n">Prepare the top</label>
           <select id="prepare-n" class="select" value=${String(prepare)} onChange=${(e) => setPrepare(Number(e.currentTarget.value))}>
@@ -102,11 +137,11 @@ export function FindSheet({ portals = null, titles = [], found = 0, quota = 5, o
       <div class="estimate" role="status" aria-label="Estimate">
         <div><b>${tokenText(est.tokens)}</b><span>tokens</span></div>
         <div><b>≈ ${est.minutes} min</b><span>in a Jobs chat</span></div>
-        <div><b>up to ${quota}</b><span>picks, never padded</span></div>
+        <div><b>up to ${quota}</b><span>${more ? 'new picks, never padded' : 'picks, never padded'}</span></div>
       </div>
       <div class="sheet-foot">
         <button type="button" class="btn big2" onClick=${onClose}>Cancel</button>
-        <button type="button" class="btn primary big2" disabled=${busy} onClick=${go}><${Spark} size=${16} />Find</button>
+        <button type="button" class="btn primary big2" disabled=${busy || chooseNone} onClick=${go}><${Spark} size=${16} />Find</button>
       </div>
     </section>
   </div>`;

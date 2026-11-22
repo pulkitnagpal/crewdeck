@@ -1,10 +1,13 @@
 // Explore: every role Crewdeck found that passed your rules, free to search, filter and open yourself (no Claude involved).
 // Saving a role marks it for "Judge these N", the one thing here that asks Claude (it carries the spark and a token hint).
 // Roles come from two kinds of source, shown by their own quiet icon: a feed (automatic) or one of your accounts.
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, noop, cls, safeHref, plural, age, Icon, Spark } from '../lib.js';
+import { ReasonChips } from './reasons.js';
 
 const n = (x) => Number(x ?? 0).toLocaleString('en-US');
+/** About 1.5k tokens for one role's Check fit (the row's hint). */
+export const CHECK_FIT_HINT = '~1.5k tokens';
 /** About 1.3k tokens per role judged. */
 export const TOKENS_PER_JUDGED = 1300;
 /** "about 8k tokens" for N roles. */
@@ -27,25 +30,69 @@ function Chip({ on, onClick, children, dashed = false }) {
 
 export const EMPTY_QUERY = { q: '', group: 'all', strong: false, days: 0, saved: false, others: false, sort: 'best', limit: 50 };
 
-function Row({ r, onSave, onHide }) {
+const VERDICT = { yes: 'yes', no: 'no', unclear: 'unclear' };
+
+/** What Claude's check said about a role: yes / no / unclear, one line why, and the posting's own words. */
+export function Verdict({ v }) {
+  if (!v) return null;
+  return html`<p class=${`xverdict ${v.eligible}`}><b class="vtag">Fit: ${VERDICT[v.eligible] ?? v.eligible}</b>${v.reason ? html` <span class="vwhy">${v.reason}</span>` : null}${v.quote ? html` <q class="vquote">${v.quote}</q>` : null}</p>`;
+}
+
+/** Hide with a reason: the chips in a small popover under the button (a sheet on a phone). One tap hides it and Claude remembers why. */
+function HidePop({ r, onHide, onClose, onGeneral }) {
+  const [other, setOther] = useState(false);
+  const [note, setNote] = useState('');
+  const box = useRef(null);
+  // A press outside (not on the hide button, which toggles it) closes it.
+  useLayoutEffect(() => {
+    const away = (e) => { if (box.current && !box.current.contains(e.target) && !e.target.closest?.('[aria-haspopup]')) onClose(); };
+    const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, []);
+  return html`<div class="reasonpop" ref=${box} role="group" aria-label=${`Why hide ${r.title} at ${r.company}?`}>
+    <b class="pophead">Why hide this?</b>
+    <${ReasonChips} otherOpen=${other} onPick=${(x) => onHide(r, { chip: x.id })} onOther=${() => setOther(!other)} onGeneral=${onGeneral} />
+    ${other ? html`<label class="f"><span class="lab">In your words</span>
+      <input class="field" value=${note} placeholder="e.g. too much travel for me" onInput=${(e) => setNote(e.currentTarget.value)} /></label>
+      <div class="row-flex"><button type="button" class="btn small primary" disabled=${!note.trim()} onClick=${() => onHide(r, { chip: 'other', note })}>Hide and remember</button></div>` : null}
+    <div class="row-flex"><button type="button" class="linkbtn quiet" onClick=${() => onHide(r, {})}>Hide without a reason</button>
+      <button type="button" class="linkbtn quiet" onClick=${onClose}>Cancel</button></div>
+  </div>`;
+}
+
+function Row({ r, onSave, onHide, onCheck, onApply, hiding, onHiding, onTellRule }) {
   const href = safeHref(r.url);
   const picked = r.status === 'picked' || r.status === 'prepared';
+  const hideBtn = useRef(null);
+  const close = () => { onHiding(null); setTimeout(() => hideBtn.current?.focus(), 0); };
+  const judged = !!r.verdict;
   return html`<tr class="xrow" data-role=${r.id}>
-    <td class="xjob"><${href ? 'a' : 'span'} class="xtitle" href=${href ?? undefined} target="_blank" rel="noopener noreferrer">${r.title}<//><span class="xco">${r.company}</span></td>
+    <td class="xjob"><${href ? 'a' : 'span'} class="xtitle" href=${href ?? undefined} target="_blank" rel="noopener noreferrer">${r.title}<//><span class="xco">${r.company}</span>
+      <${Verdict} v=${r.verdict} />
+      ${picked ? null : html`<div class="xdo">
+        ${judged || r.status === 'judged_out' ? null : html`<button type="button" class="btn small outline" disabled=${!!r.checking} aria-label=${`Check fit: ${r.title} at ${r.company}, ${CHECK_FIT_HINT}`} title="Claude's light model reads the posting once and tells you if you are eligible" onClick=${() => onCheck(r)}><${Spark} size=${14} />${r.checking ? 'Checking…' : 'Check fit'}<span class="tok">${CHECK_FIT_HINT}</span></button>`}
+        ${r.verdict?.eligible === 'no'
+          ? html`<button type="button" class="btn small outline" disabled=${!!r.applying} aria-label=${`Apply anyway: ${r.title} at ${r.company}`} title="Claude said no: prepare and fill the form anyway (you still click Submit)" onClick=${() => onApply(r, true)}><${Spark} size=${14} />${r.applying ? 'Applying…' : 'Apply anyway'}</button>`
+          : html`<button type="button" class="btn small outline" disabled=${!!r.applying} aria-label=${`Apply: ${r.title} at ${r.company}`} title=${judged ? 'Claude prepares it and fills the form, then stops for your Submit' : 'Claude checks the fit first, then prepares it and fills the form, then stops for your Submit'} onClick=${() => onApply(r, false)}><${Spark} size=${14} />${r.applying ? 'Applying…' : 'Apply'}</button>`}
+      </div>`}</td>
     <td class="xwhere" data-label="Where">${whereText(r)}</td>
     <td class="xfound" data-label="Found on"><span class="foundon"><${SourceMark} group=${r.group} />${r.source_label}</span></td>
     <td class="xage" data-label="Posted">${age(r.posted_at)}</td>
     <td class="xact">${picked ? html`<span class="picked">Picked</span>` : html`
       <button type="button" class=${cls('iconbtn', r.saved && 'on')} aria-pressed=${r.saved ? 'true' : 'false'} aria-label=${r.saved ? `Saved: remove ${r.title} at ${r.company}` : `Save ${r.title} at ${r.company}`} onClick=${() => onSave(r)}><${Icon} name="bookmark" size=${16} fill=${r.saved} /></button>
-      <button type="button" class="iconbtn quiet" aria-label=${`Hide ${r.title} at ${r.company}`} title="Hide: never show this job again" onClick=${() => onHide(r)}><${Icon} name="eyeoff" size=${16} /></button>`}</td>
+      <button type="button" class="iconbtn quiet" ref=${hideBtn} aria-haspopup="true" aria-expanded=${hiding ? 'true' : 'false'} aria-label=${`Hide ${r.title} at ${r.company}`} title="Hide: never show this job again" onClick=${() => onHiding(hiding ? null : r.id)}><${Icon} name="eyeoff" size=${16} /></button>
+      ${hiding ? html`<${HidePop} r=${r} onClose=${close} onGeneral=${() => { onHiding(null); onTellRule(); }} onHide=${(row, v) => { onHiding(null); onHide(row, v); }} />` : null}`}</td>
   </tr>`;
 }
 
 /**
  * `data` is GET /api/jobs/explore; `query` the filters the page sent. `onQuery(patch)` changes them (the page refetches).
  */
-export function Explore({ data, query = EMPTY_QUERY, found = null, onQuery = noop, onSave = noop, onHide = noop, onJudge = noop, judging = false }) {
+export function Explore({ data, query = EMPTY_QUERY, found = null, onQuery = noop, onSave = noop, onHide = noop, onJudge = noop, onCheck = noop, onApply = noop, onTellRule = noop, judging = false }) {
   const q = { ...EMPTY_QUERY, ...query };
+  const [hiding, setHiding] = useState(null);
   const [text, setText] = useState(q.q);
   const timer = useRef(null);
   // Typing waits a moment before it asks again.
@@ -85,7 +132,7 @@ export function Explore({ data, query = EMPTY_QUERY, found = null, onQuery = noo
       <div class="card xcard">
         ${data.rows.length ? html`<div class="xscroll"><table class="xtable">
           <thead><tr><th scope="col">Job</th><th scope="col">Where</th><th scope="col">Found on</th><th scope="col">Posted</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
-          <tbody>${data.rows.map((r) => html`<${Row} key=${r.id} r=${r} onSave=${onSave} onHide=${onHide} />`)}</tbody></table></div>`
+          <tbody>${data.rows.map((r) => html`<${Row} key=${r.id} r=${r} onSave=${onSave} onHide=${onHide} onCheck=${onCheck} onApply=${onApply} hiding=${hiding === r.id} onHiding=${setHiding} onTellRule=${onTellRule} />`)}</tbody></table></div>`
           : html`<p class="xempty">${q.q || q.strong || q.days || q.saved || q.group !== 'all' ? 'Nothing matches these filters.' : 'Nothing found yet: feeds update by themselves, or Find jobs reads your accounts.'}</p>`}
         <div class="xfoot" role="status">Showing ${n(data.rows.length)} of ${n(data.total)}${canMore ? html` · <button type="button" class="linkbtn" onClick=${() => onQuery({ limit: Math.min(200, q.limit + 50) })}>show more</button>` : more ? ' · narrow the search to see the rest' : ''}</div>
       </div>

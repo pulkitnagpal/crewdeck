@@ -61,3 +61,8 @@ export function trackerCheck(db: Db, rules: TrackerRules, at: string) {
     },
   };
 }
+
+/** The roles picked for `day` (the user's day): what `pick` calls "already" (pasted links are the person's own and not counted). */
+export function todayPickIds(db: Db, day: string): string[] {
+  return (db.prepare(`select id from roles where picked_on=? and source<>'pasted' and status in ('picked','prepared','applied') order by score desc, id`).all(day) as any[]).map((r) => String(r.id));
+}

@@ -297,3 +297,38 @@ details.fgroup > summary:focus-visible { outline-offset: -2px; }
 .plannedco .chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; }
 .plannedco .chip { padding: 4px 10px; border-radius: 999px; background: var(--chip); color: var(--ink); }
 .plannedco .chip.more { color: var(--soft); }
+
+/* ---- one-tap reasons (Not interested on For you, Hide on Explore) ---- */
+.reasons { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.rchips { display: flex; flex-wrap: wrap; gap: 8px; }
+.rchip { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 0.9375rem; }
+.rchip:hover { border-color: var(--muted); }
+.rchip.dashed { border-style: dashed; border-color: var(--muted); background: transparent; color: var(--soft); }
+.rchip.on { border-style: solid; background: var(--ink); border-color: var(--ink); color: var(--ground); }
+.reasons .rule { color: var(--soft); font-size: 0.875rem; text-decoration: underline; padding: 4px 0; }
+/* Explore's popover: a small card fixed above the bottom of the window (a table card would clip an absolute one); a sheet on a phone. */
+.reasonpop { position: fixed; z-index: 25; left: 50%; bottom: 24px; transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow: auto;
+  display: flex; flex-direction: column; gap: 10px; padding: 16px; text-align: left; white-space: normal; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28); }
+.reasonpop .pophead { font-size: 1rem; }
+.reasonpop .linkbtn.quiet { color: var(--soft); text-decoration: underline; }
+.reasonpop .f { display: flex; flex-direction: column; gap: 4px; }
+
+/* Explore rows: what Claude said about a role, and its two Claude buttons (they carry the spark) */
+.xverdict { margin: 6px 0 0; font-size: 0.9375rem; color: var(--soft); overflow-wrap: anywhere; }
+.xverdict .vtag { color: var(--ink); }
+.xverdict.yes .vtag { color: var(--ok); }
+.xverdict.no .vtag { color: var(--warn); }
+.xverdict .vquote { display: block; margin-top: 2px; font-style: italic; }
+.xdo { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.xdo .btn { display: inline-flex; align-items: center; gap: 6px; }
+.xdo .tok { color: var(--soft); font-weight: 400; font-size: 0.875rem; }
+.findmore { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; padding: 10px 4px; min-height: 40px; color: var(--accent); }
+.checkrow.sub { padding-left: 32px; }
+
+@media (max-width: 699px) {
+  .rchip { min-height: 44px; }
+  .reasonpop { left: 0; right: 0; bottom: 0; transform: none; width: auto; border-radius: 20px 20px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .xdo .btn { flex: 1 1 auto; justify-content: center; }
+  .findmore { min-height: 44px; }
+  .checkrow.sub { padding-left: 24px; }
+}

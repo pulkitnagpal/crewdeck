@@ -35,6 +35,11 @@ const exploreQs = (q) => {
   return p.toString();
 };
 
+const LAST_FIND = 'crewdeck.jobs.lastFind';
+/** The last Find's own choices (portals, budget, prepare, pick-from): kept in this browser so "Find more like these" opens with them. */
+const readLastFind = () => { try { const v = JSON.parse(localStorage.getItem(LAST_FIND) ?? 'null'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
+const keepLastFind = (v) => { try { localStorage.setItem(LAST_FIND, JSON.stringify(v)); } catch { /* private window: this tab's memory still holds it */ } };
+
 function App() {
   const [screen, setScreen] = useState(screenOf);
   const [state, setState] = useState(null);
@@ -51,6 +56,7 @@ function App() {
   const [sheet, setSheet] = useState(null);
   const [narrow, setNarrow] = useState(isPhone);
   const sentLinks = useRef(new Map());
+  const lastFind = useRef(readLastFind());
   const toastTimer = useRef(null);
 
   const say = useCallback((text, bad = false) => {
@@ -125,7 +131,10 @@ function App() {
     onAnswer: (role, v) => run('answer', { role, ...v }, (r) => (r.reapplied ? 'Remembered. Claude continues the application.' : 'Remembered for every later form')),
     onEdit: (role, field_id, text) => run('editAnswer', { role, field_id, text }, 'Saved as your words'),
     onImprove: (role, field_id, instruction) => run('improve', { role, field_id, instruction }, 'Sent to Claude'),
-    onSkip: (role, reason, titleWords) => run('notInterested', { role, reason, titleWords }, 'Skipped. Your reason is remembered.').then(() => setSelected(null)),
+    // v: { chip } (one tap) or { chip: 'other', note, titleWords }; the reason is remembered either way.
+    onSkip: (role, v) => run('notInterested', { role, ...v }, 'Skipped. Your reason is remembered.').then(() => setSelected(null)),
+    onTellRule: () => focusTell(),
+    onFindMore: () => openSheet({ more: true }),
     onApply: (role) => run('approve', { role }, (r) => (r.mode === 'copy' ? 'This site takes answers you copy in' : sent(r))),
     onPrepare: (role) => run('prepare', { role }, (r) => (r.prepared ? 'Already prepared' : sent(r))),
     onQuickApply: () => run('quickApply', {}, (r) => (r.already ? 'Quick apply is already running in your Jobs chat' : sent(r))),
@@ -161,14 +170,29 @@ function App() {
   const explore = {
     onQuery: (patch) => setXq((q) => ({ ...q, ...patch, ...('limit' in patch ? {} : { limit: EMPTY_QUERY.limit }) })),
     onSave: (r) => run(r.saved ? 'unsaveRole' : 'saveRole', { role: r.id }, r.saved ? 'Removed from saved' : 'Saved: ask Claude to judge your saved jobs when you are ready'),
-    onHide: (r) => run('hideRole', { role: r.id }, 'Hidden: it will not show here again'),
+    // v: { chip, note? } hides with a reason Claude remembers; {} hides without one.
+    onHide: (r, v = {}) => run('hideRole', { role: r.id, ...v }, v.chip ? 'Hidden. Your reason is remembered.' : 'Hidden: it will not show here again'),
+    onCheck: (r) => run('checkFit', { role: r.id }, (x) => (x.already ? 'Already checking this role' : sent(x))),
+    onApply: (r, anyway) => run('exploreApply', { role: r.id, ...(anyway ? { anyway: true } : {}) }, (x) => (x.already ? 'Already applying to this role' : x.mode === 'copy' ? 'This site takes answers you copy in' : sent(x))),
+    onTellRule: () => focusTell(),
     onJudge: () => run('judgeSaved', {}, (r) => (r.already ? 'Judging is already running in your Jobs chat' : sent(r))),
   };
   // The Find sheet: the accounts it can read are fetched when it opens.
-  const openSheet = async () => {
-    setSheet({ portals: null, titles: [] });
-    try { const r = await get('portals'); setSheet((x) => (x ? { portals: r.portals ?? [], titles: r.titles ?? [] } : x)); }
-    catch { setSheet((x) => (x ? { portals: [], titles: [] } : x)); }
+  // `more`: "Find more like these": the same settings as the last Find, and the picks add to today's.
+  const openSheet = async (o = {}) => {
+    const more = !!o.more;
+    setSheet({ portals: null, titles: [], pool: null, more, initial: more ? lastFind.current : null });
+    try { const r = await get('portals'); setSheet((x) => (x ? { ...x, portals: r.portals ?? [], titles: r.titles ?? [] } : x)); }
+    catch { setSheet((x) => (x ? { ...x, portals: [], titles: [] } : x)); }
+    // What each source holds that nobody judged yet (the sheet's Pick from); the section stays hidden if it can't be read.
+    try { const p = await get('find-pool'); setSheet((x) => (x ? { ...x, pool: p } : x)); } catch { /* no Pick from */ }
+  };
+  // "Tell Crewdeck a general rule" (under the reasons): to the Tell box on For you, focused.
+  const focusTell = () => {
+    if (screen !== 'today') nav('today');
+    let tries = 0;
+    const go = () => { const el = document.getElementById('tell-input'); if (el) { el.focus(); el.scrollIntoView?.({ block: 'center' }); } else if (++tries < 30) setTimeout(go, 100); };
+    setTimeout(go, 0);
   };
   const onFeature = (name, value) => run('feature', { name, value }, (r) => (r.ok ? `${name.replace(/_/g, ' ')}: ${value === true ? 'on' : value === false ? 'off' : value}` : null));
   const onLink = async (url) => {
@@ -207,8 +231,9 @@ function App() {
     <main class=${`content${screen === 'today' && d?.queue?.length ? ' fixed' : ''}`} id="main">${body}</main>
     <${BottomTabs} screen=${screen} onNav=${nav} counts=${state?.counts} />
     </div>
-    ${sheet ? html`<${FindSheet} portals=${sheet.portals} titles=${sheet.titles} found=${state?.counts?.explore ?? 0} quota=${state?.quota ?? 5}
-      onClose=${() => setSheet(null)} onSources=${() => nav('sources')} onFind=${async (payload) => !!(await run('find', payload, sent))} />` : null}
+    ${sheet ? html`<${FindSheet} portals=${sheet.portals} titles=${sheet.titles} pool=${sheet.pool} more=${sheet.more} initial=${sheet.initial} found=${state?.counts?.explore ?? 0} quota=${state?.quota ?? 5}
+      onClose=${() => setSheet(null)} onSources=${() => nav('sources')}
+      onFind=${async (payload) => { const ok = !!(await run('find', payload, sent)); if (ok) { const { portals, budget, prepare, from } = payload; lastFind.current = { portals, budget, prepare, ...(from ? { from } : {}) }; keepLastFind(lastFind.current); } return ok; }} />` : null}
     ${toast ? html`<div class=${`toast${toast.bad ? ' bad' : ''}`} role=${toast.bad ? 'alert' : 'status'}>${toast.text}</div>` : null}
   </div>`;
 }

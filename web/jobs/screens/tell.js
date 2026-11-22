@@ -20,7 +20,7 @@ export function TellBox({ onTell = noop, onLink = null }) {
     try { if (await (onLink && isJobLink(text) ? onLink(text) : onTell(text))) setV(''); } finally { setBusy(false); }
   };
   return html`<form class="tell" aria-label="Tell Crewdeck" onSubmit=${go}>
-    <input class="field" aria-label="Tell Crewdeck" type="text" maxlength=${MAX_TELL} autocomplete="off" placeholder=${TELL_PLACEHOLDER} value=${v} onInput=${(e) => setV(e.currentTarget.value)} />
+    <input class="field" id="tell-input" aria-label="Tell Crewdeck" type="text" maxlength=${MAX_TELL} autocomplete="off" placeholder=${TELL_PLACEHOLDER} value=${v} onInput=${(e) => setV(e.currentTarget.value)} />
     <button type="submit" class="btn small primary" disabled=${!v.trim() || busy}>Send</button>
   </form>`;
 }

@@ -19,6 +19,7 @@ import { APPLY_METHODS, addQuestion, addRole, addRoleEvent, setApplyKind, setApp
 import { APPLY_KINDS, detectApplyKind } from './apply-kind.ts';
 import { refilter, runPrefilter } from './pipeline/prefilter.ts';
 import { candidates, cleanVerdict, dailyPicks, judge, pick, pickPasted } from './pipeline/pick.ts';
+import { todayPickIds } from './pipeline/tracker.ts';
 import { markApplied, notInterested } from './pipeline/apply.ts';
 import { addContact, addMessage, checkMessage, followups, markSent, recordFollowup } from './pipeline/outreach.ts';
 import { KNOWLEDGE_TABS, type KnowledgeTab, applicationsView, knowledgeView, todayView } from './views.ts';
@@ -129,10 +130,12 @@ const cmds: Record<string, (args: string[]) => unknown> = {
       const { candidatesFor } = await import('./pipeline/rank.ts');
       return json(candidatesFor(ctx, ids));
     }
-    if (flag(args, 'budget') === undefined) return json(candidates(ctx, intArg(flag(args, 'limit'), 'limit', 40)));
+    // --from <keys>: "Pick from" (the Find sheet): only roles whose source_key is one of the keys or sits under it.
+    const { budgetedCandidates, cleanFrom } = await import('./pipeline/rank.ts');
+    const from = flag(args, 'from') === undefined ? undefined : cleanFrom(flag(args, 'from'));
+    if (flag(args, 'budget') === undefined) return json(candidates(ctx, intArg(flag(args, 'limit'), 'limit', 40), from));
     // A Find within a budget: the next batch in rank order, and where the run stands (design §2.4 step 3).
-    const { budgetedCandidates } = await import('./pipeline/rank.ts');
-    json(budgetedCandidates(ctx, { budget: intArg(flag(args, 'budget'), 'budget'), batch: intArg(flag(args, 'batch'), 'batch', 10), need: intArg(flag(args, 'need'), 'need', dailyPicks(ctx) || 5), start: args.includes('--start') }));
+    json(budgetedCandidates(ctx, { budget: intArg(flag(args, 'budget'), 'budget'), batch: intArg(flag(args, 'batch'), 'batch', 10), need: intArg(flag(args, 'need'), 'need', dailyPicks(ctx) || 5), start: args.includes('--start'), from }));
   }),
 
   judge: (args) => withCtx(async (ctx) => {
@@ -245,7 +248,12 @@ const cmds: Record<string, (args: string[]) => unknown> = {
       if (warnings.length) { json({ picked: false, warnings }); process.exitCode = 2; return; }
       return json({ picked: true, role, day });
     }
-    const ids = pick(ctx, intArg(flag(args, 'n'), 'n', dailyPicks(ctx)), day);
+    // --add: n MORE than the day had when this Find began (Find more); --from <keys>: only roles of those sources.
+    const { cleanFrom } = await import('./pipeline/rank.ts');
+    const add = args.includes('--add');
+    const before = new Set(add ? todayPickIds(ctx.db, day) : []);
+    const ids = pick(ctx, intArg(flag(args, 'n'), 'n', dailyPicks(ctx)), day, { add, from: flag(args, 'from') === undefined ? undefined : cleanFrom(flag(args, 'from')) });
+    if (add) say(`added ${ids.filter((i) => !before.has(i)).length} (${ids.length} picked today)`);
     for (const id of ids) {
       const r = ctx.db.prepare('select c.name company, r.title from roles r join companies c on c.id=r.company_id where r.id=?').get(id) as any;
       say(`${id}  ${r.company} — ${r.title}`);
@@ -490,9 +498,10 @@ tracker and pipeline (text from postings and the user's words only through files
   search "<query>" [--limit N] [--json] | reindex | model status|install|remove | hybrid on|off   local ranking: keywords + (optional) meaning, no tokens
   candidates [--limit N]                  unjudged roles, best first (JSON)
   candidates --budget N [--batch 10] [--need N] [--start]   the next batch for a Find within a budget (≤ 80)
+  candidates … --from k1,k2               only roles of those sources (linkedin, portal:naukri, api:himalayas, ats = company careers pages)
   candidates --roles-file f               the roles in a JSON list of ids (a judge request's saved roles), still judgeable (JSON)
   judge --results-file f                  store verdicts [{ role, eligible: yes|no|unclear, score, evidence, reason? }]
-  pick [--n N] [--day D] | pick --role <id> [--request <link request id>]   ("Add it anyway" only from the request)
+  pick [--n N] [--day D] [--from k1,k2] [--add] | pick --role <id> [--request <link request id>]   ("Add it anyway" only from the request)
   add-role --role-file f | status <role> <status> [--reason-file f]
   role <id> [--apply-url-file f] [--apply-kind k] [--apply-method form|email|document|walk_in|chatbot|account_needed [--apply-note-file f]] [--lang xx]
   event add <role> --kind k --detail-file f | question add <role> --text-file f

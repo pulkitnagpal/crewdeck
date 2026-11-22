@@ -40,6 +40,26 @@ export function markApplied(ctx: Ctx, roleId: string) {
   return { role: roleId, company: r.company, title: r.title, cooldown_until: cooldown, cooldown_scope: role ? 'role' as const : 'company' as const, journal: journal ? `journal/${day}.md` : null, already: r.status === 'applied' };
 }
 
+/**
+ * The one-tap reasons the page offers on Not interested (For you) and Hide (Explore). The label is the reason text that is
+ * remembered (and counted by learn.ts as the person's own "not interested"); `other` carries only the person's own words.
+ * Keep in step with web/jobs/screens/reasons.js (a test compares them).
+ */
+export const SKIP_REASONS = [
+  { id: 'location', label: 'Wrong location' }, { id: 'too_junior', label: 'Too junior' }, { id: 'too_senior', label: 'Too senior' },
+  { id: 'stack', label: 'Not my stack' }, { id: 'company', label: "Don't like the company" }, { id: 'pay', label: 'Pay too low' },
+  { id: 'applied_elsewhere', label: 'Already applied elsewhere' }, { id: 'other', label: 'Other' },
+] as const;
+
+/** The reason text for a chip and the person's own words: "Too junior", "Too junior: it is an intern role", or (other) the words alone. */
+export function skipReasonText(chip: unknown, note: unknown): string {
+  const text = String(note ?? '').replace(/\s+/g, ' ').trim();
+  const c = SKIP_REASONS.find((x) => x.id === chip);
+  if (!c) throw new Error(`"${String(chip).slice(0, 40)}" is not one of the reasons: ${SKIP_REASONS.map((x) => x.id).join(', ')}`);
+  if (c.id === 'other') return text;
+  return text ? `${c.label}: ${text}` : c.label;
+}
+
 const WORD = /^[\p{L}\p{N}][\p{L}\p{N} +#./&'-]{0,39}$/u;
 
 /**

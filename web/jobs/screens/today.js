@@ -6,6 +6,7 @@ import { html, noop, cls, safeHref, postedText, Icon, Spark, More } from '../lib
 import { ApplyPanel } from './apply.js';
 import { SetupCard } from './setup.js';
 import { TellArea } from './tell.js';
+import { ReasonChips, onEsc } from './reasons.js';
 
 /** The mock's short words for a pick's state. */
 export const chipText = (c) => ({ 'Ready to apply': 'Ready', 'Not prepared yet': 'Not prepared' }[c.text] ?? c.text);
@@ -66,8 +67,9 @@ export function dropLine(pv, list) {
     : `Skipping titles with ${words} drops none of the ${n(pv.was)} roles that pass your rules now.`;
 }
 
-function NotInterested({ d, exclude = [], onSave, onCancel, onDryRun = null }) {
+function NotInterested({ d, exclude = [], onSave, onCancel, onDryRun = null, onGeneral = noop }) {
   const [reason, setReason] = useState('');
+  const [other, setOther] = useState(false);
   const [words, setWords] = useState('');
   const [drop, setDrop] = useState('');
   const seq = useRef(0);
@@ -82,15 +84,18 @@ function NotInterested({ d, exclude = [], onSave, onCancel, onDryRun = null }) {
     }, 400);
     return () => clearTimeout(t);
   }, [key]);
-  return html`<div class="skipbox">
-    <b>Not interested in ${d.company}?</b>
-    <label class="f"><span class="lab">Why? Claude remembers it.</span>
+  // One tap on a reason is all it takes (Claude remembers the label); Other… opens the words and the title words.
+  return html`<div class="skipbox" role="group" aria-labelledby="skip-h" onKeyDown=${onEsc(onCancel)}>
+    <b id="skip-h">Not interested in ${d.company}?</b>
+    <span class="lab">Why? One tap: Claude remembers it.</span>
+    <${ReasonChips} otherOpen=${other} onPick=${(r) => onSave({ chip: r.id })} onOther=${() => setOther(!other)} onGeneral=${onGeneral} />
+    ${other ? html`<label class="f"><span class="lab">In your words</span>
       <textarea class="field" rows="2" placeholder="e.g. too much travel for me" value=${reason} onInput=${(e) => setReason(e.currentTarget.value)}></textarea></label>
     <label class="f"><span class="lab">Skip titles with these words (optional)</span>
       <input class="field" value=${words} placeholder="e.g. Sales, Intern" onInput=${(e) => setWords(e.currentTarget.value)} /></label>
     <p class="small soft" role="status">${drop}</p>
-    <div class="row-flex"><button type="button" class="btn primary small" disabled=${!reason.trim()} onClick=${() => onSave(reason, list)}>Skip and remember</button>
-      <button type="button" class="btn quiet small" onClick=${onCancel}>Cancel</button></div>
+    <div class="row-flex"><button type="button" class="btn primary small" disabled=${!reason.trim()} onClick=${() => onSave({ chip: 'other', note: reason, titleWords: list })}>Skip and remember</button></div>` : null}
+    <div class="row-flex"><button type="button" class="btn quiet small" onClick=${onCancel}>Cancel</button></div>
   </div>`;
 }
 
@@ -106,6 +111,9 @@ export function whyPoints(text) {
 function Detail({ d, asking, actions, exclude = [], panel = null }) {
   const [tab, setTab] = useState('form');
   const [skipping, setSkipping] = useState(false);
+  const skipBtn = useRef(null);
+  // Closing the reasons (Esc, Cancel, or a pick) puts the focus back on the button that opened them.
+  const closeSkip = () => { setSkipping(false); setTimeout(() => skipBtn.current?.focus(), 0); };
   const posting = safeHref(d.url);
   const first = d.rows.filter((r) => r.status === 'first_time');
   const why = whyPoints(d.why);
@@ -117,11 +125,11 @@ function Detail({ d, asking, actions, exclude = [], panel = null }) {
       </div>
       <div class="acts">
         ${posting ? html`<a class="btn small" href=${posting} target="_blank" rel="noopener noreferrer">View posting</a>` : null}
-        ${d.status !== 'applied' ? html`<button type="button" class="btn small quiet" aria-expanded=${skipping} onClick=${() => setSkipping(!skipping)}>Not interested</button>` : null}
+        ${d.status !== 'applied' ? html`<button type="button" class="btn small quiet" ref=${skipBtn} aria-expanded=${skipping} onClick=${() => setSkipping(!skipping)}>Not interested</button>` : null}
       </div>
     </div>
     ${why.length ? html`<div class="fits"><h2 class="eyebrow">Why it fits</h2><ul>${why.map((w, i) => html`<li key=${i}>${w}</li>`)}</ul></div>` : null}
-    ${skipping ? html`<${NotInterested} d=${d} exclude=${exclude} onDryRun=${actions.onDryRun} onCancel=${() => setSkipping(false)} onSave=${(reason, words) => { actions.onSkip(d.id, reason, words); setSkipping(false); }} />` : null}
+    ${skipping ? html`<${NotInterested} d=${d} exclude=${exclude} onDryRun=${actions.onDryRun} onCancel=${closeSkip} onGeneral=${() => { setSkipping(false); actions.onTellRule(); }} onSave=${(v) => { actions.onSkip(d.id, v); setSkipping(false); }} />` : null}
     ${panel}
     <details class="answers" open=${first.length > 0 || asking.length > 0 || undefined}>
     <summary>Answers and tailored resume</summary>
@@ -196,6 +204,7 @@ function Picks({ data, a }) {
     <span class="label">Picks · ${data.queue.length}</span>
     ${list.map((q) => html`<${QueueItem} key=${q.id} item=${q} active=${q.id === data.selected} onSelect=${a.onSelect} />`)}
     ${open ? null : html`<button type="button" class="linkbtn morepicks" onClick=${() => setAll(true)}>${data.queue.length - SHOWN} more picks</button>`}
+    <button type="button" class="linkbtn findmore" title="Open Find with the last settings: Claude reads further down the ranking and adds new picks" onClick=${() => a.onFindMore()}><${Spark} size=${14} />Find more like these</button>
     ${qa?.n ? html`<div class="quickstrip">
       <${Spark} size=${16} /><span class="grow">${qa.request ? 'Quick apply is running in your Jobs chat' : `${qa.n} Easy Apply ${qa.n === 1 ? 'pick is' : 'picks are'} ready`}</span>
       <button type="button" class="btn small outline" disabled=${!!qa.request}
@@ -222,7 +231,7 @@ export function Progress({ progress, onExplore = noop }) {
 }
 
 export function Today({ data, state, preview = null, actions = {}, narrow = false }) {
-  const a = { onQuickApply: noop, onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onCancel: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onExplore: noop, onLink: noop, onDryRun: null, ...actions };
+  const a = { onQuickApply: noop, onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onTellRule: noop, onFindMore: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onCancel: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onExplore: noop, onLink: noop, onDryRun: null, ...actions };
   const setup = state?.setup?.needed;
   if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onOpenSession=${a.onOpenSession} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} onCancel=${a.onCancel} /></div>`;
   const tell = html`<${TellArea} proposals=${data.proposals} actions=${a} />`;

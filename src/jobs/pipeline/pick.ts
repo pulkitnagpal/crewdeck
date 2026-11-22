@@ -5,17 +5,17 @@
 import { type Ctx, notesOf, nowIso, todayOf } from '../ctx.ts';
 import { addEvent, getRole, setStatus, tx } from '../db.ts';
 import { compileRules, prefilter } from '../rules.ts';
-import { type Candidate, rankRoles, toCandidate } from './rank.ts';
-import { trackerCheck, trackerRules } from './tracker.ts';
+import { type Candidate, fromMatches, rankRoles, readFindRun, toCandidate } from './rank.ts';
+import { todayPickIds, trackerCheck, trackerRules } from './tracker.ts';
 
 export type { Candidate } from './rank.ts';
 export type Verdict = { role: string; eligible: 'yes' | 'no' | 'unclear'; score: number; evidence: string; reason?: string };
 export { rankScore } from './rank.ts';
 
 /** Unjudged roles that passed the prefilter, best first, with plain clipped descriptions (rank.ts). */
-export function candidates(ctx: Ctx, limit = 40): Candidate[] {
+export function candidates(ctx: Ctx, limit = 40, from?: string[]): Candidate[] {
   if (!Number.isInteger(limit) || limit < 1 || limit > 40) throw new Error('--limit must be from 1 to 40 (at most 40 postings are judged per run)');
-  return rankRoles(ctx).slice(0, limit).map(toCandidate);
+  return rankRoles(ctx, { from }).slice(0, limit).map(toCandidate);
 }
 
 /** Validate one verdict from Claude's results file. */
@@ -60,26 +60,36 @@ function nowExcluded(ctx: Ctx) {
 
 /**
  * Pick up to n roles for `day` (YYYY-MM-DD, the user's day): best score first, one per company (or up to
- * schedule.per_company, counting roles already in progress there). Idempotent per day.
+ * schedule.per_company, counting roles already in progress there). Idempotent per day: `n` is the day's total, so asking
+ * again returns the same picks. `add` (a second Find, "Find more like these") is "n MORE on top of today's": the target is
+ * the day's count when that Find began (kept in its run, so repeating the call adds nothing more) plus n. `from` limits
+ * the pool to roles of those sources (see fromMatches); picks already made are kept whatever their source.
  */
-export function pick(ctx: Ctx, n: number, day = todayOf(ctx)): string[] {
+export function pick(ctx: Ctx, n: number, day = todayOf(ctx), o: { add?: boolean; from?: string[] } = {}): string[] {
   if (!Number.isInteger(n) || n < 0 || n > 50) throw new Error('--n must be from 0 to 50');
   const at = nowIso(ctx);
   return tx(ctx.db, () => {
-    const already = (ctx.db.prepare(`select id from roles where picked_on=? and source<>'pasted' and status in ('picked','prepared','applied') order by score desc, id`).all(day) as any[]).map((r) => r.id as string);
-    if (already.length >= n) return already.slice(0, n);
+    const already = todayPickIds(ctx.db, day);
+    let total = n;
+    if (o.add) {
+      const run = readFindRun(ctx.home);
+      const fresh = !!run && run.base?.day === day && ctx.clock().getTime() - Date.parse(run.started) <= 6 * 3_600_000;
+      total = (fresh ? Math.min(run!.base!.picked, already.length) : already.length) + n;
+    }
+    if (already.length >= total) return already.slice(0, o.add ? already.length : n);
     const excluded = nowExcluded(ctx);
     const rules = trackerRules(notesOf(ctx).search.data);
     const tracker = trackerCheck(ctx.db, rules, at);
-    const pool = (ctx.db.prepare(`select r.id, r.company_id, r.title, c.name company from roles r join companies c on c.id=r.company_id
+    const pool = (ctx.db.prepare(`select r.id, r.company_id, r.title, r.source_key, c.name company from roles r join companies c on c.id=r.company_id
         where r.eligibility='yes' and r.status in ('new','bench')
         order by r.score desc, r.first_seen, r.id`).all() as any[])
+      .filter((r) => fromMatches(r.source_key, o.from))
       .filter((r) => !tracker.check(r))
       .filter((r) => { const why = excluded(r); if (why) setStatus(ctx.db, r.id, 'skipped', why, at); return !why; });
     const chosen = [...already];
     const used = new Map<number, number>();
     for (const r of pool) {
-      if (chosen.length >= n) break;
+      if (chosen.length >= total) break;
       const k = Number(r.company_id), have = used.get(k) ?? tracker.active(k).length;
       if (have >= rules.perCompany) continue;
       used.set(k, have + 1);

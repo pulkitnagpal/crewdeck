@@ -18,7 +18,10 @@ export type ExploreQuery = {
 export type ExploreRow = {
   id: string; title: string; company: string; location: string; workplace: string | null; source_label: string; group: 'feeds' | 'accounts';
   posted_at: string | null; url: string; saved: boolean; status: string;
+  /** What Claude's light model said about this role when it was judged (yes / no / unclear, one line, the posting's own words); null before. */
+  verdict: Verdict | null;
 };
+export type Verdict = { eligible: 'yes' | 'no' | 'unclear'; reason: string; quote: string; score: number | null };
 export type ExploreResult = {
   total: number;
   counts: { feeds: number; accounts: number; saved: number; others: number };
@@ -45,7 +48,8 @@ const likeEscape = (w: string) => w.replace(/[\\%_]/g, (c) => `\\${c}`);
 const titleCase = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\p{L}/gu, (c) => c.toUpperCase());
 
 type Raw = { id: string; title: string; company: string; location: string; workplace: string | null; source: string; source_key: string | null; posted_at: string | null; first_seen: string;
-  url: string; status: string; description: string; pay_status: string | null; language: string | null; saved: string | null };
+  url: string; status: string; description: string; pay_status: string | null; language: string | null; saved: string | null;
+  eligibility: string | null; evidence: string | null; score: number | null; judge_reason: string | null };
 
 /** Names for the keys the roles carry: the person's own sources list (portals as `portal:<id>`, LinkedIn as `linkedin`). */
 function sourceNames(ctx: Ctx): Map<string, string> {
@@ -65,6 +69,35 @@ const labelOf = (names: Map<string, string>, r: Pick<Raw, 'source' | 'source_key
   return titleCase(r.source_key ?? r.source ?? 'Feed') || 'Feed';
 };
 
+/** The stored verdict of a judged role (the tracker's eligibility, evidence and the judge's one line), or null. */
+function verdictOf(r: Pick<Raw, 'eligibility' | 'evidence' | 'score' | 'judge_reason'>): Verdict | null {
+  if (r.eligibility !== 'yes' && r.eligibility !== 'no' && r.eligibility !== 'unclear') return null;
+  const quote = String(r.evidence ?? '');
+  return { eligible: r.eligibility, reason: String(r.judge_reason ?? '').slice(0, 300), quote: quote === 'chosen by the user' ? '' : quote.slice(0, 300), score: r.score === null || r.score === undefined ? null : Number(r.score) };
+}
+
+/** What the Find sheet's "Pick from" offers: the sources the unjudged pool holds, with how many roles each (Find judges these). */
+export type PoolSource = { key: string; label: string; group: 'feeds' | 'accounts'; unjudged: number };
+export function poolSources(ctx: Ctx): { total: number; sources: PoolSource[] } {
+  const rows = ctx.db.prepare(`select r.title, r.description, r.source, r.source_key from roles r where r.status='new' and r.eligibility is null`).all() as any[];
+  const compiled = compileRules(notesOf(ctx));
+  const names = sourceNames(ctx);
+  const by = new Map<string, PoolSource>();
+  let total = 0;
+  for (const r of rows) {
+    if (titleFitOf(compiled, r).fit < OTHER_OCCUPATION_FIT) continue; // another occupation: set aside, never judged
+    total++;
+    const sk = String(r.source_key ?? '');
+    if (!sk) continue; // a pasted link: the person's own, never filtered by source
+    // Company careers pages (ats:greenhouse:atlan, ats:lever:…) are one group; every other key is its own source.
+    const key = sk.startsWith('ats:') ? 'ats' : sk;
+    const e = by.get(key) ?? { key, label: key === 'ats' ? 'Company careers pages' : labelOf(names, r), group: groupOf(sk), unjudged: 0 };
+    e.unjudged++;
+    by.set(key, e);
+  }
+  return { total, sources: [...by.values()].sort((a, b) => b.unjudged - a.unjudged || a.label.localeCompare(b.label)) };
+}
+
 async function loadScorer(): Promise<Scorer | null> {
   try {
     const m: any = await import('./hybrid.ts');
@@ -83,7 +116,8 @@ export async function exploreRoles(ctx: Ctx, query: ExploreQuery = {}, o: { scor
   // No days: everything is newer than the empty string.
   const since = query.days !== undefined && Number.isFinite(query.days) && query.days > 0 ? new Date(ctx.clock().getTime() - query.days * 86_400_000).toISOString() : '';
   const rows = ctx.db.prepare(`select r.id, r.title, c.name company, r.location, r.workplace, r.source, r.source_key, r.posted_at, r.first_seen, r.url, r.status,
-      r.description, r.pay_status, r.language, s.state saved
+      r.description, r.pay_status, r.language, s.state saved, r.eligibility, r.evidence, r.score,
+      (select e.detail from events e where e.role_id=r.id and e.kind='judge' order by e.id desc limit 1) judge_reason
     from roles r join companies c on c.id=r.company_id left join saved_roles s on s.role_id=r.id
     where r.status in (select value from json_each(?)) and coalesce(s.state, '') <> 'hidden'
       and coalesce(r.posted_at, r.first_seen) >= ?
@@ -133,7 +167,7 @@ export async function exploreRoles(ctx: Ctx, query: ExploreQuery = {}, o: { scor
     total: matched.length, counts, judgeable,
     rows: matched.slice(offset, offset + limit).map(({ r, group: g }) => ({
       id: r.id, title: r.title, company: r.company, location: r.location, workplace: r.workplace ?? null, source_label: labelOf(names, r), group: g,
-      posted_at: r.posted_at ?? r.first_seen ?? null, url: r.url, saved: r.saved === 'saved', status: r.status,
+      posted_at: r.posted_at ?? r.first_seen ?? null, url: r.url, saved: r.saved === 'saved', status: r.status, verdict: verdictOf(r),
     })),
   };
 }

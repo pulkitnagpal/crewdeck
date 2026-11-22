@@ -26,14 +26,15 @@ import { LEVELS_WANTED, MATCH_MODES, targetsOf } from './titles.ts';
 import { runPreview } from './preview.ts';
 import { findFunnel, funnelSummary } from './funnel.ts';
 import { readFindRun } from './pipeline/rank.ts';
-import { type ExploreQuery, TOKENS_PER_JUDGED, exploreCount, exploreDefaultCount, exploreRoles, judgeableSaved, markRole } from './search/explore.ts';
+import { type ExploreQuery, TOKENS_PER_JUDGED, exploreCount, exploreDefaultCount, exploreRoles, judgeableSaved, markRole, poolSources } from './search/explore.ts';
+import { cleanFrom } from './pipeline/rank.ts';
 import { checkRoleUrl, isLinkedinHost, isXHost } from './fields.ts';
 import { applyContext } from './apply-kind.ts';
 import { quickApplyView } from './quick-apply.ts';
 import { canonicalJobUrl, linkedinJobId } from './linkedin.ts';
 import { answerFirstTime, currentAnswers, editAnswer } from './kb/ops.ts';
 import { learnField } from './kb/learn.ts';
-import { markApplied, notInterested } from './pipeline/apply.ts';
+import { markApplied, notInterested, skipReasonText } from './pipeline/apply.ts';
 import { KNOWLEDGE_TABS, type KnowledgeTab, applicationsView, applyMode, canApprove, copyModel, knowledgeView, resumeFileName, resumePath, todayView } from './views.ts';
 import { NEEDS_YOU, applyPanel } from './panel.ts';
 import { FEATURE_INFO, RISK, confirmText, featureChanges, widens } from './features.ts';
@@ -153,6 +154,8 @@ export const PREF_FIELDS: Record<string, 'list' | 'num' | 'optnum' | 'str' | 'bo
   'schedule.timezone': 'str', 'schedule.daily_picks': 'num', 'schedule.cooldown_days': 'num', 'schedule.cooldown_scope': 'str', 'schedule.per_company': 'num', judge_notes: 'str',
 };
 
+/** About what one role's check costs, in tokens (the row's "~1.5k tokens"). */
+const CHECK_FIT_TOKENS = 1500;
 const isBusy = (e: any) => e?.errcode === 5 || e?.errcode === 6 || /database is (locked|busy)|SQLITE_BUSY/i.test(String(e?.message ?? ''));
 const str = (v: unknown, max: number, what: string) => {
   if (typeof v !== 'string') throw new HttpError(400, `${what} must be text`);
@@ -800,9 +803,33 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     }
     if (b.budget !== undefined) out.budget = intIn(b.budget, 5, 80, 'budget');
     if (b.prepare !== undefined) out.prepare = intIn(b.prepare, 0, 10, 'prepare');
+    // "Pick from": source keys (or key prefixes: `ats` is every company careers page); left out or empty = every source.
+    if (b.from !== undefined) {
+      if (!Array.isArray(b.from)) throw new HttpError(400, 'from: give a list of source keys');
+      let from: string[];
+      try { from = cleanFrom(b.from); } catch (e: any) { throw new HttpError(400, e.message); }
+      if (from.length) out.from = from;
+    }
+    // "Find more like these": the picks ADD to today's (the skill runs `pick --add N`) instead of topping up to N.
+    if (b.more !== undefined) { if (typeof b.more !== 'boolean') throw new HttpError(400, 'more must be true or false'); if (b.more) out.more = true; }
     return out;
   }
-  const openJudge = () => requests.ofLane(LANE, 'judge').find((r) => isOpen(r));
+  /** The reason of a skip or a hide: a one-tap chip (+ the person's words), or free text; '' when none was given. */
+  function skipReasonOf(b: any): string {
+    const hasChip = b.chip !== undefined && b.chip !== null && b.chip !== '';
+    if (hasChip) {
+      let text: string;
+      try { text = skipReasonText(b.chip, typeof (b.note ?? b.reason) === 'string' ? (b.note ?? b.reason) : ''); } catch (e: any) { throw new HttpError(400, e.message); }
+      if (!text) throw new HttpError(400, 'Say a few words for "Other"');
+      return str(text, 1000, 'the reason');
+    }
+    return b.reason === undefined || b.reason === null ? '' : str(b.reason, 1000, 'the reason');
+  }
+  /** An open "Judge these N" (a Check fit on one role is not one: it has its own request, payload { roles: [id], check: true }). */
+  const openJudge = () => requests.ofLane(LANE, 'judge').find((r) => isOpen(r) && !r.payload?.check);
+  const openCheck = (role: string) => requests.ofLane(LANE, 'judge').find((r) => isOpen(r) && r.payload?.check === true && Array.isArray(r.payload.roles) && (r.payload.roles as unknown[]).includes(role));
+  /** An apply that judges the role first is under way for it (Explore's Apply on an unjudged role). */
+  const openApplyFor = (role: string) => { const a = requests.latest(LANE, 'apply', role); return a && isOpen(a) ? a : undefined; };
 
   const actions: Record<string, (b: any) => unknown> = {
     setup: () => queue('setup', undefined, {}),
@@ -830,12 +857,57 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     // Explore's marks (free): save a role to judge later, hide it for good, or clear either mark.
     // A mark changes Explore's tab number at once (it is cached for 30 s otherwise).
     saveRole: (b) => { exploreCache = null; return { ok: true, ...markRole(ctx, roleArg(b.role).id, 'saved') }; },
-    hideRole: (b) => { exploreCache = null; return { ok: true, ...markRole(ctx, roleArg(b.role).id, 'hidden') }; },
+    /**
+     * Hide, with a reason when the person gave one (Explore's one-tap chips: { chip, note? }, or { reason }): then it is the same
+     * as Not interested (skipped, the reason remembered, counted by learn.ts) and the role is hidden too. No reason: a plain hide.
+     */
+    hideRole: (b) => {
+      exploreCache = null;
+      const r = roleArg(b.role);
+      const reason = skipReasonOf(b);
+      if (!reason) return { ok: true, ...markRole(ctx, r.id, 'hidden') };
+      const out = notInterested(ctx, { role: r.id, reason });
+      const mark = markRole(ctx, r.id, 'hidden');
+      reconcile();
+      if (selected === r.id) selected = null;
+      return { ok: true, ...mark, ...out, reason };
+    },
     unsaveRole: (b) => { exploreCache = null; return { ok: true, ...markRole(ctx, roleArg(b.role).id, null) }; },
     /**
      * "Judge these N": a judge request for exactly the saved roles Claude can still judge (new or on the bench), in a Jobs chat
      * in front. About TOKENS_PER_JUDGED tokens each; the light model judges, then Claude picks and prepares per prepare_ahead.
      */
+    /**
+     * Check fit (Explore row, about 1.5k tokens): a judge request for this one role: the light model judges it and the verdict is
+     * stored; nothing is picked or prepared. Only a role nobody judged yet (new, no verdict); one request per role at a time.
+     */
+    checkFit: (b) => {
+      const r = roleArg(b.role);
+      const open = openCheck(r.id);
+      if (open) return { ok: true, request: open.id, status: open.status, already: true };
+      if (r.status !== 'new' || r.eligibility) throw new HttpError(400, r.eligibility ? 'this role was judged already: its verdict is on the row' : `this role is ${r.status}: only a role not judged yet can be checked`);
+      return { ...queue('judge', undefined, { roles: [r.id], check: true }, { task: (id) => ({ kind: 'judge', request: id }), fresh: false }), roles: 1, tokens: CHECK_FIT_TOKENS };
+    },
+    /**
+     * Apply from an Explore row. A role already picked or prepared: exactly the Apply button's behaviour (prepare first, answer
+     * the first-time questions, then fill). Otherwise ONE apply request that picks it first: with `check_first: true` for a role
+     * nobody judged yet (the skill judges it with a Haiku subagent and stops on a clear "no"), without it for a role that was
+     * judged (yes / unclear) or when the person clicks "Apply anyway" after a "no" (`anyway: true` in the call, the payload is
+     * just { role }). Stops before Submit, as always.
+     */
+    exploreApply: (b) => {
+      const r = roleArg(b.role);
+      if (r.status === 'applied') throw new HttpError(400, 'already applied');
+      if (r.status === 'skipped') throw new HttpError(400, 'you skipped this role');
+      if (r.status === 'picked' || r.status === 'prepared') return actions.approve({ role: r.id });
+      if (!['new', 'bench', 'judged_out'].includes(r.status)) throw new HttpError(400, `this role is ${r.status}: it cannot be applied to from here`);
+      const open = openApplyFor(r.id);
+      if (open) return { ok: true, request: open.id, status: open.status, already: true };
+      const anyway = b.anyway === true;
+      if (r.status === 'judged_out' && !anyway) throw new HttpError(400, 'Claude judged this role a no: click Apply anyway to apply regardless');
+      const check_first = !anyway && !r.eligibility;
+      return { ...queue('apply', r.id, check_first ? { role: r.id, check_first: true } : { role: r.id }, { task: (id) => ({ kind: 'apply', role: r.id, request: id }), fresh: true }), ...(check_first ? { check_first: true, tokens: CHECK_FIT_TOKENS } : {}), mode: 'fill' };
+    },
     judgeSaved: () => {
       const open = openJudge();
       if (open) return { ok: true, request: open.id, status: open.status, already: true };
@@ -909,7 +981,8 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     notInterested: (b) => {
       const r = roleArg(b.role);
       const words = Array.isArray(b.titleWords) ? b.titleWords.map((w: unknown) => str(w, 40, 'a title word')).filter(Boolean) : [];
-      const out = notInterested(ctx, { role: r.id, reason: str(b.reason, 1000, 'the reason'), titleWords: words });
+      const reason = skipReasonOf(b) || str(b.reason, 1000, 'the reason');
+      const out = notInterested(ctx, { role: r.id, reason, titleWords: words });
       reconcile();
       if (selected === r.id) selected = null;
       return { ok: true, ...out };
@@ -1156,7 +1229,8 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       }
       if (path === '/api/jobs/state') return json(res, 200, stateView());
       if (path === '/api/jobs/today') { const r = url.searchParams.get('role'); return json(res, 200, today(r && ROLE_ID.test(r) ? r : undefined)); }
-      if (path === '/api/jobs/explore') return json(res, 200, await exploreRoles(ctx, exploreParams(url.searchParams)));
+      if (path === '/api/jobs/explore') return json(res, 200, exploreView(await exploreRoles(ctx, exploreParams(url.searchParams))));
+      if (path === '/api/jobs/find-pool') return json(res, 200, poolSources(ctx));
       if (path === '/api/jobs/applications') return json(res, 200, applicationsView(ctx));
       if (path === '/api/jobs/knowledge') {
         const tab = (url.searchParams.get('tab') ?? 'profile') as KnowledgeTab;
@@ -1186,6 +1260,14 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     res.write(': connected\n\n');
     clients.add(res);
     req.on('close', () => clients.delete(res));
+  }
+
+  /** Explore's rows with what is in flight: a Check fit or an Apply that judges first (the row shows "Checking…"). */
+  function exploreView<T extends { rows: { id: string }[] }>(x: T) {
+    return { ...x, rows: x.rows.map((row) => {
+      const apply = openApplyFor(row.id);
+      return { ...row, checking: !!openCheck(row.id) || (!!apply && apply.payload?.check_first === true), applying: !!apply };
+    }) };
   }
 
   function contextFor(r: Request) {
