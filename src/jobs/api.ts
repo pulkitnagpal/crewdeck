@@ -990,6 +990,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     markApplied: (b) => {
       const r = roleArg(b.role);
       const out = markApplied(ctx, r.id);
+      exploreCache = null;
       reconcile();
       return { ok: true, ...out };
     },

@@ -413,3 +413,21 @@ test('GET explore rows carry verdict, checking and applying; the pool and counts
   assert.deepEqual(x.rows.find((r) => r.id === a)!.verdict, null);
   assert.deepEqual(x.rows.find((r) => r.id === b)!.verdict, { eligible: 'yes', reason: 'fits', quote: 'SQL', score: 70 });
 });
+
+test('I applied (Explore): a job applied to on its own site goes to Applied, leaves Explore at once, and never comes back', async () => {
+  const s = await jobsServer('berlin-analyst');
+  try {
+    const [a, b] = ['Hotel Data', 'India Data'].map((company) => role(s.w.ctx, { company, title: 'Data Analyst', description: 'SQL', source_key: 'arbeitnow' }));
+    const before = (await s.get('state')).json.counts.explore;
+    const r = await s.action('markApplied', { role: a });
+    assert.equal(r.status, 200, r.body);
+    assert.equal(s.w.ctx.db.prepare('select status from roles where id=?').get(a).status, 'applied');
+    const x = (await s.get('explore')).json;
+    assert.ok(x.rows.every((row: any) => row.id !== a) && x.rows.some((row: any) => row.id === b), 'gone from Explore, the other stays');
+    assert.equal((await s.get('state')).json.counts.explore, before - 1, 'the tab number drops at once');
+    assert.ok(JSON.stringify((await s.get('applications')).json).includes(a), 'listed in Applied');
+    // The button is on every not-picked row, without Claude's spark (it costs nothing).
+    const out = render(html`<${Explore} data=${x} query=${{}} />`);
+    assert.match(out, /aria-label="I applied to Data Analyst at India Data myself"[^>]*>I applied</);
+  } finally { await s.close(); }
+});

@@ -62,7 +62,7 @@ function HidePop({ r, onHide, onClose, onGeneral }) {
   </div>`;
 }
 
-function Row({ r, onSave, onHide, onCheck, onApply, hiding, onHiding, onTellRule }) {
+function Row({ r, onSave, onHide, onCheck, onApply, onApplied, hiding, onHiding, onTellRule }) {
   const href = safeHref(r.url);
   const picked = r.status === 'picked' || r.status === 'prepared';
   const hideBtn = useRef(null);
@@ -76,6 +76,7 @@ function Row({ r, onSave, onHide, onCheck, onApply, hiding, onHiding, onTellRule
         ${r.verdict?.eligible === 'no'
           ? html`<button type="button" class="btn small outline" disabled=${!!r.applying} aria-label=${`Apply anyway: ${r.title} at ${r.company}`} title="Claude said no: prepare and fill the form anyway (you still click Submit)" onClick=${() => onApply(r, true)}><${Spark} size=${14} />${r.applying ? 'Applying…' : 'Apply anyway'}</button>`
           : html`<button type="button" class="btn small outline" disabled=${!!r.applying} aria-label=${`Apply: ${r.title} at ${r.company}`} title=${judged ? 'Claude prepares it and fills the form, then stops for your Submit' : 'Claude checks the fit first, then prepares it and fills the form, then stops for your Submit'} onClick=${() => onApply(r, false)}><${Spark} size=${14} />${r.applying ? 'Applying…' : 'Apply'}</button>`}
+        <button type="button" class="btn small quiet" aria-label=${`I applied to ${r.title} at ${r.company} myself`} title="You applied on your own: Crewdeck lists it in Applied and never shows it again" onClick=${() => onApplied(r)}>I applied</button>
       </div>`}</td>
     <td class="xwhere" data-label="Where">${whereText(r)}</td>
     <td class="xfound" data-label="Found on"><span class="foundon"><${SourceMark} group=${r.group} />${r.source_label}</span></td>
@@ -90,7 +91,7 @@ function Row({ r, onSave, onHide, onCheck, onApply, hiding, onHiding, onTellRule
 /**
  * `data` is GET /api/jobs/explore; `query` the filters the page sent. `onQuery(patch)` changes them (the page refetches).
  */
-export function Explore({ data, query = EMPTY_QUERY, found = null, onQuery = noop, onSave = noop, onHide = noop, onJudge = noop, onCheck = noop, onApply = noop, onTellRule = noop, judging = false }) {
+export function Explore({ data, query = EMPTY_QUERY, found = null, onQuery = noop, onSave = noop, onHide = noop, onApplied = noop, onJudge = noop, onCheck = noop, onApply = noop, onTellRule = noop, judging = false }) {
   const q = { ...EMPTY_QUERY, ...query };
   const [hiding, setHiding] = useState(null);
   const [text, setText] = useState(q.q);
@@ -132,7 +133,7 @@ export function Explore({ data, query = EMPTY_QUERY, found = null, onQuery = noo
       <div class="card xcard">
         ${data.rows.length ? html`<div class="xscroll"><table class="xtable">
           <thead><tr><th scope="col">Job</th><th scope="col">Where</th><th scope="col">Found on</th><th scope="col">Posted</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
-          <tbody>${data.rows.map((r) => html`<${Row} key=${r.id} r=${r} onSave=${onSave} onHide=${onHide} onCheck=${onCheck} onApply=${onApply} hiding=${hiding === r.id} onHiding=${setHiding} onTellRule=${onTellRule} />`)}</tbody></table></div>`
+          <tbody>${data.rows.map((r) => html`<${Row} key=${r.id} r=${r} onSave=${onSave} onHide=${onHide} onCheck=${onCheck} onApply=${onApply} onApplied=${onApplied} hiding=${hiding === r.id} onHiding=${setHiding} onTellRule=${onTellRule} />`)}</tbody></table></div>`
           : html`<p class="xempty">${q.q || q.strong || q.days || q.saved || q.group !== 'all' ? 'Nothing matches these filters.' : 'Nothing found yet: feeds update by themselves, or Find jobs reads your accounts.'}</p>`}
         <div class="xfoot" role="status">Showing ${n(data.rows.length)} of ${n(data.total)}${canMore ? html` · <button type="button" class="linkbtn" onClick=${() => onQuery({ limit: Math.min(200, q.limit + 50) })}>show more</button>` : more ? ' · narrow the search to see the rest' : ''}</div>
       </div>

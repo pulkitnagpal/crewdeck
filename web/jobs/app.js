@@ -172,6 +172,8 @@ function App() {
     onSave: (r) => run(r.saved ? 'unsaveRole' : 'saveRole', { role: r.id }, r.saved ? 'Removed from saved' : 'Saved: ask Claude to judge your saved jobs when you are ready'),
     // v: { chip, note? } hides with a reason Claude remembers; {} hides without one.
     onHide: (r, v = {}) => run('hideRole', { role: r.id, ...v }, v.chip ? 'Hidden. Your reason is remembered.' : 'Hidden: it will not show here again'),
+    // Applied on their own (on the site): recorded like an Apply here, so Applied lists it and no Find picks it again.
+    onApplied: (r) => run('markApplied', { role: r.id }, `Marked applied: ${r.company} is in Applied and won't come back`),
     onCheck: (r) => run('checkFit', { role: r.id }, (x) => (x.already ? 'Already checking this role' : sent(x))),
     onApply: (r, anyway) => run('exploreApply', { role: r.id, ...(anyway ? { anyway: true } : {}) }, (x) => (x.already ? 'Already applying to this role' : x.mode === 'copy' ? 'This site takes answers you copy in' : sent(x))),
     onTellRule: () => focusTell(),
