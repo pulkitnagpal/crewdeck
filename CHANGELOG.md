@@ -3,6 +3,35 @@
 What changed for people using Crewdeck. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Crewdeck is not released yet: versions below name the `crewdeck` plugin's version and the state of `main`.
 
+## [0.12.0] (plugin 0.12.0) — Explore everything, judge only what you choose, search by meaning
+
+The first public release of Jobs v2 (0.8 to 0.11 were never published; their notes follow below this section).
+
+- **A calmer Jobs page with four tabs.** **For you** (Claude's picks, ready to apply), **Explore** (every job Crewdeck
+  found, free to browse), **Applied** and **Sources**. One input takes a job link or anything you want to tell Crewdeck.
+  Claude's status shows only while it works or something waits. Every action that uses Claude carries a small spark.
+- **Explore**: search, filters (Feeds / Your accounts, strong title match, last 7 days, saved, other occupations),
+  Save and Hide, and on each job **Check fit** (Claude's cheapest model reads that one posting, about 1.5k tokens),
+  **Apply** (checks fit first, then prepares and fills the form; you click Submit), and **I applied** for jobs you
+  applied to on the site yourself (listed in Applied, never shown or picked again).
+- **The Find sheet**: choose which signed-in sites to read now, which sources to pick from, how many postings Claude
+  reads (20 / 40 / 80) and how many picks it prepares, with the token estimate before you start. **Find more like
+  these** adds new picks with the same settings.
+- **Teach it in one tap**: Not interested and Hide offer reasons (Wrong location, Too junior, Not my stack, Don't like
+  the company, Pay too low…). Your reason is remembered for the judge and lowers similar jobs in the ranking.
+- **Search by meaning, on your computer, no tokens**: a keyword index over every job's text plus an optional small
+  embedding model (`crewdeck jobs search model install`, about 127 MB, asks first) fused with your title fit and what
+  you applied to or skipped. Typed searches lead with your words. `crewdeck jobs search "<words>"`.
+- **Signed-in sites search all your titles**: LinkedIn with OR-joined titles and Naukri with comma-separated ones, the
+  wordings rotating across Finds, never more pages. Naukri's and LinkedIn's signed-in job lists are read from the page's
+  own data, with no extra requests to the site.
+- **Cheaper Claude**: judging always runs on Haiku and preparing on Sonnet, in subagents, whatever model the chat uses.
+- **Sources** split into **Feeds** (automatic, free: company career sites picked for you, job boards, job APIs) and
+  **Your accounts** (sites you sign in to, read only when you Find).
+- **Fixes**: a remote job "based in the US or Canada" or "open to candidates residing in the UK" is now dropped for
+  someone who can't work there; the planner no longer takes job boards named "Remote …" for remote-first employers;
+  the title upgrade keeps only your own titles (no generated "programmer" wordings).
+
 ## [0.10.0] (plugin 0.10.0) — Jobs v2: every source that fits you, the sites you sign in to, Apply per site
 
 The short version: Crewdeck now plans your sources from your notes (job boards, official job APIs, companies' own job

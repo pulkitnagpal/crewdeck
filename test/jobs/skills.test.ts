@@ -253,11 +253,11 @@ test('every crewdeck command in the skills, the generated workspace CLAUDE.md an
 
 // ---- the plugin ----
 
-test('the plugin is named crewdeck (0.11.2) everywhere; the bridge keeps its token and proof', () => {
+test('the plugin is named crewdeck (0.12.0) everywhere; the bridge keeps its token and proof', () => {
   const p = JSON.parse(read('plugin', '.claude-plugin', 'plugin.json'));
   assert.equal(p.name, 'crewdeck');
   assert.equal(p.displayName, 'Crewdeck');
-  assert.equal(p.version, '0.11.2');
+  assert.equal(p.version, '0.12.0');
   // The plugin installs the Crewdeck release it pins (install-script.ts): the app's version, which a plugin-only fix doesn't bump.
   assert.match(read('plugin', 'hooks', 'install-script.ts'), new RegExp(`CREWDECK_VERSION = '${JSON.parse(read('package.json')).version.replace(/\./g, '\\.')}'`));
   const m = JSON.parse(read('.claude-plugin', 'marketplace.json'));

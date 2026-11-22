@@ -259,6 +259,18 @@ crewdeck jobs portals on naukri       # scan it in every Find (after connecting)
 crewdeck jobs portals off naukri
 ```
 
+## Search by meaning (optional, local)
+
+Explore's **Best match** and the order Claude judges in come from your computer, at no token cost: your title fit, a
+keyword index over every job's text, what you applied to or skipped, and, if you install it, a small embedding model
+that matches jobs to you by meaning ("Member of Technical Staff, Infra" for a platform engineer).
+
+```bash
+crewdeck jobs search model install     # asks first: bge-small-en-v1.5 (MIT) + its runtime, about 127 MB, hash-checked
+crewdeck jobs search "platform engineer kubernetes"
+crewdeck jobs search model remove      # deletes the model, the runtime and the vectors
+```
+
 ## Presets (deprecated)
 
 Setup with Claude proposes sources from your own profile (`crewdeck jobs sources suggest`), so presets are going away.
@@ -275,7 +287,17 @@ and isn't covered. Who you are and your career always come from you.
 
 ## Daily use
 
-- **Find jobs.** Job boards, job APIs and company feeds are fetched on a timer (`jobs.fetch_every`, default 12 h;
+- **Four tabs.** **For you** (Claude's picks, ready to apply), **Explore** (every job Crewdeck found, free to browse,
+  search and filter), **Applied** and **Sources**. Anything that uses Claude carries a small spark; everything else is
+  free. One input at the top of For you takes a job link or anything you want to tell Crewdeck.
+- **Explore.** Search and filter everything found; open the posting; **Save** or **Hide** (with a one-tap reason Crewdeck
+  remembers). On any job: **Check fit** (Claude's cheapest model reads that posting, about 1.5k tokens), **Apply** (it
+  checks fit first, then prepares and fills the form), or **I applied** when you applied on the site yourself.
+- **Find jobs** opens a sheet: which signed-in sites to read now, which sources to pick from, how many postings Claude
+  reads (20, 40 or 80, best matches first) and how many picks it prepares, with the token estimate before you start.
+  **Find more like these** under your picks adds more with the same settings. Judging runs on Haiku and preparing on
+  Sonnet, whatever model your chat uses.
+- **Fetching.** Job boards, job APIs and company feeds are fetched on a timer (`jobs.fetch_every`, default 12 h;
   **Refresh sources** on the page fetches now). That is plain code and costs no tokens. The sites you sign in to are read
   in Claude's browser pane when you click **Find now**. Your rules drop what clearly doesn't fit, and the rest is ranked.
   **Find N jobs** (N is your daily picks) asks Claude to judge candidates best first, in batches of 10, and stop once N
