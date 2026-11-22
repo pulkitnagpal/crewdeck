@@ -16,6 +16,13 @@ you click. Find and Apply each open their own Jobs chat in front. Details below.
   model, meaning (`crewdeck jobs search model install`, asks first; nothing downloads by itself). `crewdeck jobs search
   "<query>"` shows each signal's rank; `crewdeck jobs search hybrid off` returns to the old order. Rules never change.
 
+- **The Jobs page, redesigned.** Four tabs: **For you** (Claude's picks, with a progress line and how much Claude read),
+  **Explore** (everything found, free to search and filter; save jobs and ask Claude to judge just those with **Judge these
+  N**), **Applied** and **Sources** (split into **Feeds**, automatic and free, and **Your accounts**, the sites you sign in
+  to). What Claude knows, Preferences and Settings are under **More**. **Find jobs** opens a sheet where you pick which
+  accounts Claude reads, how many postings it judges (20, 40 or 80) and how many picks it prepares, with the estimate
+  before anything runs. Everything that spends Claude's tokens carries a small spark. On a phone the tabs move to a bottom bar.
+
 - **Fixes found by testing on a real profile:** a fetch run no longer fails on a posting with no location; roles the old
   title gate dropped are checked again under the new rules; Today shows how many roles wait to be judged; the panel's
   buttons open Crewdeck in your browser at once (no chat turn).

@@ -1,4 +1,4 @@
-// Portals (ADR-0008): job sites the person signs in to. In pane mode (the default) Claude scans them in Claude desktop's
+// Your accounts (ADR-0008, the Portals): job sites the person signs in to. In pane mode (the default) Claude scans them in Claude desktop's
 // browser pane during Find, and Connect, Sign in and Test open a Jobs chat where the person signs in in the pane; in
 // profile mode Crewdeck scans them in its own browser profile and Connect opens its sign-in window. One compact row
 // per portal: name, state, an on/off switch and one button (Connect, Sign in again or Test). The account risk is said
@@ -6,7 +6,7 @@
 // first; the rest wait behind "More portals". Every change is a page action (connectPortal, disconnectPortal,
 // togglePortal, testPortal), the same as `crewdeck jobs portals …`.
 import { useState } from 'preact/hooks';
-import { html, cls, ago, clock, plural, safeHref, More } from '../lib.js';
+import { html, cls, ago, clock, plural, safeHref, Icon, More } from '../lib.js';
 
 export const PORTAL_RISK = 'Crewdeck scans this site with your account at a slow pace; sites may not allow automation and could limit your account.';
 
@@ -101,7 +101,7 @@ function PortalRow({ p, mode, onAct, say }) {
     if (r?.mode === 'pane') { setOpened(true); setPane(paneLine(r)); say(`${p.name}: ${paneLine(r)}`); }
     else if (r?.opened) { setOpened(true); say(`A ${p.name} window opened: ${signup ? 'sign up' : 'sign in'} there`); }
   };
-  const toggle = async () => { const r = await onAct('togglePortal', { id: p.id, on: !p.enabled }); if (r) say(`${p.name} switched ${p.enabled ? 'off' : 'on'}`); };
+  const toggle = async () => { const r = await onAct('togglePortal', { id: p.id, on: !p.enabled }); if (r) say(`${p.name} ${p.enabled ? 'left out of' : 'added to'} Find`); };
   const runTest = async () => {
     setBusy('test'); setTest(null);
     const r = await onAct('testPortal', { id: p.id });
@@ -111,21 +111,23 @@ function PortalRow({ p, mode, onAct, say }) {
   };
   const disconnect = async () => { setLeaving(false); const r = await onAct('disconnectPortal', { id: p.id }); if (r) { setTest(null); say(`${p.name} disconnected`); } };
 
-  // One button per row: the first Connect asks first (the risk, once); signing in again doesn't.
-  let button;
+  // The mock's row: who it is and how it stands on the left; on the right "In Find" (a connected account), Sign in (it ran
+  // out) or Connect (not yet). Test and Disconnect wait under Details.
+  let control;
   if (st === 'not_connected') {
-    button = html`<button type="button" class="btn small" aria-expanded=${confirm} aria-label=${`Connect ${p.name}`} disabled=${busy === 'connect'} onClick=${() => setConfirm(!confirm)}>Connect</button>`;
+    control = html`<button type="button" class="btn small outline" aria-expanded=${confirm} aria-label=${`Connect ${p.name}`} disabled=${busy === 'connect'} onClick=${() => setConfirm(!confirm)}>Connect</button>`;
   } else if (st === 'needs_sign_in') {
-    button = html`<button type="button" class="btn small primary" aria-label=${`Sign in to ${p.name} again`} disabled=${busy === 'connect'} onClick=${() => connect(false)}>Sign in</button>`;
+    control = html`<button type="button" class="btn small primary" aria-label=${`Sign in to ${p.name} again`} disabled=${busy === 'connect'} onClick=${() => connect(false)}>Sign in</button>`;
   } else {
-    button = html`<button type="button" class="btn small" aria-label=${`Test ${p.name}`} disabled=${busy === 'test' || st === 'paused'} onClick=${runTest}>${busy === 'test' && !isPane ? 'Testing…' : 'Test'}</button>`;
+    control = html`<span class="infind"><span aria-hidden="true">In Find</span>
+      <button type="button" class="switch" role="switch" aria-checked=${p.enabled ? 'true' : 'false'} aria-label=${`In Find: ${p.name}`} onClick=${toggle}></button></span>`;
   }
   const signup = safeHref(p.signup_url);
-  return html`<li class=${cls('prow', !p.enabled && 'off')} data-portal=${p.id} data-state=${st}>
+  const sub = st === 'not_connected' ? (p.blurb || '') : st === 'needs_sign_in' ? 'Signed out: sign in again' : st === 'paused' ? line.chip : `Signed in${line.text ? ` · ${line.text}` : ''}`;
+  return html`<li class=${cls('prow', !p.enabled && connected && 'off')} data-portal=${p.id} data-state=${st}>
     <div class="body">
-      <div class="head"><h3 id=${id}>${p.name}</h3>
-        <span class=${cls('chip', line.kind)}>${line.chip}</span>
-        ${line.text ? html`<span class="small soft">${line.text}</span>` : null}</div>
+      <div class="head"><h3 id=${id}>${p.name}</h3></div>
+      <p class=${cls('small sub', st === 'needs_sign_in' || st === 'paused' ? 'warn' : 'soft')}>${sub}</p>
       ${p.needs_reader ? html`<p class="small soft">Needs a reader: Claude sets it up on first connect.</p>` : null}
       ${pane ? html`<p class="small" role="status"><span class="dot busy" aria-hidden="true"></span> ${pane}</p>`
         : opened && !connected ? html`<p class="small" role="status"><span class="dot busy" aria-hidden="true"></span> Waiting for you to sign in, in the ${p.name} window</p>` : null}
@@ -134,50 +136,54 @@ function PortalRow({ p, mode, onAct, say }) {
       ${confirm ? html`<div class="confirm" role="alertdialog" aria-labelledby=${id} aria-describedby=${`${id}-risk`}>
         <b>Connect ${p.name}?</b>
         <span class="small" id=${`${id}-risk`}>${p.risk || PORTAL_RISK}</span>
+        ${p.verified ? null : html`<span class="small">Not checked against the live site yet: a test shows what it finds.</span>`}
         <span class="small">${isPane ? 'A Jobs chat opens with the site in Claude\'s browser pane. You sign in there (or import its cookies from your browser with the pane\'s ⋮ menu); you type your password and any codes, Claude never does.'
           : 'A window opens at its sign-in page. You type your password and any codes; Crewdeck never does.'}</span>
         <div class="row-flex"><button type="button" class="btn primary small" onClick=${() => connect(false)}>Sign in</button>
           ${signup ? html`<button type="button" class="btn small" onClick=${() => connect(true)}>Sign up</button>` : null}
           <button type="button" class="btn quiet small" onClick=${() => setConfirm(false)}>Cancel</button></div>
       </div>` : null}
-      ${connected || !p.verified ? html`<${More} summary="Details">
+      ${connected ? html`<${More} summary="Details">
         ${p.verified ? null : html`<span>Not checked against the live site yet: a test shows what it finds.</span>`}
-        ${connected ? html`<span>${p.risk || PORTAL_RISK}</span>` : null}
-        ${connected ? html`<span><button type="button" class="linkbtn" aria-label=${`Disconnect ${p.name}`} onClick=${() => setLeaving(true)}>Disconnect</button></span>` : null}
+        <span>${p.risk || PORTAL_RISK}</span>
+        ${connected ? html`<span class="row-flex"><button type="button" class="btn small" aria-label=${`Test ${p.name}`} disabled=${busy === 'test' || st === 'paused'} onClick=${runTest}>${busy === 'test' && !isPane ? 'Testing…' : 'Test'}</button>
+          <button type="button" class="linkbtn" aria-label=${`Disconnect ${p.name}`} onClick=${() => setLeaving(true)}>Disconnect</button></span>` : null}
       </${More}>` : null}
       ${leaving ? html`<div class="confirm" role="alertdialog" aria-labelledby=${id}>
         <b>Disconnect ${p.name}?</b><span class="small">Crewdeck stops scanning it and forgets the sign-in. Roles already found stay.</span>
         <div class="row-flex"><button type="button" class="btn small danger" onClick=${disconnect}>Disconnect</button>
           <button type="button" class="btn quiet small" onClick=${() => setLeaving(false)}>Cancel</button></div></div>` : null}
     </div>
-    <div class="ctl">
-      <button type="button" class="switch" role="switch" aria-checked=${p.enabled ? 'true' : 'false'} aria-label=${`Scan ${p.name}`}
-        disabled=${st === 'not_connected'} title=${st === 'not_connected' ? 'Connect it first' : undefined} onClick=${toggle}></button>
-      ${button}
-    </div>
+    <div class="ctl">${control}</div>
   </li>`;
 }
 
 /**
- * The Portals section. `portals` is GET /api/jobs/portals's list (null while unknown or on a Crewdeck without portals:
- * nothing shows). `mine` is the person's countries (with the regions holding them) and fields, from the Sources view.
+ * Your accounts: the sites the person signs in to (the mock's second Sources card). `portals` is GET /api/jobs/portals's list
+ * (null while unknown or on a Crewdeck without portals: nothing shows). `mine` is the person's countries (with the regions
+ * holding them) and fields, from the Sources view; `countryNames` names the countries for "More sites for India".
  */
-export function Portals({ portals, mode = 'profile', mine = { countries: [], within: {}, fields: [] }, onAct = async () => null, say = () => {} }) {
+export function Portals({ portals, mode = 'profile', mine = { countries: [], within: {}, fields: [] }, countryNames = [], onAct = async () => null, say = () => {} }) {
   if (!Array.isArray(portals) || !portals.length) return null;
   const { yours, rest } = splitPortals(portals, mine);
   const row = (p) => html`<${PortalRow} key=${p.id} p=${p} mode=${mode} onAct=${onAct} say=${say} />`;
   const isPane = mode === 'pane';
   const needs = portals.filter((p) => effectiveState(p) === 'needs_sign_in').length;
-  return html`<section class="card section portals" aria-labelledby="portals-title">
-    <header><h2 id="portals-title">Portals${needs ? html` <span class="soft">· ${needs} to sign in again</span>` : null}</h2>
-      <p class="soft">${isPane ? 'Job sites you sign in to once, in Claude\'s browser pane. Claude scans them slowly during Find, with your account.' : 'Job sites you sign in to once. Crewdeck scans them slowly with your account.'}</p></header>
-    ${yours.length ? html`<ul class="plist2" aria-label="Portals for you">${yours.map(row)}</ul>` : html`<p class="small soft">None fits your countries and fields yet.</p>`}
-    ${rest.length ? html`<${More} summary=${`More portals (${rest.length})`}><ul class="plist2" aria-label="More portals">${rest.map(row)}</ul></${More}>` : null}
+  const where = countryNames.length ? ` for ${countryNames.slice(0, 2).join(' and ')}` : '';
+  return html`<section class="card feedcard portals" aria-labelledby="portals-title">
+    <header class="cardhead">
+      <span class="gicon acct" aria-hidden="true"><${Icon} name="person" size=${20} /></span>
+      <div class="grow"><h2 id="portals-title">Your accounts${needs ? html` <span class="soft">· ${needs} to sign in again</span>` : null}</h2>
+        <p class="soft">${isPane ? 'Sites you sign in to. Claude reads them, slowly, only when you Find.' : 'Sites you sign in to. Crewdeck reads them, slowly, with your account.'}</p></div>
+    </header>
+    ${yours.length ? html`<ul class="plist2" aria-label="Accounts for you">${yours.map(row)}</ul>` : html`<p class="small soft cardpad">None fits your countries and fields yet.</p>`}
+    ${rest.length ? html`<${More} summary=${`More sites${where} (${rest.length})`}><ul class="plist2" aria-label="More sites">${rest.map(row)}</ul></${More}>` : null}
+    <p class="cardnote">Sites may not allow automation. Crewdeck stops at the first check and asks you.</p>
     <${More} summary="How it works">${isPane ? html`
       <span>Connect opens a Jobs chat with the site in Claude's browser pane. You sign in there, or import that site's cookies from your own browser with the pane's ⋮ menu. Sign in with Google may not work inside the pane: use the site's own email or phone with a password or a code. Claude never types a password or code.</span>
-      <span>Switched-on portals are scanned by Claude during Find, a few pages at a slow pace. At the first challenge or sign-in wall it stops and waits for you.</span>` : html`
+      <span>Accounts switched on for Find are read by Claude when you press Find, a few pages at a slow pace. At the first challenge or sign-in wall it stops and waits for you.</span>` : html`
       <span>Connect opens a window of Crewdeck's own browser at the site's sign-in page. You sign in there; Claude and Crewdeck never type a password or code.</span>
-      <span>Switched-on portals are scanned during each fetch, a few searches at a slow pace. At the first challenge or sign-in wall Crewdeck stops and waits for you.</span>`}
+      <span>Switched-on accounts are scanned during each fetch, a few searches at a slow pace. At the first challenge or sign-in wall Crewdeck stops and waits for you.</span>`}
     </${More}>
   </section>`;
 }

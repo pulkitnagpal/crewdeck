@@ -70,7 +70,7 @@ test('a new user without jobs/sources.md: no error, and the first source added f
     const v = (await s.get('sources')).json;
     assert.deepEqual([v.note.exists, v.note.errors, v.rows], [false, [], []]);
     assert.equal(v.coverage.unset, false, 'the example person has places');
-    assert.match(text(render(html`<${Sources} data=${v} />`)), /No sources yet\. .*jobs\/sources\.md \(made when you add your first source\)/);
+    assert.match(text(render(html`<${Sources} data=${v} />`)), /None yet\. Add a company or browse the catalog below\..*jobs\/sources\.md \(made when you add your first source\)/);
     assert.equal((await s.action('sources', { op: 'add', provider: 'remotive' })).status, 200);
     assert.match(readFileSync(file, 'utf8'), /sources:\n {2}- \{ key: remotive, name: Remotive, provider: remotive, added: [\d-]+ \}\n/);
   } finally { await s.close(); }
@@ -180,9 +180,8 @@ test('the screen in Node: rows, last fetches, LinkedIn\'s row, the coverage line
     const v = (await s.get('sources')).json;
     const out = render(html`<${Sources} data=${v} />`);
     const t = text(out);
-    assert.match(t, /Sources Where Jobs looks, top first\..*How it works The first source is fetched first/);
-    assert.match(t, /What's covered/);
-    assert.match(t, /Yours · 4 sources/);
+    assert.match(t, /Feeds Automatic and free\. Updated every 12 h, not fetched yet\. Refresh Company career sites 1 .*Job boards 3 · 34 jobs/);
+    assert.match(t, /How feeds work What's covered: .*Crewdeck fetches your feeds by itself, every 12 h/);
     assert.match(t, /LinkedIn LinkedIn .*Off · only you can switch it on Switch on… LinkedIn details .*Pasted LinkedIn links: off · Easy Apply: off/);
     assert.match(t, /Arbeitnow Job board .*34 roles · 3 new · 12 match your rules · 2 h ago/);
     assert.match(t, /Berlin Startup Jobs .*Off · not fetched/);
@@ -190,13 +189,15 @@ test('the screen in Node: rows, last fetches, LinkedIn\'s row, the coverage line
     assert.match(out, /data-move="example-gmbh:down" disabled aria-label="Move Example GmbH down"/);
     assert.match(out, /role="switch" aria-checked="false" aria-label="Fetch Berlin Startup Jobs"/);
     assert.doesNotMatch(out, /aria-label="Fetch LinkedIn"/, 'LinkedIn\'s switch is not a note flag');
-    assert.match(t, /Where this lives Your list is a note you can edit\. Details Your list In your notes, in jobs\/sources\.md.*What each fetch found In Crewdeck's own state/);
-    assert.match(out, /<ol class="slist" aria-label="Your sources, in priority order">/);
+    assert.match(t, /How feeds work .*Your list is a note you can edit: jobs\/sources\.md.*What each fetch found is in Crewdeck's own state/);
+    assert.match(out, /<ol class="slist" aria-label="Your sources: boards, in fetch order">/);
+    assert.match(out, /<ol class="slist" aria-label="Your sources: careers, in fetch order">/);
+    assert.match(t, /Job APIs 6 on · 4 need a free key/);
     assert.match(out, /role="status" aria-live="polite"/);
     // Nothing fits (D42): the line is the heading's subject, with what still works.
     const bare = { ...v, rows: [], linkedin: { ...v.linkedin, in_list: false }, coverage: { ...v.coverage, fits: 0, line: 'Crewdeck has no job board that fits Columbus for healthcare. Paste any posting you find.' } };
     const b = text(render(html`<${Sources} data=${bare} />`));
-    assert.match(b, /No job board covers you yet Crewdeck has no job board that fits Columbus for healthcare\. What else works Paste any posting you find\. .*Add a company .*Place LinkedIn in your list .*Paste a job link/);
+    assert.match(b, /No job board covers you yet Crewdeck has no job board that fits Columbus for healthcare\. What else works Paste any posting you find\. .*Add a company .*Paste a job link .*Place LinkedIn in your list/);
     // Filters: region (covers or inside), field, kind, and careers-page entries off by default.
     const all = filterCatalog(v.catalog, { region: '', family: '', kind: '', careers: true }, v.filters.within);
     assert.equal(all.length, v.catalog.length);

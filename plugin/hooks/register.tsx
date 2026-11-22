@@ -206,6 +206,7 @@ const TASK_REQUEST = [
   /^Crewdeck: prepare role [A-Za-z0-9]{1,64} \(request ([1-9][0-9]{0,9})\)$/,
   /^Crewdeck: handle tell request ([1-9][0-9]{0,9})$/,
   /^Crewdeck: quick apply \(request ([1-9][0-9]{0,9})\)$/,
+  /^Crewdeck: judge saved roles \(request ([1-9][0-9]{0,9})\)$/,
   /^Crewdeck: connect portal [a-z0-9-]{1,40} \(request ([1-9][0-9]{0,9})\)$/,
 ]
 function taskRequestOf(text: string): number | null {

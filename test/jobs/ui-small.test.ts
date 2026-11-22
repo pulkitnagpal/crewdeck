@@ -82,7 +82,8 @@ function layoutProblems(page: Page) {
     if (document.documentElement.scrollWidth > vw + 1) out.push(`page overflows: scrollWidth ${document.documentElement.scrollWidth} > ${vw}: ${[...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > vw + 1 && !e.closest('.tabsnav, .tabs, .queue, .rail')).slice(0, 3).map((e) => `${e.tagName.toLowerCase()}.${e.className}`).join(', ')}`);
     const name = (e: Element) => `${e.tagName.toLowerCase()}${e.className && typeof e.className === 'string' ? `.${e.className.split(' ')[0]}` : ''} "${(e.getAttribute('aria-label') || e.textContent || (e as HTMLInputElement).placeholder || '').trim().slice(0, 30)}"`;
     // A closed <details> still gives its hidden content boxes in Chromium: what it holds is not on screen.
-    const shown = (e: Element) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && !e.closest('.sr') && !e.closest('details:not([open]) > :not(summary)'); };
+    // (What sits under an open dialog is inert: the sheet covers it on purpose.)
+    const shown = (e: Element) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && !e.closest('.sr') && !e.closest('[inert]') && !e.closest('details:not([open]) > :not(summary)'); };
     // The rows meant to scroll sideways on their own; any other box that does is content cut off.
     const ROWS = '.tabsnav, .tabs, .queue, .rail, .lines';
     for (const e of document.querySelectorAll('body *')) {
@@ -102,10 +103,11 @@ function layoutProblems(page: Page) {
     }
     // Overlaps between controls (not nested in each other, e.g. a checkbox in its label, nor a pinned bar over content),
     // and buttons on one row closer than 8 px (tabs excepted: a tab row is one control).
-    const rects = controls.map((e) => ({ e, r: e.getBoundingClientRect(), pinned: pinned(e), tab: e.matches('[role="tab"], .tabsnav button') }));
+    const rects = controls.map((e) => ({ e, r: e.getBoundingClientRect(), pinned: pinned(e), tab: e.matches('[role="tab"], .tabsnav button, .bottombar button, .seg button') }));
     for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
       const a = rects[i], b = rects[j];
-      if (a.e.contains(b.e) || b.e.contains(a.e) || a.e.closest('label')?.contains(b.e) || b.e.closest('label')?.contains(a.e) || a.pinned !== b.pinned) continue;
+      // A menu opened over the page (More) covers it on purpose, like a pinned bar.
+      if (a.e.contains(b.e) || b.e.contains(a.e) || a.e.closest('label')?.contains(b.e) || b.e.closest('label')?.contains(a.e) || a.pinned !== b.pinned || a.e.closest('.menu') || b.e.closest('.menu')) continue;
       const w = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left), h = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
       if (w > 1 && h > 1) out.push(`overlap: ${name(a.e)} and ${name(b.e)}`);
       else if (h > Math.min(a.r.height, b.r.height) / 2 && w > -7.5 && !a.tab && !b.tab && a.e.matches('button, a.btn') && b.e.matches('button, a.btn')) out.push(`closer than 8 px: ${name(a.e)} and ${name(b.e)} (${Math.round(-w)} px)`);
@@ -136,7 +138,12 @@ const SCREENS: { name: string; hash: string; ready: string; then?: (p: Page) => 
   { name: 'today', hash: 'today', ready: '.why' },
   { name: 'today-role', hash: 'today', ready: '.qitem', then: async (p) => { await p.locator('.qitem', { hasText: 'Example Studio' }).click(); await p.locator('.side').waitFor(); } },
   { name: 'today-not-interested', hash: 'today', ready: '.qitem', then: async (p) => { await p.locator('.qitem', { hasText: 'Example Studio' }).click(); await p.getByRole('button', { name: 'Not interested' }).click(); await p.getByText('Not interested in Example Studio?').waitFor(); } },
-  { name: 'sources', hash: 'sources', ready: '.srow' },
+  { name: 'sources', hash: 'sources', ready: '.fgroup' },
+  { name: 'sources-open', hash: 'sources', ready: '.fgroup', then: async (p) => { for (const g of await p.locator('.fgroup > summary').all()) await g.click(); await p.getByRole('button', { name: 'Add a company' }).click(); await p.locator('.addform').waitFor(); } },
+  { name: 'explore', hash: 'explore', ready: '.xrow' },
+  { name: 'explore-saved', hash: 'explore', ready: '.xrow', then: async (p) => { await p.locator('.xrow .iconbtn[aria-pressed="false"]').first().click(); await p.locator('.xsaved button.primary').waitFor(); await p.locator('.fchip', { hasText: 'Saved' }).click(); } },
+  { name: 'find-sheet', hash: 'today', ready: '.find', then: async (p) => { await p.locator('.top .find').click(); await p.getByRole('dialog').waitFor(); } },
+  { name: 'more-menu', hash: 'today', ready: '.morebtn', then: async (p) => { await p.locator('.morebtn').click(); await p.locator('.menu').waitFor(); } },
   { name: 'applications', hash: 'applications', ready: 'table' },
   ...['profile', 'career', 'search', 'memory', 'answers', 'learned'].map((tab) => ({ name: `knowledge-${tab}`, hash: 'knowledge', ready: '.kb, .tabs', then: async (p: Page) => { await p.getByRole('tab', { name: new RegExp(`^${tab}`, 'i') }).click(); await p.waitForTimeout(300); } })),
   { name: 'preferences', hash: 'preferences', ready: '.prefs h2' },

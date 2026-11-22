@@ -105,7 +105,7 @@ test('budgeted candidates: batches in rank order, never re-judged, stop once N c
   // A new Find starts fresh, and stops at once when enough companies already passed.
   const fresh = budgetedCandidates(w.ctx, { budget: 40, batch: 10, need: 1, start: true });
   assert.deepEqual([fresh.run.judged, fresh.run.done, fresh.run.why], [0, true, 'enough']);
-  assert.throws(() => budgetedCandidates(w.ctx, { budget: 41, batch: 10, need: 1 }), /at most 40/);
+  assert.throws(() => budgetedCandidates(w.ctx, { budget: 81, batch: 10, need: 1 }), /at most 80/);
   assert.throws(() => budgetedCandidates(w.ctx, { budget: 10, batch: 0, need: 1 }), /--batch/);
 });
 
@@ -133,5 +133,5 @@ test('CLI: candidates --budget/--batch/--need/--start and judge counting into th
   assert.equal(jobs(w.home, ['judge', '--results-file', f]).code, 0);
   const after = JSON.parse(jobs(w.home, ['candidates', '--budget', '5', '--batch', '2', '--need', '1']).out);
   assert.deepEqual([after.run.judged, after.run.passed, after.run.done, after.run.why], [1, 1, true, 'enough']);
-  assert.match(jobs(w.home, ['candidates', '--budget', '50']).err, /at most 40/);
+  assert.match(jobs(w.home, ['candidates', '--budget', '81']).err, /at most 80/);
 });

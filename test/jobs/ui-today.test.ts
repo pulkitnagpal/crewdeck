@@ -64,6 +64,8 @@ async function checkToday(f: Frame | Page, label: string, shotPage?: Page) {
     assert.ok(h <= 56, `${label}: Why so few? is one line (${h} px)`);
   }
   // The role's tab row keeps its height (it once shrank to nothing in a column that ran out of room).
+  const answers = f.locator('.detail .answers > summary');
+  if (await answers.count() && !(await f.locator('.detail details.answers[open]').count())) await answers.click();
   const tabs = (await f.locator('.detail [role="tablist"]').boundingBox())!;
   assert.ok(tabs.height >= 30, `${label}: the role's tabs are shown (${tabs.height} px)`);
   const apply = f.getByRole('button', { name: /^Apply/ }).first();
@@ -106,7 +108,7 @@ for (const [width, height] of [[870, 800], [760, 700], [1000, 900], [1280, 800]]
       assert.ok(Math.abs(find.y + find.height / 2 - (tabs.y + tabs.height / 2)) < 12, 'Find on the tabs row');
       assert.ok(Math.abs(agent.y + agent.height / 2 - (add.y + add.height / 2)) < 12 && agent.y > tabs.y + 20, 'status and link on the second row');
       const top = (await page.locator('.top').boundingBox())!;
-      assert.ok(top.height <= 104, `the top bar is two rows (${top.height} px)`);
+      assert.ok(top.height <= 124, `the top bar is two rows (${top.height} px)`);
     }
     await page.evaluate(() => { document.querySelectorAll('*').forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }); window.scrollTo(0, 0); });
     await shot(page, `today-${width}x${height}`);

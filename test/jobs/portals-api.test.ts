@@ -44,7 +44,7 @@ test('GET /api/jobs/portals: every catalog portal with the agreed fields, the sa
     const stub = createPortalsStub([stubPortal('naukri')]).view().portals[0];
     for (const p of r.json.portals) {
       for (const k of KEYS) assert.ok(k in p, `${p.id}.${k}`);
-      for (const k of Object.keys(p)) assert.ok(k in stub || ['paused_until', 'last_scan', 'last_found', 'kind', 'access', 'importance', 'reader', 'added'].includes(k), `${k} is in the contract`);
+      for (const k of Object.keys(p)) assert.ok(k in stub || ['paused_until', 'last_scan', 'last_found', 'kind', 'access', 'importance', 'reader', 'added', 'blurb', 'searches', 'pages'].includes(k), `${k} is in the contract`);
       assert.equal(p.state, 'not_connected');
       assert.equal(p.enabled, false);
     }

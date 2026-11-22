@@ -1,6 +1,6 @@
 // The Jobs page laid out by a real headless Chromium (the user's own, as Jobs uses it), from the shell server of a
 // fictional person. P8's visual check found the top bar wrapping Find onto a row of its own whenever Claude's status was
-// long; this keeps that from coming back. Skipped when no Chromium-based browser is installed.
+// long; this keeps that from coming back (the redesign's header: tabs and Find on one row, the status under them). Skipped when no Chromium-based browser is installed.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Browser, Page } from 'playwright-core';
@@ -37,14 +37,14 @@ async function open(width: number) {
   return page;
 }
 
-test('wide window: one row, the long status ellipsized, Find beside Add link', { skip: noBrowser, timeout: 60_000 }, async () => {
-  // Wider than 1440 px: one row (D41's 14 px type needs it; at 1440 and below the bar takes two rows).
+test('wide window: tabs and Find on the first row, Claude\'s status and Paste a link on the second, the long status ellipsized', { skip: noBrowser, timeout: 60_000 }, async () => {
   const page = await open(1600);
   const [find, add, agent, tabs] = await Promise.all(['.top .find', '.addlink', '.agent', '.tabsnav'].map((x) => box(page, x)));
-  assert.ok(Math.abs(find.y - add.y) < 8 && Math.abs(agent.y - tabs.y) < 16, `one row: ${JSON.stringify({ find, add, agent, tabs })}`);
-  assert.ok(agent.width <= 360, 'the status shrinks rather than wrapping the row');
-  const cut = await page.locator('.agent .txt').evaluate((e) => e.scrollWidth > e.clientWidth);
-  assert.ok(cut, 'the long status is cut with an ellipsis (its full text is in the title)');
+  assert.ok(Math.abs(find.y + find.height / 2 - (tabs.y + tabs.height / 2)) < 12, `Find on the tabs row: ${JSON.stringify({ find, tabs })}`);
+  assert.ok(Math.abs(agent.y + agent.height / 2 - (add.y + add.height / 2)) < 12 && agent.y > tabs.y + 20, `the status and Paste a link share the second row: ${JSON.stringify({ agent, add })}`);
+  assert.ok(add.x > find.x - 400, 'Paste a link sits at the right, under Find');
+  assert.match(await page.locator('.agent .txt').getAttribute('title') ?? '', /Claude is working \(1 waiting\).*Step 2 of 4/, 'its full text is in the title');
+  assert.ok(agent.width <= 1600 - 56 - 260 - 40, 'the status shrinks for Paste a link rather than wrapping the row');
   await page.close();
 });
 
