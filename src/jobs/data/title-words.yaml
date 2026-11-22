@@ -1,0 +1,418 @@
+# Title words (design §24.5, D26): what Crewdeck's title matcher knows about job titles in each language. Data, not
+# code: add a language or a word here and the gate, rank, LinkedIn terms and the preview all read it. The matcher uses
+# every language at once (postings come in any language on any board); only compound tails depend on the language.
+#
+# Per language:
+#   seniority: word or two-word phrase → [canonical form, class]. Classes: entry, student (internships, working
+#              students, apprenticeships), mid, senior, none (set apart, no level). Set apart from the role words: they
+#              feed seniority_prefer, exclude_title_words and roles.level, never block a match.
+#   end_role:  seniority words that stay role words at the end of a title ("Tech Lead", "Team Lead").
+#   stopwords: dropped before matching. prepositions (a subset) end the head of a title ("Teacher of Maths" → teacher).
+#   endings:   what a target word may add and still match (plurals and gendered forms only: "nurse" → "nurses",
+#              never "nursery"). swaps: [target ending, posting ending] ("enfermero" → "enfermera").
+#   compound:  true when the language writes compounds; a target word of 5+ letters then also matches a word's tail
+#              ("buchhalter" → "Finanzbuchhalter").
+#   abbreviations: whole-word-only words and what they stand for. They match only when the user lists them as a
+#              variant; the preview proposes them when a target says the long form.
+#   synonyms:  groups of words or phrases that mean the same inside a title of two or more words ("backend engineer" =
+#              "backend developer" = "back end engineer"). A posting matched through them is a synonym match: it ranks a
+#              little below the person's own words, never drops (ADR-0003).
+#
+# occupations (after the languages): families of titles for the same kind of work, in any language (ADR-0007's first
+# step; ISCO/O*NET codes come later). Each family lists `same` groups (titles that are one job: a synonym match) and the
+# families `adjacent` to it. A posting whose title is in the family of one of the person's targets is a family match;
+# in an adjacent family, an adjacent match. These are scores (title fit 0..1), never drops: only a posting that fits no
+# target at all falls under the "other occupations" floor (ranked last, not judged, counted apart).
+
+gender:
+  # Bracketed markers removed from titles (letters joined by / , | . are caught by rule: (m/w/d), (f/m/x), (h/f) …).
+  brackets: [all genders, alle geschlechter, gn, gn*, any gender, tous genres, todos los generos, h/f/x, diverse]
+  # Word endings joined to the word by one of these marks: Buchhalter*in, Lehrer:in, Mitarbeiter/-in, Traductor/a,
+  # Comptable(e), Directeur/rice, Infirmier(ère), Enfermero/a, Vendedor(a).
+  joiners: ["*", ":", "/", "_", "·", "/-", "("]
+  endings: [in, innen, a, as, e, es, ne, nes, se, euse, rice, trice, ere, iere, o, os, x]
+
+languages:
+  en:
+    seniority:
+      senior: [senior, senior]
+      sr: [senior, senior]
+      snr: [senior, senior]
+      lead: [lead, senior]
+      staff: [staff, none]
+      principal: [principal, senior]
+      head: [head, senior]
+      chief: [chief, senior]
+      junior: [junior, entry]
+      jr: [junior, entry]
+      graduate: [graduate, entry]
+      grad: [graduate, entry]
+      fresher: [graduate, entry]
+      entry level: [entry level, entry]
+      fresh grad: [graduate, entry]
+      new grad: [graduate, entry]
+      early career: [entry level, entry]
+      mid level: [mid level, mid]
+      intermediate: [mid level, mid]
+      trainee: [trainee, student]
+      intern: [intern, student]
+      internship: [intern, student]
+      apprentice: [apprentice, student]
+      apprenticeship: [apprentice, student]
+      i: [level 1, entry]
+      ii: [level 2, none]
+      iii: [level 3, senior]
+      iv: [level 4, senior]
+      "1": [level 1, entry]
+      "2": [level 2, none]
+      "3": [level 3, senior]
+    end_role: [lead, head]
+    stopwords: [of, for, the, and, an, at, with, to, on, our, your, "&", "+"]
+    prepositions: [of, for, at, with, to, on]
+    endings: [s, es, ing]
+    synonyms:
+      - [engineer, developer, programmer]
+      - [full stack, fullstack]
+      - [backend, back end, server side]
+      - [frontend, front end, client side]
+      - [devops, dev ops]
+      - [machine learning, ml]
+      - [artificial intelligence, ai]
+      - [teacher, educator]
+      - [ux, user experience]
+      - [programme, program]
+      - [optimisation, optimization]
+      - [labourer, laborer]
+    abbreviations:
+      rn: [registered nurse]
+      lpn: [licensed practical nurse]
+      lvn: [licensed vocational nurse]
+      cna: [certified nursing assistant, nursing assistant]
+      np: [nurse practitioner]
+      hca: [healthcare assistant, health care assistant]
+      sre: [site reliability engineer]
+      sde: [software development engineer, software engineer]
+      swe: [software engineer]
+      ml: [machine learning]
+      ai: [artificial intelligence]
+      qa: [quality assurance]
+      ux: [user experience]
+      ui: [user interface]
+      hr: [human resources]
+      it: [information technology]
+      dba: [database administrator]
+      pm: [product manager, project manager]
+      sdr: [sales development representative]
+      bdr: [business development representative]
+      csm: [customer success manager]
+      cdl: [commercial driver, truck driver]
+      hgv: [heavy goods vehicle driver, lorry driver]
+      lgv: [large goods vehicle driver, lorry driver]
+      qts: [qualified teacher status]
+      ect: [early career teacher]
+      nqt: [newly qualified teacher]
+      cpa: [certified public accountant]
+      acca: [chartered certified accountant]
+      fpa: [financial planning and analysis]
+      seo: [search engine optimisation, search engine optimization]
+      gm: [general manager]
+      asm: [assistant store manager]
+      csr: [customer service representative]
+  de:
+    seniority:
+      senior: [senior, senior]
+      junior: [junior, entry]
+      leiter: [leiter, senior]
+      leiterin: [leiter, senior]
+      leitung: [leiter, senior]
+      teamleiter: [teamleiter, senior]
+      teamleitung: [teamleiter, senior]
+      werkstudent: [werkstudent, student]
+      werkstudentin: [werkstudent, student]
+      praktikant: [praktikant, student]
+      praktikantin: [praktikant, student]
+      praktikum: [praktikant, student]
+      auszubildende: [ausbildung, student]
+      auszubildender: [ausbildung, student]
+      ausbildung: [ausbildung, student]
+      azubi: [ausbildung, student]
+      berufseinsteiger: [berufseinsteiger, entry]
+      berufseinsteigerin: [berufseinsteiger, entry]
+      einsteiger: [berufseinsteiger, entry]
+      absolvent: [absolvent, entry]
+      absolventin: [absolvent, entry]
+      trainee: [trainee, student]
+    end_role: [leitung]
+    stopwords: [der, die, das, des, dem, den, fur, und, im, mit, zur, zum, von, bei, als, oder]
+    prepositions: [fur, im, mit, zur, zum, von, bei]
+    endings: [in, innen, en, n, e, s, es]
+    compound: true
+    synonyms:
+      - [entwickler, programmierer]
+      - [lehrer, lehrkraft]
+      - [krankenpfleger, pflegefachkraft, pflegefachfrau, pflegefachmann]
+    abbreviations:
+      mfa: [medizinische fachangestellte]
+      pta: [pharmazeutisch-technische assistentin]
+      stb: [steuerberater]
+      wp: [wirtschaftsprufer]
+      fibu: [finanzbuchhaltung, finanzbuchhalter]
+  fr:
+    seniority:
+      senior: [senior, senior]
+      junior: [junior, entry]
+      confirme: [confirme, mid]
+      confirmee: [confirme, mid]
+      debutant: [debutant, entry]
+      debutante: [debutant, entry]
+      stagiaire: [stagiaire, student]
+      stage: [stagiaire, student]
+      alternance: [alternance, student]
+      alternant: [alternance, student]
+      alternante: [alternance, student]
+      apprenti: [apprenti, student]
+      apprentie: [apprenti, student]
+    end_role: []
+    stopwords: [de, du, des, la, le, les, l, d, et, en, pour, au, aux, a, un, une, sur]
+    prepositions: [de, du, des, pour, au, aux, en, sur]
+    endings: [e, s, es, x, ne, nes, se, ses]
+    swaps: [[eur, euse], [eur, euses], [eur, rice], [eur, rices], [if, ive], [ien, ienne], [er, ere], [er, eres]]
+    synonyms:
+      - [developpeur, programmeur]
+      - [enseignant, professeur]
+    abbreviations:
+      rh: [ressources humaines]
+      daf: [directeur administratif et financier]
+      cdi: [contrat a duree indeterminee]
+  es:
+    seniority:
+      senior: [senior, senior]
+      junior: [junior, entry]
+      sr: [senior, senior]
+      jefe: [jefe, senior]
+      jefa: [jefe, senior]
+      becario: [becario, student]
+      becaria: [becario, student]
+      practicas: [practicas, student]
+      en practicas: [practicas, student]
+      aprendiz: [aprendiz, student]
+      recien titulado: [recien titulado, entry]
+      recien graduado: [recien titulado, entry]
+    end_role: []
+    stopwords: [de, del, la, el, los, las, y, en, para, con, al, un, una, o]
+    prepositions: [de, del, en, para, con, al]
+    endings: [a, as, s, es, os]
+    swaps: [[o, a], [o, as], [o, os], [e, a]]
+    synonyms:
+      - [desarrollador, programador]
+      - [profesor, docente]
+    abbreviations:
+      rrhh: [recursos humanos]
+      tcae: [tecnico en cuidados auxiliares de enfermeria]
+  pt:
+    seniority:
+      senior: [senior, senior]
+      junior: [junior, entry]
+      pleno: [pleno, mid]
+      estagiario: [estagiario, student]
+      estagiaria: [estagiario, student]
+      estagio: [estagiario, student]
+      aprendiz: [aprendiz, student]
+      chefe: [chefe, senior]
+    end_role: []
+    stopwords: [de, do, da, dos, das, e, em, para, com, o, a, os, as, um, uma, no, na]
+    prepositions: [de, do, da, dos, das, em, para, com, no, na]
+    endings: [a, as, s, es, os]
+    swaps: [[o, a], [o, as], [o, os], [or, ora]]
+    synonyms:
+      - [desenvolvedor, programador]
+      - [professor, docente]
+    abbreviations:
+      rh: [recursos humanos]
+  it:
+    seniority:
+      senior: [senior, senior]
+      junior: [junior, entry]
+      stagista: [stagista, student]
+      stage: [stagista, student]
+      tirocinio: [tirocinio, student]
+      tirocinante: [tirocinio, student]
+      apprendista: [apprendista, student]
+      responsabile: [responsabile, senior]
+    end_role: [responsabile]
+    stopwords: [di, del, della, dei, delle, degli, e, in, per, con, il, la, lo, gli, le, l, d, un, una]
+    prepositions: [di, del, della, dei, delle, degli, per, con]
+    endings: [a, e, i]
+    swaps: [[o, a], [o, i], [o, e], [e, i], [a, e]]
+    synonyms:
+      - [sviluppatore, programmatore]
+      - [insegnante, docente]
+    abbreviations: {}
+  nl:
+    seniority:
+      senior: [senior, senior]
+      junior: [junior, entry]
+      medior: [medior, mid]
+      stagiair: [stagiair, student]
+      stagiaire: [stagiair, student]
+      stage: [stagiair, student]
+      afstudeerder: [stagiair, student]
+      werkstudent: [werkstudent, student]
+      trainee: [trainee, student]
+      hoofd: [hoofd, senior]
+      leidinggevende: [leidinggevende, senior]
+    end_role: [hoofd]
+    stopwords: [van, de, het, en, voor, met, een, bij, op]
+    prepositions: [van, voor, met, bij, op]
+    endings: [s, en, e]
+    swaps: [[er, ster], [er, sters]]
+    compound: true
+    synonyms:
+      - [ontwikkelaar, programmeur]
+      - [leraar, docent]
+    abbreviations: {}
+
+# Languages that write compounds but have no word lists yet (compound tails still apply to them).
+compound_only: [sv, da, "no", fi]
+
+# Families of occupations (title fit, ADR-0003/0007). ids are stable; titles may be in any of the languages above.
+occupations:
+  software:
+    adjacent: [platform, data-engineering, ml-ai, qa, security, fde]
+    same:
+      - [software engineer, software developer, programmer, swe, sde, software development engineer, softwareentwickler, softwareingenieur, developpeur logiciel, ingenieur logiciel, desarrollador de software, ingeniero de software, desenvolvedor de software, engenheiro de software, sviluppatore software, software ontwikkelaar]
+      - [backend engineer, backend entwickler, developpeur backend, desarrollador backend, desenvolvedor backend, sviluppatore backend]
+      - [full stack engineer, full stack entwickler, developpeur full stack, desarrollador full stack, desenvolvedor full stack, sviluppatore full stack]
+      - [frontend engineer, ui engineer, frontend entwickler, developpeur frontend, desarrollador frontend, desenvolvedor frontend]
+      - [mobile engineer, ios engineer, android engineer, app entwickler]
+      - [web developer, web engineer, webentwickler, developpeur web, desarrollador web]
+      - [tech lead, technical lead, engineering lead]
+  platform:
+    adjacent: [software, data-engineering, security]
+    same:
+      - [site reliability engineer, sre, reliability engineer, production engineer]
+      - [devops engineer, platform engineer, infrastructure engineer, devops, cloud engineer, cloud infrastructure engineer]
+  ml-ai:
+    adjacent: [software, data-engineering, data-science]
+    same:
+      - [ai engineer, ml engineer, machine learning engineer, applied ai engineer, mlops engineer, llmops engineer, mlops, llmops, llm engineer, genai engineer, generative ai engineer, ki entwickler, ingenieur ia, ingeniero de ia]
+  data-engineering:
+    adjacent: [software, ml-ai, platform, data-science]
+    same:
+      - [data engineer, data platform engineer, big data engineer, etl developer, ingeniero de datos]
+      - [analytics engineer]
+  data-science:
+    adjacent: [ml-ai, data-analytics, data-engineering]
+    same:
+      - [data scientist, datenwissenschaftler]
+      - [applied scientist, research scientist]
+  data-analytics:
+    adjacent: [data-science, finance-analysis]
+    same:
+      - [data analyst, datenanalyst, analyste de donnees, analista de datos, analista de dados]
+      - [business intelligence analyst, bi analyst, bi developer, reporting analyst]
+  qa:
+    adjacent: [software]
+    same:
+      - [qa engineer, quality assurance engineer, test engineer, sdet, software tester, test automation engineer, testingenieur]
+  security:
+    adjacent: [platform, software]
+    same:
+      - [security engineer, application security engineer, cloud security engineer, cybersecurity engineer, cyber security engineer]
+  fde:
+    adjacent: [software]
+    same:
+      - [forward deployed engineer, fde, forward deployed software engineer]
+      - [solutions engineer, solution engineer, customer engineer, solutions architect, presales engineer, sales engineer]
+  product:
+    adjacent: [project, design]
+    same:
+      - [product manager, product owner, pm, produktmanager, chef de produit, gerente de producto, gerente de produto, responsable produit]
+      - [technical product manager]
+  project:
+    adjacent: [product]
+    same:
+      - [project manager, projektmanager, projektleiter, chef de projet, jefe de proyecto, gerente de projetos, gerente de proyectos, projectmanager]
+      - [programme manager, delivery manager]
+  design:
+    adjacent: [product]
+    same:
+      - [ux designer, ui ux designer, user experience designer, product designer, interaction designer]
+      - [ux researcher, user researcher]
+  nursing:
+    adjacent: [care-assist]
+    same:
+      - [registered nurse, rn, staff nurse, krankenpfleger, pflegefachkraft, gesundheits und krankenpfleger, infirmier, enfermero, enfermeiro, infermiere, verpleegkundige]
+      - [licensed practical nurse, lpn, licensed vocational nurse, lvn]
+      - [nurse practitioner, np]
+      - [charge nurse, nurse manager, ward manager]
+  care-assist:
+    adjacent: [nursing]
+    same:
+      - [nursing assistant, cna, certified nursing assistant, healthcare assistant, hca, care assistant, pflegehelfer, aide soignant, auxiliar de enfermeria, tcae]
+  teaching:
+    adjacent: [teaching-support]
+    same:
+      - [teacher, educator, lehrer, lehrkraft, enseignant, professeur, profesor, docente, insegnante, leraar, docent]
+      - [lecturer, tutor]
+  teaching-support:
+    adjacent: [teaching]
+    same:
+      - [teaching assistant, learning support assistant, cover supervisor]
+  accounting:
+    adjacent: [bookkeeping, finance-analysis]
+    same:
+      - [accountant, buchhalter, comptable, contador, contabilista, contabile, boekhouder, accounting specialist]
+      - [chartered accountant, certified public accountant, cpa, acca, bilanzbuchhalter]
+  bookkeeping:
+    adjacent: [accounting]
+    same:
+      - [bookkeeper, accounts assistant, accounts payable clerk, accounts receivable clerk, kreditorenbuchhalter, debitorenbuchhalter]
+  finance-analysis:
+    adjacent: [accounting, data-analytics]
+    same:
+      - [financial analyst, finance analyst, fp a analyst, controller]
+  customer-support:
+    adjacent: [customer-success]
+    same:
+      - [customer support agent, customer service representative, csr, support specialist, customer service associate, call center agent, customer care executive]
+  customer-success:
+    adjacent: [customer-support, sales]
+    same:
+      - [customer success manager, csm, customer success associate]
+  sales:
+    adjacent: [customer-success]
+    same:
+      - [account executive, sales executive, sales representative, sales development representative, sdr, bdr, business development representative]
+  marketing:
+    adjacent: [content]
+    same:
+      - [marketing associate, marketing assistant, marketing coordinator, marketing officer, marketing executive, marketing specialist]
+      - [digital marketing specialist, social media specialist, social media manager, growth marketer]
+  content:
+    adjacent: [marketing, translation]
+    same:
+      - [content writer, copywriter, redacteur web, editor de contenidos]
+  translation:
+    adjacent: [content]
+    same:
+      - [translator, ubersetzer, traducteur, traductor, tradutor, traduttore, vertaler, localization specialist, localizador]
+      - [interpreter, dolmetscher, interprete, tolk]
+  warehouse:
+    adjacent: [driving]
+    same:
+      - [warehouse associate, warehouse worker, warehouse operative, package handler, material handler, order picker, picker packer, lagerist, lagermitarbeiter, magasinier, mozo de almacen]
+  driving:
+    adjacent: [warehouse]
+    same:
+      - [truck driver, lorry driver, hgv driver, cdl driver, lkw fahrer, berufskraftfahrer, chauffeur poids lourd]
+      - [delivery driver, courier, repartidor, livreur, kurierfahrer]
+  retail-management:
+    adjacent: [retail]
+    same:
+      - [store manager, retail store manager, shop manager, outlet manager, filialleiter, responsable de magasin, gerente de tienda]
+      - [assistant store manager, asm]
+  retail:
+    adjacent: [retail-management]
+    same:
+      - [sales associate, retail sales associate, store associate, cashier, verkaufer, vendeur, dependiente]

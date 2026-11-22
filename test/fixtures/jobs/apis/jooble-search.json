@@ -1,0 +1,8 @@
+{
+ "_fixture": "UNVERIFIED: written from jooble.org/api/about (REST API response fields), not a recorded response; the values are fictional",
+ "totalCount": 75,
+ "jobs": [
+  { "title": "Data Analyst", "location": "Pune, Maharashtra", "snippet": "&nbsp;...looking for a <b>data analyst</b> with SQL and Python...&nbsp;", "salary": "₹8,00,000 - ₹12,00,000 a year", "source": "naukri.com", "type": "Full-time", "link": "https://jooble.org/desc/-1234567890123456789?ckey=data+analyst&rgn=-1&pos=1", "company": "Insightful Analytics", "updated": "2026-11-18T00:00:00.0000000", "id": "-1234567890123456789" },
+  { "title": "Remote Data Analyst", "location": "Remote", "snippet": "Work from home...", "salary": "", "source": "example board", "type": "", "link": "https://jooble.org/desc/9876543210987654321?ckey=data+analyst&pos=2", "company": "", "updated": "2026-11-16T09:30:00.0000000", "id": "9876543210987654321" }
+ ]
+}

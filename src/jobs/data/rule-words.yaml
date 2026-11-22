@@ -1,0 +1,232 @@
+# Rule words (design D38): the words Crewdeck's hard rules look for in postings, per language. Data, not code: add a
+# language or a word here and the prefilter, the preview and `crewdeck jobs rules` all read it. Every language is used
+# at once (postings come in any language on any board). Words are matched ignoring case and accents, as whole words.
+#
+# How an entry is written:
+#   - a word or phrase: a space or hyphen in it matches a space or a hyphen ("on-site" also matches "on site"; write
+#     "onsite" too for the one-word form);
+#   - "word*" matches words starting with it ("telecommut*" → telecommuting, telecommuter);
+#   - slots joined by " + " must follow each other; "a|b" in a slot are alternatives; a slot ending in "?" may be missing
+#     ("must|need to + be? + located|based + in" → "must be located in", "need to be based in", "must reside in" …).
+#
+# Per language:
+#   remote, hybrid, onsite: workplace words, read in the title and the location only. A hybrid word inside a remote
+#               phrase ("100% Homeoffice") counts as remote only.
+#   travel:     the nouns for work travel. frequent / occasional: words before them (within 30 characters);
+#               frequent_after / occasional_after: words after them (within 20-25 characters); frequent_phrases /
+#               occasional_phrases: whole phrases; no_before / no_after: "no travel", "travel not required".
+#   only_before + places_after: "only hiring in <places>", "nur in <places>" (≤ 40 characters between them).
+#   not_before: words that cancel an only_before right before it ("nicht nur in Berlin" is no restriction).
+#   only_after: "<places> only".
+#   reside:     "must reside in <places>", "Wohnsitz in <places>".
+#   except:     "excluding <places>".
+#   not_open + not_open_places: "not open to candidates in <places>".
+#   not_eligible: "<places> (residents) are not eligible".
+#   filler:     words that may sit between and around place names in a restriction ("US or Canada", "aus den USA").
+
+languages:
+  en:
+    remote: [remote, fully remote, remote-first, work from home, wfh, "telecommut*", "telework*", "100% remote"]
+    hybrid: [hybrid]
+    onsite: [on-site, onsite, in-office, office-based, in-person]
+    travel: ["travel*"]
+    frequent: [frequent, frequently, regular, regularly, extensive, extensively, heavy, significant, constant, weekly, considerable, substantial]
+    frequent_after: [frequently, regularly, extensively, weekly]
+    frequent_phrases: [road warrior, majority of the time on the road, majority of time on the road]
+    occasional: [occasional, occasionally, some, limited, infrequent, periodic, quarterly, annual, light, minimal, monthly]
+    occasional_after: [required, is required, may be required, expected, as needed]
+    occasional_phrases: [willing to travel, willingness to travel]
+    no_before: ["no", without, without any]
+    no_after: [not required, not expected, none, "0%"]
+    only_before: ["only + open|available|hiring|hire|accepting|considering|employ|employing", "open|available + only"]
+    places_after: [in, from, of, within]
+    not_before: [not]
+    only_after: [only]
+    reside:
+      - "must|need to|needs to|required to|have to + be? + located|based|residing|reside|live|living|resident + in|within"
+      # "This position is fully remote and can be based in the US or Canada" (We Work Remotely, 2026-11-22): a remote
+      # role's "can/may/should be based in <places>" names where it can be done, like "must be".
+      - "can|may|should|will + be + located|based|done|performed|worked + in|from|within"
+      - "open to + candidates|applicants|people|residents|those|anyone + located|based|living|residing + in|within"
+    except: [excluding, excludes, except, except for, other than]
+    not_open:
+      - "not|no longer + open|available|eligible|accepting|considering|hiring"
+      - "cannot|can't|can not|unable to|won't|will not|do not|don't|does not|doesn't + hire|employ|accept|consider|support"
+    not_open_places: [in, from, to, for]
+    not_eligible: [excluded, not eligible, ineligible, not supported, not accepted, not considered]
+    filler: [or, and, the, remote, remotely, based, residents, resident, citizens, candidates, applicants, people, those, located, living, in, from, of, within, nationals, area, region, only, currently, who, are, is]
+  de:
+    remote: ["100% homeoffice", "100% home-office", "100% remote", vollständig remote, komplett remote, voll remote, ortsunabhängig, fernarbeit]
+    hybrid: [homeoffice, home-office, mobiles arbeiten, mobile arbeit, hybrides arbeiten, teilweise remote, hybrid]
+    onsite: [vor ort, im büro, präsenz]
+    travel: [reise, reisen, reisetätigkeit, reisetätigkeiten, dienstreise, dienstreisen, reiseanteil, reisebereitschaft]
+    frequent: [häufige, häufig, regelmäßige, regelmäßig, hohe, hoher, umfangreiche, viele, wöchentliche, ständige]
+    occasional: [gelegentliche, gelegentlich, vereinzelte, geringe, geringer, sporadische]
+    occasional_after: [erforderlich, notwendig, erwartet]
+    occasional_phrases: [reisebereitschaft]
+    no_before: [keine, kein, ohne]
+    no_after: [nicht erforderlich, nicht notwendig, entfällt]
+    only_before: [nur, ausschließlich]
+    places_after: [in, aus, innerhalb]
+    not_before: [nicht]
+    reside: ["wohnsitz|wohnhaft|ansässig + in|innerhalb"]
+    except: [außer, ausgenommen, mit ausnahme von]
+    not_eligible: [nicht berücksichtigt, ausgeschlossen, nicht möglich]
+    filler: [oder, und, der, die, den, dem, aus, in, von, bewerbungen, bewerber, bewerberinnen, kandidaten, können, konnen, leider, werden, sind, ist]
+  fr:
+    remote: [télétravail, "100% télétravail", télétravail complet, full remote, à distance]
+    hybrid: [hybride, télétravail partiel]
+    onsite: [sur site, sur place, présentiel, en présentiel]
+    travel: [déplacement, déplacements, voyages]
+    frequent: [fréquents, fréquent, fréquentes, réguliers, nombreux, nombreuses]
+    occasional: [occasionnels, occasionnel, ponctuels, ponctuel, quelques]
+    occasional_after: [à prévoir, requis]
+    no_before: [aucun, sans, pas de]
+    only_before: [uniquement, seulement, exclusivement]
+    places_after: [en, au, aux, de, depuis, dans]
+    not_before: [non, pas]
+    reside: ["résider|résidant|résident|résidents|résidente|domicilié|domiciliée|domiciliés + en|au|aux|dans"]
+    except: [sauf, excepté, à l'exception de]
+    not_eligible: [non éligibles, non éligible, exclus, exclues]
+    filler: [ou, et, le, la, les, en, au, aux, de, du, des, candidats, candidates, résidents, ne, sont, pas]
+  es:
+    remote: [remoto, remota, teletrabajo, "100% remoto", en remoto, trabajo a distancia, desde casa]
+    hybrid: [híbrido, híbrida, semipresencial, modelo híbrido]
+    onsite: [presencial, en oficina]
+    travel: [viajes, viaje, viajar, desplazamientos]
+    frequent: [frecuentes, frecuente, frecuentemente, constantes, regulares, habituales]
+    occasional: [ocasionales, ocasional, puntuales, esporádicos]
+    occasional_after: [requeridos, necesarios]
+    occasional_phrases: [disponibilidad para viajar]
+    no_before: [sin]
+    no_after: [no requeridos, no necesarios]
+    only_before: [solo, sólo, solamente, únicamente, exclusivamente]
+    places_after: [en, de, desde, dentro de]
+    not_before: ["no"]
+    reside: ["residir|residencia|residente|residentes|domicilio + en"]
+    except: [excepto, salvo, a excepción de]
+    not_eligible: [no elegibles, no elegible, excluidos, excluidas]
+    filler: [o, y, el, la, los, las, en, de, del, candidatos, candidatas, residentes, son, no]
+  pt:
+    remote: [remoto, remota, trabalho remoto, "100% remoto"]
+    hybrid: [híbrido, híbrida, modelo híbrido]
+    onsite: [presencial]
+    travel: [viagens, viagem, viajar, deslocações, deslocamentos]
+    frequent: [frequentes, constantes, regulares]
+    occasional: [ocasionais, eventuais, esporádicas]
+    occasional_phrases: [disponibilidade para viajar, disponibilidade para viagens]
+    no_before: [sem]
+    only_before: [apenas, somente, exclusivamente]
+    places_after: [em, no, na, de, do, da]
+    not_before: [não]
+    reside: ["residir|residente|residentes|residência + em|no|na"]
+    except: [exceto, com exceção de]
+    not_eligible: [não elegíveis, não elegível]
+    filler: [ou, e, o, a, os, as, em, no, na, de, do, da, candidatos, residentes, são, não]
+  it:
+    remote: [da remoto, lavoro da remoto, full remote, telelavoro]
+    hybrid: [ibrido, ibrida, lavoro ibrido]
+    onsite: [in sede, in presenza]
+    travel: [trasferte, trasferta, viaggi]
+    frequent: [frequenti, regolari, continue]
+    occasional: [occasionali, saltuarie, sporadiche]
+    occasional_phrases: [disponibilità a trasferte, disponibilità a viaggiare]
+    no_before: [nessuna, senza]
+    only_before: [solo, soltanto, esclusivamente, unicamente]
+    places_after: [in, da, dalla, dallo, nel, nella]
+    not_before: [non]
+    reside: ["residenza|residente|residenti|domicilio + in"]
+    except: [eccetto, tranne, ad eccezione di]
+    not_eligible: [non idonei, esclusi]
+    filler: [o, e, il, la, i, le, in, da, dal, dalla, candidati, residenti, sono, non]
+  nl:
+    remote: [volledig remote, volledig thuiswerken, "100% thuiswerken"]
+    hybrid: [hybride, hybride werken, thuiswerken, deels thuiswerken]
+    onsite: [op locatie, op kantoor]
+    travel: [reizen, dienstreizen, reisbereidheid]
+    frequent: [veel, regelmatig, frequent, frequente]
+    occasional: [af en toe, soms, incidenteel, incidentele]
+    occasional_phrases: [reisbereidheid]
+    no_before: [geen, zonder]
+    only_before: [alleen, uitsluitend, enkel]
+    places_after: [in, uit, vanuit, binnen]
+    not_before: [niet]
+    reside: ["woonachtig|wonend|wonen + in|binnen"]
+    except: [behalve, met uitzondering van]
+    not_eligible: [niet in aanmerking, uitgesloten]
+    filler: [of, en, de, het, in, uit, van, kandidaten, sollicitanten, inwoners, komen, zijn, niet]
+
+# Industries in exclude.industries: the usual words for each, in every language, so "gambling" also catches "Sportwetten"
+# and "apuestas". An industry not listed here is matched as written. `aliases` are other names the user may write.
+industries:
+  crypto:
+    aliases: [cryptocurrency, web3, blockchain]
+    en: [crypto, cryptocurrency, cryptocurrencies, web3, blockchain, defi, nft, stablecoin, token sale]
+    de: [kryptowährung, kryptowährungen]
+    es: [criptomonedas, criptomoneda]
+    fr: [cryptomonnaie, cryptomonnaies]
+    pt: [criptomoedas]
+    it: [criptovalute]
+  gambling:
+    aliases: [betting, igaming, casino]
+    en: [gambling, betting, casino, igaming, sportsbook, sports betting, lottery]
+    de: [glücksspiel, sportwetten, wetten, spielbank, spielothek]
+    es: [apuestas, juegos de azar]
+    fr: [jeux d'argent, paris sportifs]
+    pt: [apostas, jogos de azar, cassino]
+    it: [gioco d'azzardo, scommesse]
+    nl: [gokken, kansspelen]
+  tobacco:
+    en: [tobacco, cigarette, vaping, nicotine]
+    de: [tabak, zigaretten]
+    es: [tabaco]
+    fr: [tabac]
+    pt: [tabaco]
+    it: [tabacco]
+  defense:
+    aliases: [defence, military]
+    en: [defense, defence, military, weapons, munitions, armaments]
+    de: [rüstung, rüstungsindustrie, verteidigung, militär]
+    es: [defensa, armamento]
+    fr: [défense, armement]
+    pt: [defesa, armamento]
+    it: [difesa, armamenti]
+  weapons:
+    en: [weapons, firearms, munitions, armaments]
+    de: [waffen]
+    es: [armas]
+    fr: [armes]
+  adult:
+    aliases: [adult entertainment]
+    en: [adult entertainment, adult content, pornography]
+  oil and gas:
+    aliases: [fossil fuels, "oil & gas"]
+    en: [oil and gas, "oil & gas", fossil fuel, petroleum, coal mining]
+    de: [erdöl, erdgas, kohlebergbau]
+    es: [petróleo y gas, hidrocarburos]
+    fr: [pétrole et gaz, hydrocarbures]
+  alcohol:
+    en: [alcohol, brewery, distillery]
+    de: [brauerei, spirituosen]
+    es: [cervecera, destilería]
+  payday loans:
+    en: [payday loan, payday lending]
+  mlm:
+    en: [multi-level marketing, network marketing, mlm]
+    de: [netzwerkmarketing, strukturvertrieb]
+
+# A posting's structured employment type (JSON-LD employmentType, a provider's field) → the kinds in
+# jobs/search.md → employment_types it can mean. A posting is dropped only when every value it lists is known here and
+# none of its kinds is one the user wants; VOLUNTEER, OTHER or anything unknown is left to the judge. Words in a title or
+# description are never read for this: they stay the judge's.
+employment_types:
+  full-time: [FULL_TIME, full time, fulltime, permanent full time, vollzeit, tiempo completo, jornada completa, temps plein, tempo integral, tempo pieno, voltijd]
+  part-time: [PART_TIME, part time, parttime, teilzeit, tiempo parcial, media jornada, temps partiel, meio periodo, tempo parcial, tempo parziale, part time job, deeltijd]
+  contract: [CONTRACTOR, contract, contractor, contract to hire]
+  freelance: [CONTRACTOR, freelance, freelancer, freiberuflich, autonomo, independiente, independant, freelancer pj, libero professionista, zzp]
+  temporary: [TEMPORARY, temporary, temp, zeitarbeit, temporal, interim, interinidad]
+  fixed-term: [TEMPORARY, fixed term, befristet, contrato temporal, cdd, contrat a duree determinee, prazo determinado, tempo determinato, bepaalde tijd]
+  seasonal: [TEMPORARY, seasonal, saisonal, saisonarbeit, temporada, saisonnier, sazonal, stagionale, seizoenswerk]
+  internship: [INTERN, internship, intern, praktikum, practicas, becario, stage, estagio, tirocinio, stage, werkstudent]
+  apprenticeship: [INTERN, apprenticeship, apprentice, ausbildung, aprendizaje, apprentissage, alternance, aprendiz, apprendistato, leerling]
+  per-diem: [PER_DIEM, per diem, prn]

@@ -1,0 +1,217 @@
+// The Sources screen in a real headless Chromium (design §24.3, D41, P9e): reordering with the keyboard only, the note
+// the page writes byte for byte the CLI's for the same changes, LinkedIn's row opening the native confirm, and the
+// accessibility baseline (no text under 14 px, AA contrast) in light and dark. Skipped without a Chromium-based browser.
+// CREWDECK_SHOTS=<dir> also saves full-page screenshots of the screen in both themes there.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import type { Browser, Page } from 'playwright-core';
+import { findBrowser } from '../../src/jobs/browser.ts';
+import { jobsServer } from './api-helpers.ts';
+import { REPO, world } from './helpers.ts';
+import { audit } from './ui-audit.ts';
+
+const found = findBrowser();
+const noBrowser = found ? false : 'no Chromium-based browser on this machine';
+const SHOTS = process.env.CREWDECK_SHOTS;
+
+let s: Awaited<ReturnType<typeof jobsServer>>;
+let browser: Browser;
+const asked: string[] = [];
+before(async () => {
+  if (!found) return;
+  s = await jobsServer('berlin-analyst', { api: { confirm: async (_t, text) => { asked.push(text); return 'yes'; } } });
+  s.c.appearance = 'auto';
+  const { chromium } = await import('playwright-core');
+  browser = await chromium.launch({ executablePath: found.path, headless: true, args: ['--no-proxy-server', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost'] });
+});
+after(async () => { await browser?.close(); await s?.close(); });
+
+/** The Sources page with every feed group open (the lists of sources sit inside their groups). */
+async function open(scheme: 'light' | 'dark' = 'light', width = 1280) {
+  const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: scheme });
+  await page.goto(`http://localhost:${s.port}/jobs/#sources`);
+  await page.locator('.fgroup').first().waitFor({ timeout: 15_000 });
+  for (const g of await page.locator('.fgroup > summary').all()) if (await g.evaluate((e) => !(e.parentElement as HTMLDetailsElement).open)) await g.click();
+  await page.locator('.srow').first().waitFor({ timeout: 15_000 });
+  return page;
+}
+const order = (page: Page) => page.locator('.srow h3').allTextContents();
+const label = (page: Page) => page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent ?? '');
+
+test('keyboard only: Tab to Move up, Enter, Space on a switch; the page writes the same note bytes as the CLI', { skip: noBrowser, timeout: 90_000 }, async () => {
+  const page = await open();
+  // The company site is in Company career sites, the two boards in Job boards (each group lists its own, in fetch order).
+  assert.deepEqual(await order(page), ['Example GmbH', 'Arbeitnow', 'Berlin Startup Jobs']);
+  // Company career sites = the one added by the person plus the company feeds planned from the notes.
+  const counts = await page.locator('.fgroup .gcount').allTextContents();
+  assert.ok(Number(counts[0]) >= 1, counts[0]);
+  assert.deepEqual(counts.slice(1), ['2', '6 on · 4 need a free key']);
+  let tabs = 0;
+  while ((await label(page)) !== 'Move Berlin Startup Jobs up' && tabs++ < 120) await page.keyboard.press('Tab');
+  assert.equal(await label(page), 'Move Berlin Startup Jobs up', 'reachable by Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelectorAll('.srow h3')[1]?.textContent === 'Berlin Startup Jobs');
+  // At the top of its group, Move up is disabled: focus moved to Move down, still on the same row.
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Move Berlin Startup Jobs down');
+  assert.deepEqual(await order(page), ['Example GmbH', 'Berlin Startup Jobs', 'Arbeitnow']);
+  assert.match(await page.locator('.srcs .sr[role="status"]').first().textContent() ?? '', /Berlin Startup Jobs moved to position 1 of 3/);
+  // The switch of the next row: Tab until it, then Space.
+  tabs = 0;
+  while ((await label(page)) !== 'Fetch Arbeitnow' && tabs++ < 20) await page.keyboard.press('Tab');
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => document.querySelector('[aria-label="Fetch Arbeitnow"]')?.getAttribute('aria-checked') === 'false');
+  // The same changes through the CLI on a twin of the same person.
+  const twin = world('berlin-analyst');
+  twin.ctx.db.close();
+  for (const args of [['move', 'berlin-startup-jobs', 'up'], ['disable', 'arbeitnow']]) {
+    const r = spawnSync(process.execPath, [join(REPO, 'src', 'cli.ts'), 'jobs', 'sources', ...args], { env: { ...process.env, CREWDECK_HOME: twin.home }, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+  }
+  assert.equal(readFileSync(join(s.w.vault, 'jobs', 'sources.md'), 'utf8'), readFileSync(join(twin.vault, 'jobs', 'sources.md'), 'utf8'));
+  await page.close();
+});
+
+test('LinkedIn\'s row: placed like any source, switched on only through the confirm and the native dialog', { skip: noBrowser, timeout: 60_000 }, async () => {
+  const page = await open();
+  await page.getByRole('button', { name: 'Place LinkedIn in your list' }).first().click();
+  await page.locator('.srow[data-key="linkedin"]').waitFor();
+  assert.equal(await page.locator('[aria-label="Fetch LinkedIn"]').count(), 0, 'no note switch for LinkedIn');
+  await page.getByRole('button', { name: 'Switch on…' }).click();
+  const dialog = page.getByRole('alertdialog');
+  assert.match(await dialog.textContent() ?? '', /Switch on LinkedIn search\?.*terms/);
+  assert.equal(asked.length, 0, 'nothing asked before the second click');
+  await dialog.getByRole('button', { name: 'Yes, switch it on' }).click();
+  await page.locator('.srow[data-key="linkedin"] .chip.ok', { hasText: 'On' }).waitFor();
+  assert.equal(asked.length, 1, 'the native dialog was asked once');
+  assert.match(asked[0], /LinkedIn/);
+  assert.match(readFileSync(join(s.w.home, 'config.yaml'), 'utf8'), /linkedin_search: true/);
+  assert.match(readFileSync(join(s.w.vault, 'jobs', 'sources.md'), 'utf8'), /\n {2}- \{ key: linkedin, name: LinkedIn, linkedin: search, added: [\d-]+ \}\n/, 'never a note flag');
+  // Off again (no confirm needed to narrow).
+  await page.getByRole('button', { name: 'Switch LinkedIn search off' }).click();
+  await page.locator('.srow[data-key="linkedin"] .chip', { hasText: 'Off' }).waitFor();
+  assert.equal(asked.length, 1);
+  await page.close();
+});
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`D41 in ${scheme}: no text under 14 px, AA contrast for every text, labelled controls`, { skip: noBrowser, timeout: 60_000 }, async () => {
+    const page = await open(scheme);
+    // A failed fetch, an unreadable page and an open confirm, so every state's colours are checked.
+    await page.getByRole('button', { name: 'Remove Berlin Startup Jobs' }).click();
+    const items = await audit(page);
+    assert.ok(items.length > 60, `${items.length} texts`);
+    const small = items.filter((x) => x.size < 14);
+    assert.deepEqual(small, [], 'nothing under 14 px');
+    const low = items.filter((x) => x.ratio < 4.5);
+    assert.deepEqual(low, [], 'AA (4.5:1) for every text');
+    const unlabelled = await page.evaluate(() => [...document.querySelectorAll('.srcs button, .srcs input, .srcs select')]
+      .filter((e) => !(e.getAttribute('aria-label') || e.textContent?.trim() || (e.id && document.querySelector(`label[for="${e.id}"]`)) || e.closest('label'))).length);
+    assert.equal(unlabelled, 0);
+    if (SHOTS) {
+      mkdirSync(SHOTS, { recursive: true });
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      // The page scrolls inside .content: let it grow for a full-page picture.
+      await page.evaluate(() => { for (const e of [document.documentElement, document.body, document.getElementById('root'), document.querySelector('.app')] as HTMLElement[]) e.style.height = 'auto'; (document.querySelector('.content') as HTMLElement).style.overflow = 'visible'; });
+      await page.screenshot({ path: join(SHOTS, `sources-${scheme}.png`), fullPage: true });
+      const narrow = await open(scheme, 820);
+      await narrow.screenshot({ path: join(SHOTS, `sources-${scheme}-pane.png`), fullPage: false });
+      await narrow.close();
+    }
+    await page.close();
+  });
+}
+
+test('the setup card a new user sees first: no text under 14 px and AA contrast, light and dark; it says no resume is fine', { skip: noBrowser, timeout: 60_000 }, async () => {
+  const fresh = await jobsServer('template');
+  fresh.c.appearance = 'auto';
+  try {
+    for (const scheme of ['light', 'dark'] as const) {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: scheme });
+      await page.goto(`http://localhost:${fresh.port}/jobs/`);
+      await page.locator('.setup').waitFor({ timeout: 15_000 });
+      const text = await page.locator('.setup').textContent() ?? '';
+      assert.match(text, /no resume is fine too/);
+      assert.match(text, /If no job board covers your field where you live, it says so/);
+      await page.getByRole('button', { name: 'I\'ll edit the files' }).click();
+      const items = await audit(page, '.setup');
+      assert.deepEqual(items.filter((x) => x.size < 14), [], 'nothing under 14 px');
+      assert.deepEqual(items.filter((x) => x.ratio < 4.5), [], 'AA contrast');
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, `setup-${scheme}.png`), fullPage: false });
+      await page.close();
+    }
+  } finally { await fresh.close(); }
+});
+
+test('Preferences (P9g): the new fields with the keyboard only, saved to the note; no text under 14 px and AA contrast, light and dark', { skip: noBrowser, timeout: 90_000 }, async () => {
+  for (const scheme of ['light', 'dark'] as const) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: scheme });
+    await page.goto(`http://localhost:${s.port}/jobs/#preferences`);
+    await page.locator('.prefs h2', { hasText: 'How you work' }).waitFor({ timeout: 15_000 });
+    const items = await audit(page, '.prefs');
+    assert.ok(items.length > 100, `${items.length} texts`);
+    assert.deepEqual(items.filter((x) => x.size < 14), [], 'nothing under 14 px');
+    assert.deepEqual(items.filter((x) => x.ratio < 4.5), [], 'AA (4.5:1) for every text');
+    const unlabelled = await page.evaluate(() => [...document.querySelectorAll('.prefs button, .prefs input, .prefs select, .prefs textarea')]
+      .filter((e) => !(e.getAttribute('aria-label') || e.textContent?.trim() || (e.id && document.querySelector(`label[for="${e.id}"]`)) || e.closest('label'))).length);
+    assert.equal(unlabelled, 0);
+    if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await page.locator('.prefs h2', { hasText: 'How you work' }).scrollIntoViewIfNeeded(); await page.screenshot({ path: join(SHOTS, `preferences-${scheme}.png`) }); }
+    await page.close();
+  }
+  // Keyboard only: tick Nights (shifts you can work), type 36 hours, pick a day rate, Save with Enter.
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await page.goto(`http://localhost:${s.port}/jobs/#preferences`);
+  await page.locator('.prefs h2', { hasText: 'How you work' }).waitFor({ timeout: 15_000 });
+  const focusedText = () => page.evaluate(() => (document.activeElement?.closest('label')?.textContent ?? document.activeElement?.id ?? '').trim());
+  let tabs = 0;
+  while ((await focusedText()) !== 'Nights' && tabs++ < 200) await page.keyboard.press('Tab');
+  assert.equal(await focusedText(), 'Nights', 'reachable by Tab');
+  await page.keyboard.press('Space');
+  tabs = 0;
+  while ((await focusedText()) !== 'p-pay.period' && tabs++ < 80) await page.keyboard.press('Tab');
+  // Reached by Tab; a closed <select> answers arrow keys differently per platform, so the choice is made on it directly.
+  await page.locator('[id="p-pay.period"]').selectOption('day');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('36');
+  await page.locator('.savebar', { hasText: 'not saved yet' }).waitFor();
+  await page.getByRole('button', { name: 'Save', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await page.locator('.savebar', { hasText: 'Everything saved' }).waitFor({ timeout: 10_000 });
+  const note = readFileSync(join(s.w.vault, 'jobs', 'search.md'), 'utf8');
+  assert.match(note, /work_pattern:[\s\S]*shifts:[\s\S]*night/);
+  assert.match(note, /period: day/);
+  assert.match(note, /hours_per_week: 36/);
+  assert.match(note, /- \d{4}-\d{2}-\d{2}: work_pattern\.shifts: \(none\) → night\. "\(set on the Jobs page\)"/);
+  await page.close();
+});
+
+test('the apply panel (P9h): walk-in shows where and when from the posting, account needed asks the user to sign up; D41 in light and dark', { skip: noBrowser, timeout: 90_000 }, async () => {
+  const { role } = await import('./helpers.ts');
+  const { setApplyMethod } = await import('../../src/jobs/pipeline/roles.ts');
+  const id = role(s.w.ctx, { company: 'Example Retail Pvt Ltd', title: 'Store Manager', location: 'Berlin' }, 'picked');
+  setApplyMethod(s.w.ctx, id, 'walk_in', 'Walk-in interviews, Monday to Saturday 10 am – 1 pm, Example Mall');
+  for (const scheme of ['light', 'dark'] as const) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: scheme });
+    await page.goto(`http://localhost:${s.port}/jobs/#today`);
+    await page.locator('.side .state .title', { hasText: 'Apply in person' }).waitFor({ timeout: 15_000 });
+    assert.match(await page.locator('.side').textContent() ?? '', /From the posting: Walk-in interviews, Monday to Saturday 10 am – 1 pm, Example Mall/);
+    const items = await audit(page, '.side');
+    assert.deepEqual(items.filter((x) => x.size < 14), [], 'nothing under 14 px');
+    assert.deepEqual(items.filter((x) => x.ratio < 4.5), [], 'AA contrast');
+    if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: join(SHOTS, `apply-walk-in-${scheme}.png`) }); }
+    await page.close();
+  }
+  setApplyMethod(s.w.ctx, id, 'account_needed');
+  s.w.ctx.db.prepare(`insert into form_fields(role_id, ord, label, kind, required) values (?, 0, 'First name', 'contact', 1)`).run(id);
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
+  await page.goto(`http://localhost:${s.port}/jobs/#today`);
+  await page.locator('.side .state .title', { hasText: 'This site needs an account' }).waitFor({ timeout: 15_000 });
+  assert.match(await page.locator('.side').textContent() ?? '', /Create it and sign in in the form tab, then click Continue/);
+  assert.equal(await page.getByRole('button', { name: 'Continue', exact: true }).count(), 1);
+  const items = await audit(page, '.side');
+  assert.deepEqual(items.filter((x) => x.size < 14), [], 'nothing under 14 px');
+  assert.deepEqual(items.filter((x) => x.ratio < 4.5), [], 'AA contrast');
+  await page.close();
+});

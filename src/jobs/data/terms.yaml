@@ -1,0 +1,265 @@
+# Names the citation check treats as claims: an answer may mention one only when a cited source (a career.md fact, a
+# memory item, the posting for company claims) mentions it too. Spans fields: software, data and analytics, design,
+# business tools, healthcare, finance and certifications. "a|b" are names of one thing. Names in case_sensitive only
+# match as written (so "Go", "Epic" or "Excel" in ordinary prose don't count). Users add their own in me/career.md →
+# terms.extra.
+case_insensitive:
+  # programming languages and runtimes (names of two letters or fewer always match as written)
+  - Go|Golang
+  - Python
+  - Java
+  - JavaScript
+  - TypeScript
+  - Kotlin
+  - Scala
+  - Ruby
+  - PHP
+  - Perl
+  - Elixir
+  - Erlang
+  - Haskell
+  - Clojure
+  - OCaml
+  - Fortran
+  - COBOL
+  - MATLAB
+  - Dart
+  - Objective-C
+  - Solidity
+  - Node.js|NodeJS
+  - Deno
+  - WebAssembly|Wasm
+  - Bash
+  - PowerShell
+  # web and app frameworks
+  - React Native
+  - Angular
+  - Vue|Vue.js
+  - Svelte
+  - Next.js
+  - Django
+  - Flask
+  - FastAPI
+  - Spring Boot
+  - Laravel
+  - Express.js
+  - Flutter
+  - GraphQL
+  - gRPC
+  - Tailwind
+  # data stores and streaming
+  - PostgreSQL|Postgres
+  - MySQL
+  - SQLite
+  - MongoDB
+  - Redis
+  - Cassandra
+  - DynamoDB
+  - Elasticsearch
+  - OpenSearch
+  - ClickHouse
+  - Snowflake
+  - BigQuery
+  - Redshift
+  - Databricks
+  - Kafka
+  - RabbitMQ
+  - Kinesis
+  - Pulsar
+  - Neo4j
+  - Oracle Database
+  - SQL Server
+  # cloud, infrastructure and operations
+  - AWS|Amazon Web Services
+  - GCP|Google Cloud
+  - Azure
+  - Kubernetes|K8s
+  - Docker
+  - Terraform
+  - Ansible
+  - Jenkins
+  - GitHub Actions
+  - GitLab CI
+  - CircleCI
+  - Prometheus
+  - Grafana
+  - Datadog
+  - OpenTelemetry
+  - New Relic
+  - Splunk
+  - Nginx
+  - Linux
+  - Istio
+  - Cloudflare
+  - Vercel
+  # machine learning and AI
+  - PyTorch
+  - TensorFlow
+  - Keras
+  - scikit-learn
+  - XGBoost
+  - LightGBM
+  - Hugging Face
+  - LangChain
+  - LlamaIndex
+  - OpenAI
+  - Anthropic
+  - LLM|LLMs|large language model|large language models
+  - RAG|retrieval-augmented generation
+  - computer vision
+  - NLP|natural language processing
+  - reinforcement learning
+  - MLflow
+  - Kubeflow
+  - SageMaker
+  - Vertex AI
+  # data and analytics
+  - SQL
+  - dbt
+  - Airflow
+  - Dagster
+  - Spark|Apache Spark|PySpark
+  - Hadoop
+  - Presto|Trino
+  - Pandas
+  - NumPy
+  - Jupyter
+  - Tableau
+  - Power BI
+  - Looker
+  - Looker Studio
+  - Metabase
+  - Qlik
+  - Alteryx
+  - SAS
+  - SPSS
+  - Stata
+  - Google Analytics
+  - Mixpanel
+  - Amplitude
+  - A/B testing|AB testing
+  - Fivetran
+  # design and product
+  - Figma
+  - Adobe XD
+  - Photoshop
+  - Illustrator
+  - InDesign
+  - After Effects
+  - Framer
+  - Miro
+  - Jira
+  - Confluence
+  - Asana
+  - Trello
+  # business, sales and finance tools
+  - Salesforce
+  - HubSpot
+  - Marketo
+  - Zendesk
+  - Intercom
+  - SAP
+  - NetSuite
+  - QuickBooks
+  - Xero
+  - ServiceNow
+  - Shopify
+  - Stripe
+  - Bloomberg Terminal
+  # healthcare and clinical
+  - RN|registered nurse
+  - Cerner
+  - Meditech
+  - Allscripts
+  - athenahealth
+  - telehealth|telemedicine
+  - ICU|intensive care
+  - NICU
+  - PICU
+  - emergency department|emergency room
+  - med-surg|medical-surgical
+  - oncology
+  - pediatrics|paediatrics
+  - labor and delivery
+  - dialysis
+  - phlebotomy
+  - wound care
+  - case management
+  - utilization review
+  - HIPAA
+  - ICD-10
+  - CPT
+  - HL7
+  - FHIR
+  # certifications and licences
+  - PMP
+  - PRINCE2
+  - CSM|Certified ScrumMaster
+  - CPA
+  - CFA
+  - ACCA
+  - CIMA
+  - FRM
+  - CISSP
+  - CISM
+  - CISA
+  - CompTIA
+  - CCNA
+  - ITIL
+  - Six Sigma
+  - BLS|Basic Life Support
+  - ACLS
+  - PALS
+  - NRP
+  - TNCC
+  - CCRN
+  - CEN
+  - NCLEX
+  - Nurse Licensure Compact|compact licence|compact license
+  - AWS Certified
+  - Google Cloud Professional
+  - Azure Administrator
+  - Certified Kubernetes Administrator|CKA
+  # methods and regulation
+  - Scrum
+  - Kanban
+  - GDPR
+  - SOC 2
+  - ISO 27001
+  - PCI DSS
+  - IFRS
+  - GAAP
+  - Sarbanes-Oxley|SOX
+case_sensitive:
+  - React
+  - Rails|Ruby on Rails
+  - Helm
+  - Hive
+  - Superset
+  - Sketch
+  - Notion
+  - Segment
+  - Workday
+  - SAFe
+  - Rust
+  - Swift
+  - C++
+  - C#
+  - .NET
+  - F#
+  - Lua
+  - Zig
+  - Excel|Microsoft Excel
+  - Epic
+  - LPN
+  - NP
+  - CNA
+  - EHR
+  - EMR
+  - OKRs
+  - KPI
+  - ETL
+  - ELT
+  - CI/CD
+  - SRE
+  - HR

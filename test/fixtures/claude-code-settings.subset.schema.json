@@ -1,0 +1,317 @@
+{
+ "$comment": "Subset of https://json.schemastore.org/claude-code-settings.json (fetched 2026-11-19): the keys Crewdeck generates for the jobs workspace. Descriptions dropped.",
+ "type": "object",
+ "additionalProperties": true,
+ "properties": {
+  "$schema": {
+   "type": "string"
+  },
+  "sandbox": {
+   "type": "object",
+   "properties": {
+    "network": {
+     "type": "object",
+     "properties": {
+      "allowUnixSockets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "allowLocalBinding": {
+       "type": "boolean"
+      },
+      "httpProxyPort": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 65535
+      },
+      "socksProxyPort": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 65535
+      },
+      "allowAllUnixSockets": {
+       "type": "boolean"
+      },
+      "allowedDomains": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "deniedDomains": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "allowManagedDomainsOnly": {
+       "type": "boolean"
+      },
+      "allowMachLookup": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "tlsTerminate": {
+       "type": "object",
+       "properties": {
+        "caCertPath": {
+         "type": "string"
+        },
+        "caKeyPath": {
+         "type": "string"
+        }
+       },
+       "additionalProperties": false
+      },
+      "strictAllowlist": {
+       "type": "boolean"
+      }
+     },
+     "additionalProperties": false
+    },
+    "ignoreViolations": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    },
+    "excludedCommands": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "autoAllowBashIfSandboxed": {
+     "type": "boolean"
+    },
+    "enableWeakerNetworkIsolation": {
+     "type": "boolean"
+    },
+    "enableWeakerNestedSandbox": {
+     "type": "boolean"
+    },
+    "allowUnsandboxedCommands": {
+     "type": "boolean"
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "filesystem": {
+     "type": "object",
+     "properties": {
+      "allowWrite": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "denyWrite": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "denyRead": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "allowRead": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "allowManagedReadPathsOnly": {
+       "type": "boolean"
+      },
+      "disabled": {
+       "type": "boolean"
+      }
+     },
+     "additionalProperties": false
+    },
+    "ripgrep": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "command"
+     ],
+     "properties": {
+      "command": {
+       "type": "string",
+       "minLength": 1
+      },
+      "args": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "bwrapPath": {
+     "type": "string",
+     "minLength": 1
+    },
+    "socatPath": {
+     "type": "string",
+     "minLength": 1
+    },
+    "failIfUnavailable": {
+     "type": "boolean"
+    },
+    "enabledPlatforms": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "macos",
+       "linux",
+       "wsl",
+       "windows"
+      ]
+     }
+    },
+    "credentials": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "files": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "path": {
+          "type": "string"
+         },
+         "mode": {
+          "type": "string",
+          "enum": [
+           "deny"
+          ]
+         }
+        },
+        "required": [
+         "path",
+         "mode"
+        ]
+       }
+      },
+      "envVars": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "mode": {
+          "type": "string",
+          "enum": [
+           "deny"
+          ]
+         }
+        },
+        "required": [
+         "name",
+         "mode"
+        ]
+       }
+      },
+      "allowPlaintextInject": {
+       "type": "boolean"
+      }
+     }
+    },
+    "allowAppleEvents": {
+     "type": "boolean"
+    }
+   },
+   "additionalProperties": false
+  },
+  "permissions": {
+   "type": "object",
+   "properties": {
+    "allow": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/permissionRule"
+     },
+     "uniqueItems": true
+    },
+    "deny": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/permissionRule"
+     },
+     "uniqueItems": true
+    },
+    "ask": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/permissionRule"
+     },
+     "uniqueItems": true
+    },
+    "defaultMode": {
+     "type": "string",
+     "enum": [
+      "acceptEdits",
+      "bypassPermissions",
+      "default",
+      "delegate",
+      "dontAsk",
+      "plan",
+      "auto",
+      "manual"
+     ]
+    },
+    "disableBypassPermissionsMode": {
+     "type": "string",
+     "enum": [
+      "disable"
+     ]
+    },
+    "disableAutoMode": {
+     "type": "string",
+     "enum": [
+      "disable"
+     ]
+    },
+    "additionalDirectories": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     },
+     "uniqueItems": true
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ "$defs": {
+  "permissionRule": {
+   "type": "string",
+   "pattern": "^((Agent|Artifact|Bash|Cd|Edit|EnterWorktree|ExitPlanMode|Glob|Grep|KillShell|LSP|Monitor|MultiEdit|NotebookEdit|PowerShell|Read|ShareOnboardingGuide|Skill|TaskCreate|TaskGet|TaskList|TaskOutput|TaskStop|TaskUpdate|TodoWrite|ToolSearch|WebFetch|WebSearch|Workflow|Write)(\\([^)]+\\))?|mcp__.*)$"
+  }
+ }
+}

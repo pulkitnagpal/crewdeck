@@ -1,0 +1,10 @@
+{
+ "_fixture": "UNVERIFIED: written from developer.adzuna.com/docs/search and its example response, not a recorded response; the values are fictional",
+ "__CLASS__": "Adzuna::API::Response::JobSearchResults",
+ "count": 120,
+ "mean": 1450000,
+ "results": [
+  { "__CLASS__": "Adzuna::API::Response::Job", "id": "4912345678", "adref": "eyJhbGciOiJIUzI1NiJ9", "title": "Senior <strong>Software Engineer</strong>", "description": "We are hiring a senior software engineer to build our payments platform in Bengaluru...", "created": "2026-11-18T07:21:44Z", "redirect_url": "https://www.adzuna.in/land/ad/4912345678?se=abc&utm_medium=api&v=1", "company": { "__CLASS__": "Adzuna::API::Response::Company", "display_name": "Paysure Technologies" }, "location": { "__CLASS__": "Adzuna::API::Response::Location", "display_name": "Bengaluru, Karnataka", "area": ["India", "Karnataka", "Bengaluru"] }, "category": { "__CLASS__": "Adzuna::API::Response::Category", "tag": "it-jobs", "label": "IT Jobs" }, "salary_min": 2400000, "salary_max": 3600000, "salary_is_predicted": "0", "contract_time": "full_time", "contract_type": "permanent", "latitude": 12.97, "longitude": 77.59 },
+  { "__CLASS__": "Adzuna::API::Response::Job", "id": "4912345679", "adref": "eyJhbGciOiJIUzI1NiJ8", "title": "Software Engineer (Remote)", "description": "Remote role for a backend engineer...", "created": "2026-11-17T10:00:00Z", "redirect_url": "https://www.adzuna.in/land/ad/4912345679?se=def&utm_medium=api&v=1", "company": { "display_name": "Cloudnine Labs" }, "location": { "display_name": "India", "area": ["India"] }, "category": { "tag": "it-jobs", "label": "IT Jobs" }, "salary_min": 1500000, "salary_max": 1500000, "salary_is_predicted": "1", "contract_time": "full_time" }
+ ]
+}

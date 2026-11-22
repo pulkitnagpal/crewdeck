@@ -1,0 +1,31 @@
+{
+  "noOfJobs": 3,
+  "jobDetails": [
+    {
+      "title": "Senior Data Analyst",
+      "jobId": "201126500123",
+      "companyName": "Larkspur Analytics",
+      "jdURL": "/job-listings-senior-data-analyst-larkspur-analytics-bengaluru-4-to-8-years-201126500123",
+      "placeholders": [
+        { "type": "experience", "label": "4-8 Yrs" },
+        { "type": "salary", "label": "Not disclosed" },
+        { "type": "location", "label": "Bengaluru" }
+      ],
+      "jobDescription": "<p>Own the weekly metrics review for our <b>supply</b> team.</p><ul><li>SQL and dashboards</li></ul>",
+      "createdDate": 1795300000000
+    },
+    {
+      "title": "Analytics Engineer",
+      "jobId": "201126500456",
+      "companyName": "Quillfeather Labs",
+      "jdURL": "https://www.naukri.com/job-listings-analytics-engineer-quillfeather-labs-remote-3-to-6-years-201126500456?src=jobsearchDesk&sid=1",
+      "placeholders": [{ "type": "location", "label": "Remote" }],
+      "createdDate": 1795200000000
+    },
+    {
+      "title": "Not a job: ad slot",
+      "jdURL": "https://ads.example.com/click?x=1",
+      "companyName": "Somebody"
+    }
+  ]
+}

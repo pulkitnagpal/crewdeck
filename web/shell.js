@@ -8,15 +8,20 @@
     notes: '<svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="13" cy="17" r="2.5"/><path d="M8 8l3 7M16 8l-2 7M8.5 7h7"/></svg>',
     board: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/></svg>',
     app: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 9h16"/></svg>',
+    jobs: '<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7M3 12.5h18"/></svg>',
   };
   const host = `${location.protocol}//${location.hostname}`;
   const sameHost = (u) => u.replace(/^http:\/\/(localhost|127\.0\.0\.1)/, host); // same-site frames keep their storage
   // Embedded apps that understand ?appearance= follow Crewdeck's light/dark choice.
   const withAppearance = (u) => { const x = new URL(u); x.searchParams.set('appearance', state.appearance); return x.toString(); };
   const views = [
-    { id: 'notes', kind: 'Notes', label: 'Memory', short: 'Notes', url: state.notes, icon: ICON.notes },
+    { id: 'notes', kind: 'Notes', label: 'Memory', short: 'Notes', url: `${host}:${state.notes.port}/`, icon: ICON.notes },
+    // Jobs is Crewdeck's own page: same origin as the shell.
+    ...(state.jobs ? [{ id: 'jobs', kind: 'Jobs', label: 'Jobs', short: 'Jobs', url: state.jobs.path, icon: ICON.jobs }] : []),
     'sep',
     ...state.projects.map((p) => ({ id: `board:${p.name}`, kind: 'Board', label: p.label, short: p.label, url: `${host}:${p.boardPort}/`, icon: ICON.board })),
+    // No project yet: a Boards item that says how to add one (from a Claude session in the project's folder).
+    ...(state.projects.length ? [] : [{ id: 'boards', kind: 'Boards', label: 'Add a project', short: 'Boards', url: '/boards-help.html', icon: ICON.board }]),
     ...(state.apps.length ? ['sep'] : []),
     ...state.apps.map((a) => ({ id: `app:${a.name}`, kind: 'App', label: a.label, short: a.label, url: withAppearance(sameHost(a.url)), icon: ICON[a.name] ?? ICON.app })),
   ];
@@ -38,6 +43,7 @@
     if (!frames[v.id]) {
       const f = document.createElement('iframe');
       f.src = v.url; f.title = `${v.kind}: ${v.label}`;
+      if (v.id === 'jobs') f.allow = 'clipboard-write';
       $('frames').appendChild(f);
       frames[v.id] = f;
     }
@@ -73,7 +79,32 @@
     if (r.status === 'done' || r.status === 'failed') { setSent(`${r.status === 'done' ? '✓' : '✗'} ${r.result || r.status}`, r.status === 'done' ? 'ok' : 'bad'); watching = null; }
   }, 2000);
 
+  /** Show Notes on one page (a vault path like journal/2026-11-20), if it is a plain page name. */
+  function openNote(page) {
+    if (!/^[A-Za-z0-9 _.-]+(\/[A-Za-z0-9 _.-]+)*$/.test(page) || page.includes('..')) return false;
+    show('notes');
+    frames.notes.src = `${host}:${state.notes.port}/${page.split('/').map(encodeURIComponent).join('/')}`;
+    return true;
+  }
+  // Jobs asks to open a note ("Open in Notes"): switch to Notes on that page. Only this origin's own frames may ask.
+  addEventListener('message', (e) => {
+    if (e.origin !== location.origin || e.data?.type !== 'crewdeck:open-notes') return;
+    openNote(String(e.data.page ?? ''));
+  });
+
+  // A link straight to a view (crewdeck open, the Today panel): #jobs, #notes, #notes/journal/2026-11-20, #board:<name>.
+  function fromHash() {
+    let h = '';
+    try { h = decodeURIComponent(location.hash.slice(1)); } catch { return false; }
+    if (!h) return false;
+    if (h.startsWith('notes/')) return openNote(h.slice(6));
+    if (!real.some((v) => v.id === h)) return false;
+    show(h);
+    return true;
+  }
+  addEventListener('hashchange', fromHash);
+
   let last = null;
   try { last = localStorage.getItem('crewdeck:view'); } catch {}
-  show(last ?? 'notes');
+  if (!fromHash()) show(last ?? 'notes');
 })();

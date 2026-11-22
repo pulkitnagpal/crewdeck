@@ -1,0 +1,339 @@
+# Form terms (design §24.9, D32): what Crewdeck knows about the questions application forms ask, per language. Data, not
+# code: add a language or a word here and the fill plan, the drafting step and `crewdeck jobs check` read it. Every
+# language is used at once (a form may mix languages); `en-IN` and `en-PH` hold Indian and Philippine English usages.
+# Labels are compared lowercase, without accents, required marks, "(optional)" or a leading "your".
+#
+# How an entry is written (as in rule-words.yaml): a space or hyphen matches a space or a hyphen; "word*" a word start;
+# slots joined by " + " follow each other, "a|b" are alternatives in a slot, a slot ending in "?" may be missing.
+#
+# Per language:
+#   profile:     profile key → whole labels it answers ("first name" fills only a label that is exactly that). Keys are
+#                me/profile.md's: identity fields, the latest education, and standard answers by their key.
+#   sensitive:   words that make a question sensitive anywhere in its label: only the user's explicit answer fills it,
+#                and a remembered answer is reused for the same company only (unless they say "use this everywhere").
+#   sensitive_exact: whole labels that are sensitive only on their own ("Title" as a salutation).
+#   never_fill:  government ID, bank and tax numbers anywhere in the label: always skipped ("you type this yourself"),
+#                never drafted, never stored, refused as a standard answer or a remembered answer.
+#   never_fill_exact: whole labels that are such numbers only on their own ("PAN", "NIE", "TIN": short words that are
+#                ordinary words elsewhere).
+#   groups:      "Add another" blocks (employment, education, references): each field's part of an entry.
+#   add:         words on an "Add another …" button.
+#   letter:      upload labels a cover letter or supporting statement goes into.
+
+languages:
+  en:
+    profile:
+      country: [country, country of residence, "country you live|reside in"]
+      region: [state, province, region, "state|province|region + of residence", state/province]
+      city: [city, current city, location (city), location city, town]
+      school: [school, school name, university, college, institution]
+      degree: [degree, degree type, qualification]
+      discipline: [discipline, field of study, major, subject]
+      end_year: [graduation year, end year, end date year]
+      preferred_name: [preferred name, preferred first name]
+      first_name: [first name, legal first name, given name, forename]
+      last_name: [last name, legal last name, surname, family name]
+      full_name: [name, full name, legal name]
+      email: [email, e-mail, email address, e-mail address]
+      phone: ["phone|mobile|contact + number|no?", telephone, telephone number, cell phone, cell number]
+      website: ["personal? + website|portfolio + url|link?"]
+      current_company: [current company, current employer, company, organization, organisation]
+      current_title: [current title, current role, current position, current job title]
+      notice_period: [notice period, when can you start, earliest start date, availability to start]
+      years_experience: ["total|overall? + years of + professional|relevant|total? + experience"]
+      timezone: [time zone, timezone]
+      location: [location, current location, "where are you + based|located"]
+    sensitive:
+      - salary
+      - "compensation*"
+      - "pay + expectation*"
+      - expected pay
+      - "desired + pay|rate|salary"
+      - rate expectation
+      - visa
+      - "sponsor*"
+      - authorized to work
+      - authorised to work
+      - legally authorized
+      - legally authorised
+      - work authorization
+      - work authorisation
+      - right to work
+      - work permit
+      - citizenship
+      - nationality
+      - gender
+      - race
+      - "ethnic*"
+      - "veteran*"
+      - "disabilit*"
+      - "pronoun*"
+      - sexual orientation
+      - hispanic
+      - latino
+      - date of birth
+      - dob
+      - age
+      - criminal
+      - "conviction*"
+      - background check
+      - marital status
+      - religion
+      - height
+      - weight
+      - photo
+      - photograph
+      - salutation
+      - equal employment opportunity
+      - eeo
+      - "self + identify|identification"
+    sensitive_exact: [title, mr/ms, prefix]
+    never_fill:
+      - social security
+      - ssn
+      - national insurance
+      - ni number
+      - passport number
+      - passport no
+      - "driver's license number"
+      - driving licence number
+      - "bank + account|details"
+      - account number
+      - routing number
+      - sort code
+      - iban
+      - swift code
+      - bic
+      - tax id
+      - tax identification
+      - taxpayer
+      - national id number
+      - government id
+      - social insurance number
+      - medicare number
+      - credit card
+      - card number
+    never_fill_exact: [tin, itin, ein, sin, nino, id number]
+    groups:
+      employment:
+        org: [employer, company, company name, employer name, organisation, organization, name of employer]
+        title: [job title, title, position, role, position held, job role]
+        where: [location, city]
+        start: [start date, from, date started, start]
+        end: [end date, to, date left, end]
+      education:
+        school: [school, institution, university, college, school name, establishment]
+        degree: [degree, qualification, award]
+        discipline: [subject, field of study, major, course]
+        start_year: [start year, from]
+        end_year: [end year, graduation year, to, year completed, date awarded]
+      reference:
+        name: [name, full name, referee name, reference name, "name of + referee|reference"]
+        role: [job title, title, position, role]
+        org: [organisation, organization, company, employer]
+        email: [email, e-mail, email address]
+        phone: [phone, telephone, phone number, telephone number, mobile]
+        relationship: [relationship, relationship to you, how do you know them, capacity known, "in what capacity + do you know them|known?"]
+    group_words:
+      employment: ["employment|job|work + history|experience?", employer, "previous|current + employment|job|employer"]
+      education: [education, qualification, school, university]
+      reference: ["referee*", "reference*"]
+    add: ["add + another|more|a?", "add + employment|job|position|education|qualification|reference|referee"]
+    letter: [cover letter, covering letter, supporting statement, personal statement, motivation letter]
+  en-IN:
+    profile:
+      email: [email id, e-mail id, mail id]
+      notice_period: [notice period (in days), notice period in days]
+      years_experience: [total experience, total experience (in years), relevant experience]
+      current_company: [current organisation, current organization]
+      current_title: [current designation, designation]
+    sensitive: ["current|expected + ctc", ctc, lpa, "father's name", "father name", "mother's name", "mother name", "husband's name", caste, reserved category, "category + general|obc|sc|st", obc, religion, marital status, date of birth, dob]
+    never_fill: [aadhaar, aadhar, aadhaar number, pan number, pan card, permanent account number, uan, "pf + number|no", epf number, esic, voter id, ifsc]
+    never_fill_exact: [pan, uid, pan no]
+  en-PH:
+    sensitive: [civil status, religion, height, weight, date of birth, expected salary, asking salary]
+    never_fill: [sss number, sss no, tin number, tin no, philhealth, pag-ibig, hdmf, umid, postal id]
+    never_fill_exact: [sss, tin]
+  de:
+    profile:
+      first_name: [vorname]
+      last_name: [nachname, familienname]
+      full_name: [vollstandiger name, vor- und nachname]
+      email: [e-mail, e-mail-adresse, email-adresse, e mail adresse]
+      phone: [telefon, telefonnummer, handy, handynummer, mobilnummer, mobil]
+      city: [ort, wohnort, stadt]
+      country: [land, wohnland]
+      notice_period: [kundigungsfrist, "fruhest + moglicher? + eintrittstermin", eintrittsdatum, verfugbar ab]
+      current_title: [aktuelle position, aktuelle berufsbezeichnung]
+      current_company: [aktueller arbeitgeber]
+      years_experience: [berufserfahrung in jahren, jahre berufserfahrung]
+      school: [hochschule, universitat, schule, bildungseinrichtung]
+      degree: [abschluss, hochster abschluss]
+      discipline: [studiengang, fachrichtung, studienfach]
+      end_year: [abschlussjahr]
+    sensitive: [anrede, geburtsdatum, geburtsort, geburtstag, alter, staatsangehorigkeit, nationalitat, familienstand, religion, konfession, gehaltsvorstellung, gehaltswunsch, gehaltserwartung, wunschgehalt, jahresgehalt, aufenthaltstitel, arbeitserlaubnis, geschlecht, "schwerbehinder*", behinderung, foto, bewerbungsfoto, lichtbild]
+    never_fill: [steuer-id, steueridentifikationsnummer, steuerliche identifikationsnummer, steuernummer, sozialversicherungsnummer, rentenversicherungsnummer, sv-nummer, personalausweisnummer, ausweisnummer, reisepassnummer, passnummer, kontonummer, bankverbindung, krankenversicherungsnummer]
+    groups:
+      employment: { org: [arbeitgeber, unternehmen, firma], title: [position, berufsbezeichnung, tatigkeit], where: [ort], start: [von, beginn, startdatum], end: [bis, ende, enddatum] }
+      education: { school: [schule, hochschule, universitat, einrichtung], degree: [abschluss], discipline: [fachrichtung, studiengang], end_year: [abschlussjahr, bis] }
+      reference: { name: [name], role: [position], org: [unternehmen, firma], email: [e-mail], phone: [telefon], relationship: [beziehung, verhaltnis] }
+    group_words: { employment: [berufserfahrung, berufliche stationen, werdegang], education: [ausbildung, studium], reference: [referenz, referenzen] }
+    add: ["weitere + hinzufugen", hinzufugen]
+    letter: [anschreiben, motivationsschreiben]
+  fr:
+    profile:
+      first_name: [prenom]
+      last_name: [nom, nom de famille]
+      full_name: [nom complet, nom et prenom]
+      email: [e-mail, adresse e-mail, courriel, adresse electronique]
+      phone: [telephone, numero de telephone, portable, telephone portable]
+      city: [ville]
+      country: [pays]
+      notice_period: [preavis, delai de preavis, date de disponibilite, disponibilite]
+      current_title: [poste actuel]
+      current_company: [employeur actuel, entreprise actuelle]
+      years_experience: ["annees d'experience", "nombre d'annees d'experience"]
+      school: [ecole, universite, etablissement]
+      degree: [diplome]
+      discipline: ["domaine d'etudes", specialite]
+      end_year: ["annee d'obtention", "annee d'obtention du diplome"]
+    sensitive: [civilite, date de naissance, lieu de naissance, age, nationalite, situation familiale, etat civil, religion, pretentions salariales, salaire souhaite, remuneration souhaitee, "salaire + actuel|annuel", permis de travail, titre de sejour, sexe, genre, handicap, rqth, photo]
+    never_fill: [numero de securite sociale, securite sociale, numero fiscal, numero de passeport, "numero de carte d'identite", coordonnees bancaires]
+    never_fill_exact: [nir, rib]
+    groups:
+      employment: { org: [employeur, entreprise], title: [poste, intitule du poste, fonction], start: [date de debut, du], end: [date de fin, au] }
+      education: { school: [etablissement, ecole], degree: [diplome], discipline: [domaine] }
+      reference: { name: [nom], role: [poste, fonction], org: [entreprise], email: [e-mail], phone: [telephone], relationship: [lien] }
+    group_words: { employment: [experience professionnelle, parcours], education: [formation], reference: [references, reference] }
+    add: ["ajouter + un|une|autre?"]
+    letter: [lettre de motivation]
+  es:
+    profile:
+      first_name: [nombre]
+      last_name: [apellido, apellidos, primer apellido]
+      full_name: [nombre completo, nombre y apellidos]
+      email: [correo, correo electronico, email]
+      phone: [telefono, movil, celular, numero de telefono]
+      city: [ciudad, localidad, municipio]
+      country: [pais, pais de residencia]
+      region: [provincia, comunidad autonoma, estado]
+      notice_period: [preaviso, periodo de preaviso, disponibilidad, fecha de incorporacion]
+      current_title: [puesto actual, cargo actual]
+      current_company: [empresa actual]
+      years_experience: [anos de experiencia]
+      school: [universidad, centro de estudios, institucion]
+      degree: [titulo, titulacion]
+      discipline: [carrera, area de estudio, especialidad]
+      end_year: [ano de graduacion, ano de finalizacion]
+    sensitive: [tratamiento, fecha de nacimiento, edad, nacionalidad, estado civil, religion, pretension salarial, pretensiones salariales, expectativa salarial, salario deseado, banda salarial, salario actual, permiso de trabajo, sexo, genero, discapacidad, foto, fotografia]
+    never_fill: [numero de la seguridad social, seguridad social, numero de afiliacion, numero de pasaporte, cuenta bancaria, curp, rfc, cuil, cuit, numero de dni, numero de nie, numero de identidad]
+    never_fill_exact: [dni, nie, nif, nss, dni/nie]
+    groups:
+      employment: { org: [empresa, empleador], title: [puesto, cargo], start: [fecha de inicio, desde], end: [fecha de fin, hasta] }
+      education: { school: [centro, universidad, institucion], degree: [titulo], discipline: [carrera, especialidad] }
+      reference: { name: [nombre], role: [cargo, puesto], org: [empresa], email: [correo], phone: [telefono], relationship: [relacion] }
+    group_words: { employment: [experiencia laboral, experiencia profesional], education: [formacion, estudios], reference: [referencias, referencia] }
+    add: ["anadir + otra|otro|mas?", "agregar + otra|otro|mas?"]
+    letter: [carta de presentacion, carta de motivacion]
+  pt:
+    profile:
+      last_name: [sobrenome, apelido]
+      full_name: [nome completo]
+      email: [e-mail, endereco de e-mail]
+      phone: [telefone, celular, telemovel]
+      city: [cidade]
+      country: [pais]
+      notice_period: [aviso previo, disponibilidade para inicio, data de inicio]
+      current_title: [cargo atual]
+      current_company: [empresa atual]
+      years_experience: [anos de experiencia]
+      school: [universidade, instituicao de ensino, instituicao]
+      degree: [formacao, grau]
+      discipline: [curso, area de formacao]
+      end_year: [ano de conclusao]
+    sensitive: [data de nascimento, idade, nacionalidade, estado civil, religiao, pretensao salarial, expectativa salarial, salario pretendido, salario atual, autorizacao de trabalho, sexo, genero, deficiencia, pcd, foto]
+    never_fill: [cpf, numero de contribuinte, niss, numero do passaporte, conta bancaria, ctps, titulo de eleitor]
+    never_fill_exact: [rg, pis, nib, nif]
+    groups:
+      employment: { org: [empresa, empregador], title: [cargo, funcao], start: [data de inicio, de], end: [data de saida, ate] }
+      education: { school: [instituicao], degree: [formacao], discipline: [curso] }
+      reference: { name: [nome], role: [cargo], org: [empresa], email: [e-mail], phone: [telefone], relationship: [relacao] }
+    group_words: { employment: [experiencia profissional], education: [formacao academica], reference: [referencias] }
+    add: ["adicionar + outra|outro|mais?"]
+    letter: [carta de apresentacao]
+  it:
+    profile:
+      first_name: [nome]
+      last_name: [cognome]
+      full_name: [nome e cognome, nome completo]
+      email: [email, e-mail, indirizzo email]
+      phone: [telefono, cellulare, numero di telefono]
+      city: [citta, comune di residenza]
+      country: [paese, nazione]
+      notice_period: [preavviso, disponibilita]
+      current_title: [ruolo attuale, posizione attuale]
+      current_company: [azienda attuale]
+      years_experience: [anni di esperienza]
+      school: [universita, istituto]
+      degree: [titolo di studio]
+      discipline: [corso di laurea, indirizzo di studio]
+      end_year: [anno di laurea, anno di conseguimento]
+    sensitive: [data di nascita, eta, nazionalita, cittadinanza, stato civile, religione, ral, ral attuale, ral desiderata, retribuzione desiderata, aspettative economiche, permesso di soggiorno, sesso, genere, disabilita, categorie protette, foto]
+    never_fill: [codice fiscale, numero di passaporto, "carta d'identita", conto corrente, partita iva]
+    groups:
+      employment: { org: [azienda, datore di lavoro], title: [ruolo, posizione, mansione], start: [data di inizio, dal], end: [data di fine, al] }
+      education: { school: [istituto, universita], degree: [titolo], discipline: [indirizzo] }
+      reference: { name: [nome], role: [ruolo], org: [azienda], email: [email], phone: [telefono], relationship: [rapporto] }
+    group_words: { employment: [esperienza lavorativa, esperienze professionali], education: [istruzione, formazione], reference: [referenze] }
+    add: ["aggiungi + altro|altra|un|una?"]
+    letter: [lettera di presentazione, lettera motivazionale]
+  nl:
+    profile:
+      first_name: [voornaam]
+      last_name: [achternaam]
+      full_name: [volledige naam]
+      email: [e-mail, e-mailadres]
+      phone: [telefoon, telefoonnummer, mobiel, mobiel nummer]
+      city: [woonplaats, plaats, stad]
+      country: [land]
+      notice_period: [opzegtermijn, beschikbaar per, beschikbaarheid]
+      current_title: [huidige functie]
+      current_company: [huidige werkgever]
+      years_experience: [jaren ervaring, aantal jaren ervaring]
+      school: [onderwijsinstelling, hogeschool, universiteit]
+      degree: [diploma, opleidingsniveau]
+      discipline: [studierichting, opleiding]
+      end_year: [afstudeerjaar]
+    sensitive: [aanhef, geboortedatum, leeftijd, nationaliteit, burgerlijke staat, religie, salarisindicatie, salariswens, gewenst salaris, huidig salaris, werkvergunning, geslacht, handicap, foto]
+    never_fill: [bsn, burgerservicenummer, sofinummer, paspoortnummer, rekeningnummer]
+    groups:
+      employment: { org: [werkgever, bedrijf], title: [functie], start: [van, startdatum], end: [tot, einddatum] }
+      education: { school: [onderwijsinstelling], degree: [diploma], discipline: [richting] }
+      reference: { name: [naam], role: [functie], org: [bedrijf], email: [e-mail], phone: [telefoon], relationship: [relatie] }
+    group_words: { employment: [werkervaring], education: [opleiding], reference: [referenties, referentie] }
+    add: ["voeg + toe", "toevoegen", "nog een"]
+    letter: [motivatiebrief, sollicitatiebrief]
+
+# Availability grids ("Monday: Morning | Evening | Not available"), answered from jobs/search.md → work_pattern: the
+# words for each day, for weekend days, and for what each option means (a shift, any time, or not available).
+availability:
+  question: ["availab*", "verfugbar*", "disponib*", "beschikbaar*", shifts you can work, which shifts]
+  weekdays: [monday, tuesday, wednesday, thursday, friday, weekdays, montag, dienstag, mittwoch, donnerstag, freitag, lunes, martes, miercoles, jueves, viernes, lundi, mardi, mercredi, jeudi, vendredi, segunda, terca, quarta, quinta, sexta, lunedi, martedi, mercoledi, giovedi, venerdi, maandag, dinsdag, woensdag, donderdag, vrijdag]
+  weekend: [saturday, sunday, weekend, weekends, samstag, sonntag, wochenende, sabado, domingo, samedi, dimanche, sabato, zaterdag, zondag]
+  options:
+    day: [day, days, morning, mornings, afternoon, afternoons, daytime, day shift, first shift, fruh, fruhschicht, tag, tagschicht, manana, matin, journee, manha, mattina, ochtend, dag]
+    evening: [evening, evenings, late, swing, second shift, abend, spatschicht, tarde, soir, soiree, noite, sera, avond]
+    night: [night, nights, overnight, third shift, graveyard, nacht, nachtschicht, noche, nuit, notte]
+    any: [any, anytime, any time, all, all day, open, flexible, open availability, ganztags, cualquiera, toute la journee]
+    none: [not available, unavailable, none, no, nicht verfugbar, no disponible, indisponible, nao disponivel, non disponibile, niet beschikbaar]
+
+# The resume and cover letter in each language: headings (me/career.md → resume.headings overrides them), the personal
+# block's labels (resume.personal), the file word, and the language's name for briefs.
+documents:
+  en: { name: English, experience: Experience, education: Education, skills: Skills, personal: Personal details, languages: Languages, date_of_birth: Date of birth, nationality: Nationality, place_of_birth: Place of birth, marital_status: Marital status, driving_licence: Driving licence, letter: Cover Letter, resume: Resume, cv: CV }
+  de: { name: German, experience: Berufserfahrung, education: Ausbildung, skills: Kenntnisse, personal: Persönliche Daten, languages: Sprachen, date_of_birth: Geburtsdatum, nationality: Staatsangehörigkeit, place_of_birth: Geburtsort, marital_status: Familienstand, driving_licence: Führerschein, letter: Anschreiben, resume: Lebenslauf, cv: Lebenslauf }
+  fr: { name: French, experience: Expérience professionnelle, education: Formation, skills: Compétences, personal: Informations personnelles, languages: Langues, date_of_birth: Date de naissance, nationality: Nationalité, place_of_birth: Lieu de naissance, marital_status: Situation familiale, driving_licence: Permis de conduire, letter: Lettre de motivation, resume: CV, cv: CV }
+  es: { name: Spanish, experience: Experiencia profesional, education: Formación, skills: Competencias, personal: Datos personales, languages: Idiomas, date_of_birth: Fecha de nacimiento, nationality: Nacionalidad, place_of_birth: Lugar de nacimiento, marital_status: Estado civil, driving_licence: Carné de conducir, letter: Carta de presentación, resume: Currículum, cv: CV }
+  pt: { name: Portuguese, experience: Experiência profissional, education: Formação, skills: Competências, personal: Dados pessoais, languages: Idiomas, date_of_birth: Data de nascimento, nationality: Nacionalidade, place_of_birth: Naturalidade, marital_status: Estado civil, driving_licence: Carta de condução, letter: Carta de apresentação, resume: Currículo, cv: CV }
+  it: { name: Italian, experience: Esperienza professionale, education: Istruzione, skills: Competenze, personal: Dati personali, languages: Lingue, date_of_birth: Data di nascita, nationality: Nazionalità, place_of_birth: Luogo di nascita, marital_status: Stato civile, driving_licence: Patente, letter: Lettera di presentazione, resume: Curriculum, cv: CV }
+  nl: { name: Dutch, experience: Werkervaring, education: Opleiding, skills: Vaardigheden, personal: Persoonlijke gegevens, languages: Talen, date_of_birth: Geboortedatum, nationality: Nationaliteit, place_of_birth: Geboorteplaats, marital_status: Burgerlijke staat, driving_licence: Rijbewijs, letter: Motivatiebrief, resume: Cv, cv: Cv }

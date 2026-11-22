@@ -1,0 +1,58 @@
+{
+ "_fixture": "UNVERIFIED: written from developer.usajobs.gov/api-reference/get-api-search (field names and shapes), not a recorded response; the values are fictional",
+ "LanguageCode": "EN",
+ "SearchParameters": {},
+ "SearchResult": {
+  "SearchResultCount": 2,
+  "SearchResultCountAll": 140,
+  "SearchResultItems": [
+   {
+    "MatchedObjectId": "812345600",
+    "MatchedObjectDescriptor": {
+     "PositionID": "VA-26-12345",
+     "PositionTitle": "Clinical Nurse",
+     "PositionURI": "https://www.usajobs.gov:443/GetJob/ViewDetails/812345600",
+     "ApplyURI": ["https://www.usajobs.gov:443/GetJob/ViewDetails/812345600?PostingChannelID="],
+     "PositionLocationDisplay": "Phoenix, Arizona",
+     "PositionLocation": [{ "LocationName": "Phoenix, Arizona", "CountryCode": "United States", "CountrySubDivisionCode": "Arizona", "CityName": "Phoenix, Arizona", "Longitude": -112.07, "Latitude": 33.45 }],
+     "OrganizationName": "Veterans Health Administration",
+     "DepartmentName": "Department of Veterans Affairs",
+     "JobCategory": [{ "Name": "Nurse", "Code": "0610" }],
+     "JobGrade": [{ "Code": "VN" }],
+     "PositionSchedule": [{ "Name": "Full-time", "Code": "1" }],
+     "PositionOfferingType": [{ "Name": "Permanent", "Code": "15317" }],
+     "QualificationSummary": "Basic requirements: graduate of an accredited school of nursing; current, full, active and unrestricted registration as a professional nurse.",
+     "PositionRemuneration": [{ "MinimumRange": "78000", "MaximumRange": "118000", "RateIntervalCode": "Per Year" }],
+     "PositionStartDate": "2026-11-12T00:00:00.0000",
+     "PositionEndDate": "2026-12-12T23:59:59.9970",
+     "PublicationStartDate": "2026-11-12T00:00:00.0000",
+     "ApplicationCloseDate": "2026-12-12T23:59:59.9970",
+     "UserArea": { "Details": { "JobSummary": "<p>The Clinical Nurse provides direct patient care on a medical-surgical unit.</p>", "MajorDuties": ["Assesses patients and plans care.", "Administers medications."], "WhoMayApply": { "Name": "", "Code": "" }, "RemoteIndicator": false, "TeleworkEligible": false }, "IsRadialSearch": false }
+    },
+    "RelevanceRank": 0
+   },
+   {
+    "MatchedObjectId": "812345601",
+    "MatchedObjectDescriptor": {
+     "PositionID": "HHS-26-0042",
+     "PositionTitle": "Nurse Consultant (Remote)",
+     "PositionURI": "https://www.usajobs.gov:443/GetJob/ViewDetails/812345601",
+     "ApplyURI": ["https://www.usajobs.gov:443/GetJob/ViewDetails/812345601?PostingChannelID="],
+     "PositionLocationDisplay": "Location Negotiable After Selection, United States",
+     "PositionLocation": [{ "LocationName": "Location Negotiable After Selection", "CountryCode": "United States", "CountrySubDivisionCode": "", "CityName": "Location Negotiable After Selection" }],
+     "OrganizationName": "Centers for Medicare & Medicaid Services",
+     "DepartmentName": "Department of Health and Human Services",
+     "PositionSchedule": [{ "Name": "Full-time", "Code": "1" }],
+     "PositionOfferingType": [{ "Name": "Permanent", "Code": "15317" }],
+     "QualificationSummary": "One year of specialized experience equivalent to GS-12.",
+     "PositionRemuneration": [{ "MinimumRange": "104604.0", "MaximumRange": "135987.0", "RateIntervalCode": "PA" }],
+     "PublicationStartDate": "2026-11-15T00:00:00.0000",
+     "ApplicationCloseDate": "2026-11-29T23:59:59.9970",
+     "UserArea": { "Details": { "JobSummary": "Serves as a nurse consultant for quality programs.", "RemoteIndicator": true, "TeleworkEligible": true }, "IsRadialSearch": false }
+    },
+    "RelevanceRank": 1
+   }
+  ],
+  "UserArea": { "NumberOfPages": "2", "IsRadialSearch": false }
+ }
+}

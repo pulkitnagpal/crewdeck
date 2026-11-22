@@ -1,0 +1,292 @@
+# Crewdeck Jobs — the source plan table (design §7.2 "Source planner", ADR-0001; cold-start priors, curated).
+# Read by src/jobs/directory/plan.ts. For a person's field family × country/region × work mode it gives the source
+# kinds to use, in order, and an honest coverage score. Measured yields replace these priors later (P5).
+#
+# providers   the official-API registry ids this table may name (src/jobs/apis/), with where each one works.
+#             countries: place ids (world = anywhere); modes: which work modes it carries; families: [any] or a list.
+# planned     sources the research says come first but that Crewdeck can't read yet: named in coverage notes only.
+# rows        one per (families × places × modes) prior. Matching: a row applies when the person's family is in
+#             `families` (or any), one of their places is within a row place (or any) and one of their modes is in
+#             `modes` (or any). The most specific row wins (family > country > region > any; a mode match adds a bit).
+#   sources   ordered: { kind: company-feeds, set: {…} } | { kind: api, id } | { planned: <id> }; `note` is the reason
+#             shown to the person.  company-feeds `set`: { label, prefer_remote, size }.
+#   coverage  { score 0..1, note }: how well these sources cover this field × place today (market knowledge, not
+#             measured). Below 0.4 the note must say what's missing and what the person can do.
+
+providers:
+  usajobs: { name: USAJobs, countries: [us], modes: [onsite, hybrid, remote], families: [any], note: "US federal jobs, incl. the VA's hospitals" }
+  nhs-jobs: { name: NHS Jobs, countries: [gb], modes: [onsite, hybrid], families: [healthcare, care-social, office-admin, science-research, people-hr, finance-accounting, engineering-it, operations], note: "NHS England and Wales" }
+  teaching-vacancies: { name: Teaching Vacancies (DfE), countries: [gb], modes: [onsite], families: [education], note: "state schools in England" }
+  ba-jobsuche: { name: Bundesagentur für Arbeit Jobsuche, countries: [de], modes: [onsite, hybrid, remote], families: [any], note: "Germany's federal employment agency" }
+  reed: { name: Reed, countries: [gb], modes: [onsite, hybrid, remote], families: [any], note: "UK general board (API key)" }
+  adzuna: { name: Adzuna, countries: [at, au, be, br, ca, ch, de, es, fr, gb, in, it, mx, nl, nz, pl, sg, us, za], modes: [onsite, hybrid, remote], families: [any], note: "aggregator (API key)" }
+  jooble: { name: Jooble, countries: [world], modes: [onsite, hybrid, remote], families: [any], note: "aggregator, most countries (API key)" }
+  himalayas: { name: Himalayas, countries: [world], modes: [remote], families: [engineering-it, data, product-project, design, marketing, sales, customer-service, creative-media, finance-accounting, people-hr, operations], note: "remote jobs with eligible countries" }
+  remotive: { name: Remotive, countries: [world], modes: [remote], families: [engineering-it, data, product-project, design, marketing, sales, customer-service, creative-media, finance-accounting, people-hr], note: "remote jobs (few per day)" }
+  arbeitnow: { name: Arbeitnow, countries: [de, european-union], modes: [onsite, hybrid, remote], families: [engineering-it, data, product-project, design, marketing, sales, customer-service, creative-media, finance-accounting, operations], note: "German/EU board, many English-language roles" }
+
+planned:
+  france-travail: "France Travail's official API (offres d'emploi) — the first source for France, not in Crewdeck's registry yet"
+  seek: "SEEK (Australia's largest board) — no public API"
+  naukri: "Naukri (India's largest board) — no public API"
+  myjobscotland: "myjobscotland (Scottish councils and schools) — not in the registry yet"
+  proz: "ProZ.com and translation agencies' vendor portals — sign-in only"
+
+rows:
+  # ------------------------------------------------------------------ technology
+  - id: tech-default
+    families: [engineering-it, data, product-project, design]
+    places: [any]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: tech employers }, note: "companies' own job feeds (Greenhouse, Lever, Ashby…): fresh, complete, structured" }
+      - { kind: api, id: adzuna, note: "aggregator for the rest of the market" }
+      - { kind: api, id: jooble, note: "second aggregator" }
+    coverage: { score: 0.65, note: "tech hiring is well covered by company feeds plus aggregators" }
+
+  - id: tech-remote
+    families: [engineering-it, data, product-project, design]
+    places: [any]
+    modes: [remote]
+    sources:
+      - { kind: company-feeds, set: { label: remote-friendly tech employers, prefer_remote: true }, note: "remote-first employers' own feeds; each posting's remote countries are checked" }
+      - { kind: api, id: himalayas, note: "remote board that states eligible countries" }
+      - { kind: api, id: remotive, note: "curated remote board" }
+      - { kind: company-feeds, set: { label: tech employers in your country }, note: "local employers that may hire remote within your country" }
+      - { kind: api, id: arbeitnow, note: "EU board with many remote roles" }
+      - { kind: api, id: adzuna, note: "aggregator, filtered to remote" }
+      - { kind: api, id: jooble, note: "second aggregator, filtered to remote" }
+    coverage: { score: 0.7, note: "remote tech is well covered; most remote roles are restricted to US/EU, so 'eligible from your country' is the real limit" }
+
+  - id: tech-india
+    families: [engineering-it, data, design]
+    places: [in]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: India tech employers }, note: "Indian and global employers' own feeds (Greenhouse, Lever, Ashby, Keka, Darwinbox, Zoho Recruit)" }
+      - { kind: api, id: adzuna, note: "Adzuna India" }
+      - { kind: api, id: jooble, note: "Jooble India" }
+    coverage: { score: 0.6, note: "good for product companies and startups; IT-services giants and many Indian employers post mainly on Naukri/LinkedIn (no public API): import LinkedIn searches" }
+
+  - id: tech-india-remote
+    families: [engineering-it, data, design]
+    places: [in]
+    modes: [remote]
+    sources:
+      - { kind: company-feeds, set: { label: remote-friendly tech employers, prefer_remote: true }, note: "remote-first employers that hire worldwide or in India" }
+      - { kind: api, id: himalayas, note: "remote board: filters to roles open to India" }
+      - { kind: api, id: remotive, note: "remote board" }
+      - { kind: company-feeds, set: { label: India tech employers }, note: "Indian employers with remote roles inside India" }
+      - { kind: api, id: adzuna, note: "Adzuna India, remote filter" }
+      - { kind: api, id: jooble, note: "Jooble India, remote filter" }
+    coverage: { score: 0.65, note: "remote roles open to India exist but most global remote roles are US/EU-only; expect fewer than for US/EU seekers" }
+
+  - id: product-india
+    families: [product-project]
+    places: [in]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: India product companies }, note: "product companies' own feeds" }
+      - { kind: api, id: adzuna, note: "Adzuna India" }
+      - { kind: api, id: jooble, note: "Jooble India" }
+    coverage: { score: 0.45, note: "PM roles in India are few on public feeds and lean senior; most are on LinkedIn/Naukri: import LinkedIn searches; career-changers should add APM/associate PM and product-analyst titles" }
+
+  - id: tech-australia
+    families: [engineering-it, data, product-project, design]
+    places: [au, nz]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: ANZ tech employers }, note: "companies' own feeds" }
+      - { kind: api, id: adzuna, note: "Adzuna Australia/NZ" }
+      - { kind: api, id: jooble, note: "Jooble" }
+    coverage: { score: 0.45, note: "SEEK carries most Australian jobs and has no public API; company feeds and aggregators cover part of it" }
+
+  # ------------------------------------------------------------------ healthcare
+  - id: healthcare-us
+    families: [healthcare]
+    places: [us]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: US hospital systems (Workday/Oracle), size: large }, note: "hospital systems' own career feeds" }
+      - { kind: api, id: usajobs, note: "VA hospitals and other federal clinical jobs" }
+      - { kind: api, id: adzuna, note: "aggregator for other hospitals and clinics" }
+      - { kind: api, id: jooble, note: "second aggregator" }
+    coverage: { score: 0.5, note: "only a starter set of hospital systems is verified; most hospitals are reached through aggregators; foreign-trained nurses need NCLEX + a state licence and a visa sponsor (EB-3), which postings rarely state" }
+
+  - id: healthcare-uk
+    families: [healthcare, care-social]
+    places: [gb]
+    modes: [any]
+    sources:
+      - { kind: api, id: nhs-jobs, note: "NHS Jobs: nearly every NHS post in England and Wales" }
+      - { kind: api, id: reed, note: "private providers and care homes" }
+      - { kind: api, id: adzuna, note: "aggregator" }
+      - { kind: api, id: jooble, note: "second aggregator" }
+    coverage: { score: 0.85, note: "NHS Jobs covers the NHS in England and Wales; Scotland (NHS Scotland) is not covered yet" }
+
+  - id: healthcare-india
+    families: [healthcare]
+    places: [in]
+    modes: [any]
+    sources:
+      - { kind: api, id: adzuna, note: "Adzuna India" }
+      - { kind: api, id: jooble, note: "Jooble India" }
+    coverage: { score: 0.2, note: "Indian hospital chains hire through their own portals, Naukri and walk-ins; no public feed covers them: add hospitals' careers pages to your watchlist" }
+
+  - id: healthcare-default
+    families: [healthcare]
+    places: [any]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: healthcare employers } , note: "healthcare employers' own feeds" }
+      - { kind: api, id: adzuna, note: "aggregator" }
+      - { kind: api, id: jooble, note: "aggregator" }
+    coverage: { score: 0.35, note: "healthcare outside the US and UK is mostly on national boards Crewdeck can't read yet; add employers' careers pages" }
+
+  # ------------------------------------------------------------------ education
+  - id: education-uk
+    families: [education]
+    places: [gb]
+    modes: [any]
+    sources:
+      - { kind: api, id: teaching-vacancies, note: "DfE Teaching Vacancies: state schools in England" }
+      - { kind: api, id: reed, note: "independent schools and agencies" }
+      - { kind: api, id: adzuna, note: "aggregator" }
+      - { kind: api, id: jooble, note: "second aggregator" }
+      - { planned: myjobscotland }
+    coverage: { score: 0.8, note: "England's state schools are fully covered; Scotland and Wales are partial" }
+
+  - id: education-default
+    families: [education]
+    places: [any]
+    modes: [any]
+    sources:
+      - { kind: api, id: adzuna, note: "aggregator" }
+      - { kind: api, id: jooble, note: "aggregator" }
+      - { kind: company-feeds, set: { label: education employers }, note: "universities and ed-tech on public feeds" }
+    coverage: { score: 0.35, note: "schools mostly post on regional/state portals Crewdeck can't read yet; add your district or school careers pages" }
+
+  # ------------------------------------------------------------------ Germany / France (any field, trades first)
+  - id: germany-default
+    families: [any]
+    places: [de]
+    modes: [any]
+    sources:
+      - { kind: api, id: ba-jobsuche, note: "Bundesagentur für Arbeit: the largest German job database, every field" }
+      - { kind: company-feeds, set: { label: German/DACH employers }, note: "employers' own feeds" }
+      - { kind: api, id: arbeitnow, note: "German board" }
+      - { kind: api, id: adzuna, note: "Adzuna Germany" }
+      - { kind: api, id: jooble, note: "Jooble Germany" }
+    coverage: { score: 0.75, note: "the BA database covers most German vacancies, incl. trades and office roles" }
+
+  - id: france-default
+    families: [any]
+    places: [fr]
+    modes: [any]
+    sources:
+      - { planned: france-travail }
+      - { kind: company-feeds, set: { label: French employers }, note: "employers' own feeds" }
+      - { kind: api, id: adzuna, note: "Adzuna France" }
+      - { kind: api, id: jooble, note: "Jooble France" }
+    coverage: { score: 0.4, note: "France Travail (the main source, esp. for trades) isn't in Crewdeck yet; aggregators cover part of it" }
+
+  # ------------------------------------------------------------------ government
+  - id: government-us
+    families: [public-sector]
+    places: [us]
+    modes: [any]
+    sources:
+      - { kind: api, id: usajobs, note: "every US federal vacancy" }
+      - { kind: api, id: adzuna, note: "state and city jobs via aggregator" }
+      - { kind: api, id: jooble, note: "second aggregator" }
+    coverage: { score: 0.75, note: "federal jobs fully covered; state and local governments only partly (NEOGOV sites can be added as careers pages)" }
+
+  # ------------------------------------------------------------------ frontline (warehouse, retail, hospitality, trades)
+  - id: frontline-us
+    families: [logistics-transport, retail, hospitality-food, manufacturing-production, trades-construction]
+    places: [us]
+    modes: [any]
+    sources:
+      - { kind: api, id: adzuna, note: "aggregator: most frontline postings" }
+      - { kind: api, id: jooble, note: "second aggregator" }
+      - { kind: api, id: usajobs, note: "federal warehouse, driver and trades (WG) jobs" }
+      - { kind: company-feeds, set: { label: logistics and frontline employers }, note: "the few frontline employers on public feeds" }
+    coverage: { score: 0.35, note: "the biggest frontline employers (Amazon, Walmart, UPS, FedEx, Target) hire on their own sites, which aren't public feeds: add them to your watchlist; aggregators carry the rest" }
+
+  - id: frontline-default
+    families: [logistics-transport, retail, hospitality-food, manufacturing-production, trades-construction]
+    places: [any]
+    modes: [any]
+    sources:
+      - { kind: api, id: adzuna, note: "aggregator" }
+      - { kind: api, id: jooble, note: "aggregator" }
+    coverage: { score: 0.3, note: "frontline jobs are mostly on national boards and employers' own sites; add local employers to your watchlist" }
+
+  # ------------------------------------------------------------------ writing / translation / media
+  - id: creative-remote
+    families: [creative-media]
+    places: [any]
+    modes: [remote]
+    sources:
+      - { kind: api, id: himalayas, note: "remote writing, content and localisation roles" }
+      - { kind: api, id: remotive, note: "remote board" }
+      - { kind: api, id: arbeitnow, note: "EU board, incl. localisation roles" }
+      - { kind: company-feeds, set: { label: media and localisation employers, prefer_remote: true }, note: "employers' own feeds" }
+      - { kind: api, id: jooble, note: "aggregator, remote filter" }
+      - { planned: proz }
+    coverage: { score: 0.2, note: "freelance translation work comes mostly through agencies' vendor portals and ProZ (sign-in only), not job feeds: add agencies to your watchlist and import LinkedIn searches; employed in-house roles are covered" }
+
+  # ------------------------------------------------------------------ UK / US / AU / India general fallbacks
+  - id: uk-default
+    families: [any]
+    places: [gb]
+    modes: [any]
+    sources:
+      - { kind: api, id: reed, note: "UK general board" }
+      - { kind: company-feeds, set: { label: UK employers }, note: "employers' own feeds" }
+      - { kind: api, id: adzuna, note: "Adzuna UK" }
+      - { kind: api, id: jooble, note: "Jooble UK" }
+    coverage: { score: 0.6, note: "Reed plus aggregators cover most UK private-sector roles" }
+
+  - id: us-default
+    families: [any]
+    places: [us]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: US employers }, note: "employers' own feeds" }
+      - { kind: api, id: usajobs, note: "federal jobs" }
+      - { kind: api, id: adzuna, note: "Adzuna US" }
+      - { kind: api, id: jooble, note: "Jooble US" }
+    coverage: { score: 0.55, note: "company feeds cover tech-adjacent employers well; other fields lean on aggregators" }
+
+  - id: australia-default
+    families: [any]
+    places: [au, nz]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: ANZ employers }, note: "employers' own feeds" }
+      - { kind: api, id: adzuna, note: "Adzuna Australia/NZ" }
+      - { kind: api, id: jooble, note: "Jooble" }
+      - { planned: seek }
+    coverage: { score: 0.4, note: "SEEK, the main Australian board, has no public API" }
+
+  - id: india-default
+    families: [any]
+    places: [in]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: India employers }, note: "employers' own feeds (incl. Keka, Darwinbox, Zoho Recruit)" }
+      - { kind: api, id: adzuna, note: "Adzuna India" }
+      - { kind: api, id: jooble, note: "Jooble India" }
+      - { planned: naukri }
+    coverage: { score: 0.35, note: "Naukri, India's main board, has no public API; outside tech, coverage is thin" }
+
+  - id: default
+    families: [any]
+    places: [any]
+    modes: [any]
+    sources:
+      - { kind: company-feeds, set: { label: employers }, note: "employers' own feeds" }
+      - { kind: api, id: adzuna, note: "aggregator, where available" }
+      - { kind: api, id: jooble, note: "aggregator" }
+    coverage: { score: 0.3, note: "no curated plan for this field and place yet: generic aggregators only; add employers' careers pages to your watchlist" }

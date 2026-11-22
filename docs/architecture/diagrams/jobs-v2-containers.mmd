@@ -1,0 +1,24 @@
+flowchart TB
+  subgraph Claude desktop
+    anychat[Any chat + /crewdeck panel]
+    pane[That chat's browser pane]
+  end
+  subgraph Local machine
+    server[Crewdeck server]
+    worker[Background worker: headless claude -p, sandboxed]
+    fetch[Fetch engine: adapters]
+    db[(jobs.db)]
+    vault[(Vault notes)]
+    registry[(Source registry + company directory + occupations)]
+  end
+  ext1[Company job feeds]
+  ext2[Official APIs]
+  anychat --> server
+  server --> worker
+  server --> fetch
+  fetch --> ext1 & ext2
+  fetch --> db
+  worker --> server
+  worker --> vault
+  anychat --> pane
+  server --- registry
