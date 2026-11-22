@@ -182,7 +182,7 @@ export function overlayChanges(note: 'search', data: unknown, at: (string | numb
 
 /**
  * v1 → v0.4 (ADR-0007): move `roles.titles` into `roles.targets`, one target per occupation family (titles in no family
- * share one target), each with its titles and up to two synonym wordings per title. Additive and comment-preserving:
+ * share one target), each with the person's own titles (synonyms are matching's job, not the note's). Additive and comment-preserving:
  * existing targets stay first and untouched, `titles` is emptied in place (its comment kept), and a dated Changes line
  * records the old list. Idempotent: nothing to do once `roles.titles` is empty. Never writes a note with errors.
  */
@@ -201,7 +201,9 @@ export function migrateTitles(file: string, today: string): { changed: boolean; 
     if (have.has(t.toLowerCase())) continue;
     const fam = titleMatcher(normalise.search({ roles: { targets: [{ name: t, titles: [t] }] }, languages: raw.languages ?? [] }), tw).targets[0]?.occupations[0] ?? '';
     const list = groups.get(fam) ?? [];
-    for (const x of [t, ...expandTitle(t, tw).slice(0, 2)]) if (!list.some((y) => y.toLowerCase() === x.toLowerCase()) && !have.has(x.toLowerCase())) list.push(x);
+    // The person's own titles only: matching already treats synonyms (developer for engineer) as a fit, and generated
+    // wordings ("founding programmer") became nonsense portal searches.
+    for (const x of [t]) if (!list.some((y) => y.toLowerCase() === x.toLowerCase()) && !have.has(x.toLowerCase())) list.push(x);
     groups.set(fam, list);
   }
   const added = [...groups.values()].filter((l) => l.length).map((l) => ({ name: l[0].charAt(0).toUpperCase() + l[0].slice(1), titles: l }));
@@ -213,7 +215,7 @@ export function migrateTitles(file: string, today: string): { changed: boolean; 
   }
   setInDoc(n.doc, ['roles', 'titles'], []);
   if (validate('search', n.doc.toJS()).some((i) => i.level === 'error')) return { changed: false, targets: [] };
-  const line = `${today}: roles.titles → roles.targets (automatic update to v0.4 kinds of job, with synonyms): was ${titles.join(', ')}; now ${added.map((t) => `${t.name} (${t.titles.join(', ')})`).join('; ') || 'already in your targets'}.`;
+  const line = `${today}: roles.titles → roles.targets (automatic update to v0.4 kinds of job): was ${titles.join(', ')}; now ${added.map((t) => `${t.name} (${t.titles.join(', ')})`).join('; ') || 'already in your targets'}.`;
   writeAtomic(file, renderNote(n.doc, addChangeLine(n.body, line)));
   return { changed: true, targets: added, line };
 }

@@ -14,7 +14,7 @@ import { jobs, tempSetup } from './helpers.ts';
 const front = (file: string) => parse(splitNote(readFileSync(file, 'utf8')).front!);
 const rules = (data: unknown) => compileRules({ search: { data: normalise.search(data) } as any, memory: { data: { items: [] } } as any });
 
-test('migrateTitles: one target per occupation family, synonyms added, comments kept, a dated Changes line, idempotent', () => {
+test('migrateTitles: one target per occupation family, only the own titles of the person, comments kept, a dated Changes line, idempotent', () => {
   const s = tempSetup('berlin-analyst');
   const file = join(s.vault, 'jobs', 'search.md');
   const before = front(file);
@@ -27,11 +27,11 @@ test('migrateTitles: one target per occupation family, synonyms added, comments 
   assert.deepEqual(after.roles.targets.map((t: any) => t.name), ['Data analyst', 'Analytics engineer']);
   assert.deepEqual(after.roles.targets[0].titles.slice(0, 1), ['data analyst']);
   assert.ok(after.roles.targets[0].titles.includes('Datenanalyst') && after.roles.targets[0].titles.includes('BI analyst'));
-  assert.ok(after.roles.targets[1].titles.includes('analytics developer'), 'with a synonym wording');
+  assert.ok(!after.roles.targets.some((t: any) => t.titles.includes('analytics developer')), 'no generated synonym wordings (matching handles synonyms)');
   assert.deepEqual(validate('search', after).filter((i) => i.level === 'error'), []);
   const text = readFileSync(file, 'utf8');
   assert.match(text, /# cities \(commute area is a judge note\)/, 'comments kept');
-  assert.match(text, /\n- 2026-11-20: roles\.titles → roles\.targets \(automatic update to v0\.4 kinds of job, with synonyms\): was data analyst, analytics engineer, Datenanalyst, BI analyst; now Data analyst \(/);
+  assert.match(text, /\n- 2026-11-20: roles\.titles → roles\.targets \(automatic update to v0\.4 kinds of job\): was data analyst, analytics engineer, Datenanalyst, BI analyst; now Data analyst \(/);
   // Idempotent: nothing to do the second time, the file byte for byte the same.
   assert.equal(migrateTitles(file, '2026-11-21').changed, false);
   assert.equal(readFileSync(file, 'utf8'), text);
