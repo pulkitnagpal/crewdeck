@@ -126,10 +126,12 @@ test('order: newest; best through search/hybrid.ts\'s scorer when there is one; 
   // Other occupations still come last, whatever a scorer says.
   const loud = (_c: unknown, got: string[]) => new Map(got.map((g) => [g, g === id.D ? 100 : 1]));
   assert.equal(keys(await exploreRoles(ctx, { others: true }, { scorer: loud })).at(-1), 'D');
-  // A scorer that throws or the module missing: the same order as with none. (hybrid.ts may not exist yet: that is the path taken.)
+  // A scorer that throws, or none (null): the same order as Find's own rank.
   const boom = () => { throw new Error('no index'); };
   assert.deepEqual(keys(await exploreRoles(ctx, {}, { scorer: boom })), keys(fallback));
-  assert.deepEqual(keys(await exploreRoles(ctx, {})), keys(fallback), 'with no scorer module (search/hybrid.ts) the fallback order is taken');
+  assert.deepEqual(keys(await exploreRoles(ctx, {}, { scorer: null })), keys(fallback), 'with no scorer the fallback order is taken');
+  // By default the real hybrid scorer (search/hybrid.ts) is loaded and decides the order: every role still listed once.
+  assert.deepEqual(keys(await exploreRoles(ctx, {})).sort(), keys(fallback).sort());
 });
 
 test('paging: offset and limit; the total is the whole match', async () => {
