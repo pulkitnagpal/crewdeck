@@ -356,6 +356,26 @@ the next-best sources and widens the company set (bounded: +2 sources, +200 comp
 Evals: a fixture set of ~400 labelled postings across the 8 personas (eligible/relevant) with target precision/recall
 for triage+judge (≥ 0.85 recall on eligible-relevant at triage; ≥ 0.75 precision at judge).
 
+#### 8.7.1 Hybrid ranking (local, zero tokens; `src/jobs/search/`)
+
+Which ~40 of the ~800 rule-passing roles Claude judges is decided by plain code. `pipeline/rank.ts` keeps its cheap score
+(title fit, seniority, skills in the text, freshness, source, pay) and fuses it by **Reciprocal Rank Fusion (k = 60, equal
+weights, ties share their average rank)** with up to two more rankings: **BM25** (SQLite FTS5 table `roles_fts(title,
+company, description)`, kept by triggers, additive; the query is the profile's terms: target titles, their synonyms,
+skills, ≤ 40, escaped as FTS5 phrases) and **embedding similarity** (table `role_vectors(role_id, model, vec)`; the
+profile vector comes from career.md's summary facts + targets + skills; cosine in memory). A signal that is missing is
+skipped, never guessed: no FTS5 → no BM25; no installed model, no profile vector or fewer than 80% of the roles embedded
+→ no embedding. Fused = Σ 1/(60 + rank) scaled to 0..100, plus the learned adjustment (§P5, ±15). Rules, eligibility and
+the "other occupations are last and never judged" floor (ADR-0003) are untouched, so hybrid ranking only reorders what the
+rules already let through. `scoreRoles(ctx, ids, { q? })` is the synchronous entry the Explore page's "Best match" sort
+uses. Switch: on by default when the index exists; `crewdeck jobs search hybrid off` or `CREWDECK_HYBRID_RANK=off`.
+
+The embedding model is optional and never downloaded by itself: `crewdeck jobs search model install` (a person at a
+terminal; prints the source, files, sizes and asks y/N) fetches bge-small-en-v1.5 (int8 ONNX, ~34 MB, pinned to one
+revision and to sha256) into `<jobs.home>/models/` and installs `onnxruntime-web` (wasm, pinned, integrity-checked, npm
+scripts off) beside it, so nothing is added to the release tarball's `npm ci`. New roles are embedded in the sources run
+after the prefilter (≤ 300 per run); `crewdeck jobs search reindex` rebuilds the index and fills the rest.
+
 ## 9. Scalability and performance
 
 Per machine, one user. Hot spots: Workday (no ETags, 20 per page, detail per job) → weekly or watchlist-only;

@@ -298,7 +298,7 @@ export type SourcesState = {
   linkedin_pause?: { until: string; level: number; reason?: string };
   /** ADR-0008: the signed-in portals scanned this run (or why none was). */
   portals?: import('./portals/scan.ts').PortalsRun | { ran: false; why: string };
-  prefilter?: { kept: number; dropped: number }; details?: Partial<DetailsResult> & { tried: number; found: number; closed: number; errors: number };
+  prefilter?: { kept: number; dropped: number }; embeddings?: import('./search/run.ts').EmbedRun; details?: Partial<DetailsResult> & { tried: number; found: number; closed: number; errors: number };
   new: number; error?: string;
   /** Per source key: the last fetch, and up to five before it (newest first). Carried over from run to run. */
   by_key?: Record<string, KeyState & { history?: KeyState[] }>;
@@ -324,6 +324,8 @@ export type SourceOptions = SpawnOptions & {
   portals?: import('./portals/scan.ts').ScanOptions;
   /** ADR-0008: `jobs.portals_mode`. Only `profile` scans here; in `pane` mode Claude scans during Find (default: profile when `portals` is given). */
   portalsMode?: 'pane' | 'profile';
+  /** Hybrid ranking: embed the roles that passed the rules (only with the local model installed; tests pass a fake Embedder). */
+  embedder?: import('./search/embed.ts').Embedder; embedCap?: number;
 };
 
 export const LINKEDIN_PORTAL_ON = 'skipped: the LinkedIn portal is connected and switched on, so LinkedIn is read signed in (Sources → Portals), not by the guest search';
@@ -469,6 +471,8 @@ export async function runSources(ctx: Ctx, o: SourceOptions = {}): Promise<Sourc
   // Any text read (even one too short to count as full) can decide a rule: the prefilter runs again.
   const p2 = state.details.tried ? runPrefilter(ctx) : { kept: p1.kept, dropped: 0 };
   state.prefilter = { kept: p2.kept, dropped: p1.dropped + p2.dropped };
+  // Hybrid ranking (src/jobs/search): vectors for the roles that passed, when the local model is installed. Never fails the run.
+  state.embeddings = await (await import('./search/run.ts')).embedNewRoles(ctx, { embedder: o.embedder, cap: o.embedCap });
   state.finished = nowIso(ctx);
   state.by_key = keyStates(ctx, state, plan, prev, (state as any)._liRoles ?? [], liKey);
   delete (state as any)._liRoles;

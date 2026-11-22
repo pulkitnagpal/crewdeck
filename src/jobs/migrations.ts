@@ -2,6 +2,7 @@
 // period, no social columns nobody uses. Each step runs in BEGIN IMMEDIATE and re-checks the version inside the
 // transaction, so two processes opening a fresh database never both apply it.
 import type { DatabaseSync } from 'node:sqlite';
+import { ensureFts } from './search/fts.ts';
 
 const V1 = `
 create table companies (
@@ -125,7 +126,13 @@ create table if not exists learned (
   kind text not null check (kind in ('company','word','source')), key text not null, label text not null,
   delta integer not null, counts_json text not null default '{}', updated text not null, primary key (kind, key));
 `;
-export const ADDITIVE: { name: string; sql: string }[] = [{ name: 'proposals', sql: PROPOSALS }, { name: 'learned', sql: LEARNED }];
+// role_vectors (hybrid ranking, src/jobs/search/embed.ts): one embedding per role and model (little-endian float32 blob),
+// plus the profile's and a query's own vectors under the keys 'profile:<hash>' and 'q:<hash>'. Rebuildable; never read as truth.
+const ROLE_VECTORS = `
+create table if not exists role_vectors (
+  role_id text not null, model text not null, vec blob not null, primary key (role_id, model));
+`;
+export const ADDITIVE: { name: string; sql: string }[] = [{ name: 'proposals', sql: PROPOSALS }, { name: 'learned', sql: LEARNED }, { name: 'role_vectors', sql: ROLE_VECTORS }];
 
 // Additive columns (no user_version step, like ADDITIVE): nullable, no default, added when missing on every open, so a
 // parallel phase's numbered step never collides with them. Each is checked inside BEGIN IMMEDIATE before the ALTER.
@@ -174,5 +181,6 @@ export function migrate(db: DatabaseSync): number {
   }
   for (const step of ADDITIVE) db.exec(step.sql);
   addColumns(db);
+  ensureFts(db); // roles_fts (src/jobs/search/fts.ts): created when missing, a no-op without FTS5
   return version(db);
 }

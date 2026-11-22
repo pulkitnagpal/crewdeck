@@ -18,6 +18,7 @@ import type { NetOptions } from '../net/netguard.ts';
 import { type Funnel, findFunnel } from '../funnel.ts';
 import { trackerCheck, trackerRules } from './tracker.ts';
 import { learnedDelta, refreshLearned } from './learn.ts';
+import { fuse, hybridEnabled } from '../search/hybrid.ts';
 
 export type Ranked = { id: string; company: string; company_id: number; title: string; url: string; location: string; pay: string; source: string; rank: number; description: string; posted_at: string | null; first_seen: string;
   /** Title/occupation fit 0..1; below OTHER_OCCUPATION_FIT another occupation (ranked last, never judged). */ fit: number;
@@ -88,7 +89,12 @@ export function rankRoles(ctx: Ctx): Ranked[] {
   const other = (r: { fit: number }) => (r.fit < OTHER_OCCUPATION_FIT ? 1 : 0);
   // P5: the person's own actions nudge the order (never the rules): applied, not interested, set aside, ignored picks.
   const learned = refreshLearned(ctx);
-  return keep.map((r) => { const d = learnedDelta(r, learned); return { ...r, rank: rankScore(r, notes, at, priority, compiled) + d, learned: d, fit: titleFitOf(compiled, r).fit }; })
+  const base = keep.map((r) => ({ r, score: rankScore(r, notes, at, priority, compiled), fit: titleFitOf(compiled, r).fit }));
+  // Hybrid (src/jobs/search/hybrid.ts, local, no tokens): the cheap score above, BM25 over the profile's terms and, when the
+  // model is installed, embedding similarity, fused by rank (RRF) with the learned nudge added. Off: the cheap score alone.
+  const hybrid = base.length && hybridEnabled(ctx)
+    ? fuse(ctx, keep, { notes, title: new Map(base.map((b) => [b.r.id, b.score])), fit: new Map(base.map((b) => [b.r.id, b.fit])), learned }).by : null;
+  return base.map(({ r, score, fit }) => { const f = hybrid?.get(r.id); const d = f ? f.learned : learnedDelta(r, learned); return { ...r, rank: f ? f.score : score + d, learned: d, fit }; })
     .sort((a, b) => other(a) - other(b) || b.rank - a.rank || String(b.posted_at ?? b.first_seen).localeCompare(String(a.posted_at ?? a.first_seen)) || a.id.localeCompare(b.id));
 }
 

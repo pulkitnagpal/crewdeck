@@ -166,6 +166,7 @@ const cmds: Record<string, (args: string[]) => unknown> = {
   }),
 
   sources: async (args) => (await import('./sources-cmd.ts')).sourcesCmd(args),
+  search: async (args) => (await import('./search/cli.ts')).searchCmd(args),
   portals: async (args) => (await import('./portals/cmd.ts')).portalsCmd(args),
 
   // A dry run of the rules over the postings already fetched (design §24.6): read-only.
@@ -479,6 +480,7 @@ tracker and pipeline (text from postings and the user's words only through files
   portals plan|script <id>|ingest <id> --file <f>|mark <id> connected|signed-out   pane mode: Claude scans them in its browser pane
   preview [--search-file f] [--days N] [--source key] [--json]   what your rules (or a change to them) catch, read-only
   providers install | status | verify     the pinned job-board providers (download, check, re-hash)
+  search "<query>" [--limit N] [--json] | reindex | model status|install|remove | hybrid on|off   local ranking: keywords + (optional) meaning, no tokens
   candidates [--limit N]                  unjudged roles, best first (JSON)
   candidates --budget N [--batch 10] [--need N] [--start]   the next batch for a Find within a budget (≤ 40)
   judge --results-file f                  store verdicts [{ role, eligible: yes|no|unclear, score, evidence, reason? }]
