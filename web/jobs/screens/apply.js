@@ -1,7 +1,7 @@
 // The apply panel (design §2.3a): Apply, then what Claude is doing in its own tab of the browser pane, the questions it
 // needs, the tailored resume, and the user's turn to submit. Claude never clicks Submit.
 import { useState } from 'preact/hooks';
-import { html, noop, cls, clock, safeHref, plural, CopyButton, More } from '../lib.js';
+import { html, noop, cls, clock, safeHref, plural, CopyButton, Spark, More } from '../lib.js';
 
 const STEPS = ['Claude opens the form in a new tab', 'Claude fills it from your answers', 'You review it and click Submit', 'You mark it applied'];
 const AT = { waiting: 0, filling: 1, needs_you: 1, your_turn: 2, confirmation: 3, stopped: 1, applied: 4 };
@@ -104,7 +104,7 @@ export function ApplyPanel({ d, panel, reveal = false, workspace = '', openSessi
         ${p.reason ? html`<span class="small">Claude: ${p.reason}</span>` : null}
         <span class="small">Claude never clicks Submit.</span><div class="row-flex">${openForm}</div></div>
         ${submitted(true)}
-        <button type="button" class="btn quiet small" onClick=${() => onApply(d.id)}>Ask Claude to fill it again</button>`;
+        <button type="button" class="btn quiet small" onClick=${() => onApply(d.id)}><${Spark} size=${14} />Ask Claude to fill it again</button>`;
       break;
     case 'confirmation':
       body = html`<div class="state ok" role="status"><span class="title">Claude sees the confirmation page</span>
@@ -114,22 +114,22 @@ export function ApplyPanel({ d, panel, reveal = false, workspace = '', openSessi
     case 'stopped':
       body = html`<div class="state bad" role="status"><span class="title">Claude stopped</span><span class="small">${p.reason}</span>
         <${More} summary="What to do"><p>Sign in, solve a check or wait for a limit yourself in the form tab, then try again. Claude doesn't retry on its own.</p></${More}></div>
-        <div class="row-flex"><button type="button" class="btn primary" onClick=${() => onApply(d.id)}>Try again</button>${submitted(false)}</div>`;
+        <div class="row-flex"><button type="button" class="btn primary" onClick=${() => onApply(d.id)}><${Spark} size=${14} />Try again</button>${submitted(false)}</div>`;
       break;
     default:
       body = html`<div class="stats">
           <div class="stat"><b>${c.total}</b><span>questions</span></div>
-          <div class="stat"><b>${c.known}</b><span>known</span></div>
+          <div class="stat"><b>${c.known}</b><span>answered</span></div>
           <div class="stat"><b>${c.drafted}</b><span>to check</span></div>
-          <div class=${cls('stat', c.first && 'warn')}><b>${c.first}</b><span>new</span></div>
+          <div class=${cls('stat', c.first && 'warn')}><b>${c.first}</b><span>needs you</span></div>
         </div>
         ${p.method === 'account_needed' ? html`<div class="state warn" role="note"><span class="title">This site needs an account</span>
           <span class="small">Create it and sign in in the form tab, then click Continue.</span>${url ? html`<div class="row-flex">${openForm}</div>` : null}</div>` : null}
         ${prepare?.request ? html`<div class="state info" role="status"><span class="title"><span class="dot busy"></span>${prepare.request.status === 'picked' ? 'Claude is preparing this role' : 'Waiting for the Jobs chat to prepare it'}</span>
             <span class="small">${prepare.request.last || 'About a minute: Claude reads the form, drafts your answers and tailors your resume.'}</span></div>`
-          : prepare?.needed ? html`<button type="button" class="btn primary big" onClick=${() => onPrepare(d.id)}>Prepare (about 1 min)</button>
+          : prepare?.needed ? html`<button type="button" class="btn primary big" onClick=${() => onPrepare(d.id)}><${Spark} size=${16} />Prepare (about 1 min)</button>
             <span class="hint">Claude reads the application form, drafts your answers and tailors your resume in a Jobs chat. Nothing is sent.</span>`
-          : html`<button type="button" class="btn primary big" disabled=${!d.approvable} onClick=${() => onApply(d.id)}>${p.method === 'account_needed' ? 'Continue' : 'Apply'}</button>
+          : html`<button type="button" class="btn primary big" disabled=${!d.approvable} onClick=${() => onApply(d.id)}><${Spark} size=${16} />${p.method === 'account_needed' ? 'Continue' : 'Apply'}</button>
         <span class="hint">${d.approvable ? 'A Jobs chat opens in front of you and fills the real form there. You click Submit.'
           : c.total ? `Answer the ${plural(c.first, 'new question')} first.` : 'Claude is still reading the application form.'}</span>`}`;
   }

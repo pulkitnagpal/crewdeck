@@ -72,6 +72,11 @@ const SCREENS: { name: string; hash: string; ready: string; then?: (p: Page) => 
   { name: 'today-role', hash: 'today', ready: '.qitem', then: async (p) => { await p.locator('.qitem', { hasText: 'Example Studio' }).click(); await p.locator('.side').waitFor(); } },
   { name: 'today-not-interested', hash: 'today', ready: '.qitem', then: async (p) => { await p.locator('.qitem', { hasText: 'Example Studio' }).click(); await p.getByRole('button', { name: 'Not interested' }).click(); await p.getByText('Not interested in Example Studio?').waitFor(); } },
   { name: 'applications', hash: 'applications', ready: 'table' },
+  { name: 'explore', hash: 'explore', ready: '.xrow' },
+  { name: 'explore-saved', hash: 'explore', ready: '.xrow', then: async (p) => { await p.locator('.xrow .iconbtn[aria-pressed="false"]').first().click(); await p.locator('.xsaved button.primary').waitFor(); await p.locator('.fchip', { hasText: 'Saved' }).click(); } },
+  { name: 'sources', hash: 'sources', ready: '.fgroup', then: async (p) => { for (const g of await p.locator('.fgroup > summary').all()) await g.click(); await p.getByRole('button', { name: 'Browse catalog' }).click(); await p.locator('.clist').first().waitFor(); } },
+  { name: 'find-sheet', hash: 'today', ready: '.find', then: async (p) => { await p.locator('.top .find').click(); await p.getByRole('dialog').waitFor(); } },
+  { name: 'more-menu', hash: 'today', ready: '.morebtn', then: async (p) => { await p.locator('.morebtn').click(); await p.locator('.menu').waitFor(); } },
   ...['profile', 'career', 'search', 'memory', 'answers'].map((tab) => ({ name: `knowledge-${tab}`, hash: 'knowledge', ready: '.kb, .tabs', then: async (p: Page) => { await p.getByRole('tab', { name: new RegExp(`^${tab}`, 'i') }).click(); await p.waitForTimeout(300); } })),
   { name: 'settings', hash: 'settings', ready: '.switch' },
   { name: 'settings-confirm', hash: 'settings', ready: '.switch', then: async (p) => { await p.locator('.switch').first().click(); await p.getByRole('alertdialog').waitFor(); } },
@@ -95,12 +100,15 @@ test('the keyboard reaches every screen\'s controls: the top bar\'s tabs, Find, 
   await page.locator('.qitem', { hasText: 'Example Studio' }).click();
   await page.locator('.side').waitFor();
   const walk = await tabWalk(page);
-  for (const name of ['Today', 'Sources', 'Applications', 'What Claude knows', 'Preferences', 'Settings', 'Paste a job link', 'Find 5 jobs']) assert.ok(walk.some((w) => w.startsWith(name)), `Tab reaches ${name}: ${walk.join(' | ')}`);
+  for (const name of ['For you', 'Explore', 'Applied', 'Sources', 'More', 'Paste a job link', 'Find jobs']) assert.ok(walk.some((w) => w.startsWith(name)), `Tab reaches ${name}: ${walk.join(' | ')}`);
   assert.ok(walk.some((w) => /Example Studio/.test(w)), 'the queue');
   assert.ok(walk.some((w) => /^Yes$/.test(w)), 'the first-time question\'s options');
-  // Enter on a top-bar tab switches screens.
+  // Enter on More opens its menu (What Claude knows, Preferences, Settings stay reachable); Enter on Settings switches screens.
   await page.mouse.click(1, 1);
-  for (let i = 0; i < 20 && (await page.evaluate(() => document.activeElement?.textContent)) !== 'Settings'; i++) await page.keyboard.press('Tab');
+  for (let i = 0; i < 20 && !(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '')).startsWith('More'); i++) await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await page.locator('.menu').waitFor();
+  for (let i = 0; i < 5 && (await page.evaluate(() => document.activeElement?.textContent)) !== 'Settings'; i++) await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await page.locator('.switch').first().waitFor();
   // A switch takes Space; the confirm's buttons are next in the Tab order.

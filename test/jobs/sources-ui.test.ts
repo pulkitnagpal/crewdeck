@@ -29,30 +29,32 @@ before(async () => {
 });
 after(async () => { await browser?.close(); await s?.close(); });
 
+/** The Sources page with every feed group open (the lists of sources sit inside their groups). */
 async function open(scheme: 'light' | 'dark' = 'light', width = 1280) {
   const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: scheme });
   await page.goto(`http://localhost:${s.port}/jobs/#sources`);
+  await page.locator('.fgroup').first().waitFor({ timeout: 15_000 });
+  for (const g of await page.locator('.fgroup > summary').all()) if (await g.evaluate((e) => !(e.parentElement as HTMLDetailsElement).open)) await g.click();
   await page.locator('.srow').first().waitFor({ timeout: 15_000 });
   return page;
 }
 const order = (page: Page) => page.locator('.srow h3').allTextContents();
 const label = (page: Page) => page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent ?? '');
 
-test('keyboard only: Tab to Move up, Enter twice, Space on a switch; the page writes the same note bytes as the CLI', { skip: noBrowser, timeout: 90_000 }, async () => {
+test('keyboard only: Tab to Move up, Enter, Space on a switch; the page writes the same note bytes as the CLI', { skip: noBrowser, timeout: 90_000 }, async () => {
   const page = await open();
-  assert.deepEqual(await order(page), ['Arbeitnow', 'Berlin Startup Jobs', 'Example GmbH']);
-  let tabs = 0;
-  while ((await label(page)) !== 'Move Example GmbH up' && tabs++ < 120) await page.keyboard.press('Tab');
-  assert.equal(await label(page), 'Move Example GmbH up', 'reachable by Tab');
-  await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.querySelectorAll('.srow h3')[1]?.textContent === 'Example GmbH');
-  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Move Example GmbH up');
-  await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.querySelector('.srow h3')?.textContent === 'Example GmbH');
-  // At the top, Move up is disabled: focus moved to Move down, still on the same row.
-  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Move Example GmbH down');
+  // The company site is in Company career sites, the two boards in Job boards (each group lists its own, in fetch order).
   assert.deepEqual(await order(page), ['Example GmbH', 'Arbeitnow', 'Berlin Startup Jobs']);
-  assert.match(await page.locator('.srcs > .sr[role="status"]').textContent() ?? '', /Example GmbH moved to position 1 of 3/);
+  assert.deepEqual(await page.locator('.fgroup .gcount').allTextContents(), ['1', '2', '6 on · 4 need a free key']);
+  let tabs = 0;
+  while ((await label(page)) !== 'Move Berlin Startup Jobs up' && tabs++ < 120) await page.keyboard.press('Tab');
+  assert.equal(await label(page), 'Move Berlin Startup Jobs up', 'reachable by Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelectorAll('.srow h3')[1]?.textContent === 'Berlin Startup Jobs');
+  // At the top of its group, Move up is disabled: focus moved to Move down, still on the same row.
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Move Berlin Startup Jobs down');
+  assert.deepEqual(await order(page), ['Example GmbH', 'Berlin Startup Jobs', 'Arbeitnow']);
+  assert.match(await page.locator('.srcs .sr[role="status"]').first().textContent() ?? '', /Berlin Startup Jobs moved to position 1 of 3/);
   // The switch of the next row: Tab until it, then Space.
   tabs = 0;
   while ((await label(page)) !== 'Fetch Arbeitnow' && tabs++ < 20) await page.keyboard.press('Tab');
@@ -61,7 +63,7 @@ test('keyboard only: Tab to Move up, Enter twice, Space on a switch; the page wr
   // The same changes through the CLI on a twin of the same person.
   const twin = world('berlin-analyst');
   twin.ctx.db.close();
-  for (const args of [['move', 'example-gmbh', 'up'], ['move', 'example-gmbh', 'up'], ['disable', 'arbeitnow']]) {
+  for (const args of [['move', 'berlin-startup-jobs', 'up'], ['disable', 'arbeitnow']]) {
     const r = spawnSync(process.execPath, [join(REPO, 'src', 'cli.ts'), 'jobs', 'sources', ...args], { env: { ...process.env, CREWDECK_HOME: twin.home }, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
   }
@@ -97,7 +99,7 @@ for (const scheme of ['light', 'dark'] as const) {
     // A failed fetch, an unreadable page and an open confirm, so every state's colours are checked.
     await page.getByRole('button', { name: 'Remove Berlin Startup Jobs' }).click();
     const items = await audit(page);
-    assert.ok(items.length > 100, `${items.length} texts`);
+    assert.ok(items.length > 60, `${items.length} texts`);
     const small = items.filter((x) => x.size < 14);
     assert.deepEqual(small, [], 'nothing under 14 px');
     const low = items.filter((x) => x.ratio < 4.5);

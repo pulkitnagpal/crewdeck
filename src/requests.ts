@@ -11,7 +11,8 @@ import { HOME, type Config } from './config.ts';
 // tell (P3): what the person told Crewdeck (the Tell box, the panel, `crewdeck jobs tell`): intake turns it into a proposal.
 // prepare (P4): one pick Find didn't prepare ahead, on the person's Prepare click.
 // connect (ADR-0008, pane mode): sign in to a portal in Claude's browser pane, in a Jobs chat (payload { portal, signup?, test? }).
-export const JOB_KINDS = ['setup', 'find', 'link', 'apply', 'improve', 'source', 'tell', 'prepare', 'connect', 'quick_apply'] as const;
+// judge (Explore's "Judge these N"): judge exactly the roles the person saved (payload { roles: [ids] }), then pick and prepare.
+export const JOB_KINDS = ['setup', 'find', 'link', 'apply', 'improve', 'source', 'tell', 'prepare', 'connect', 'quick_apply', 'judge'] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 export type Progress = { at: string; text: string };
 

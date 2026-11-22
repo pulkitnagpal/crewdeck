@@ -1,6 +1,6 @@
 ---
 name: jobs-workspace
-description: Work the requests the user makes on Crewdeck's Jobs page (setup, find, link, apply, prepare, improve, source, tell, connect). Use when a message starts "[Crewdeck → lane jobs]" or "Crewdeck:" and names a Jobs request id, and whenever a session in the jobs workspace is asked to add a job link, prepare a role, apply to a role, improve an answer or find an employer's jobs page.
+description: Work the requests the user makes on Crewdeck's Jobs page (setup, find, judge, link, apply, prepare, improve, source, tell, connect). Use when a message starts "[Crewdeck → lane jobs]" or "Crewdeck:" and names a Jobs request id, and whenever a session in the jobs workspace is asked to add a job link, prepare a role, apply to a role, improve an answer or find an employer's jobs page.
 ---
 
 # Jobs requests (lane `jobs`)
@@ -14,12 +14,13 @@ Read the workspace's `CLAUDE.md` first: its hard rules apply to every step here.
 names (for example `node <checkout>/src/cli.ts`).
 
 ## A Jobs chat opened for one task
-Crewdeck opens a new Jobs chat in front of the user for Find, Prepare, Apply and a portal's sign-in (Claude desktop asks
+Crewdeck opens a new Jobs chat in front of the user for Find, Judge, Prepare, Apply and a portal's sign-in (Claude desktop asks
 them to confirm the folder; they press Enter). Its first message is exactly one of:
 - `Crewdeck: run Find request <id>` → the **find** section below, for that request;
 - `Crewdeck: apply to role <role id> (request <id>)` → the **apply** section, for that request;
 - `Crewdeck: prepare role <role id> (request <id>)` → the **prepare** section;
 - `Crewdeck: quick apply (request <id>)` → the **quick_apply** section;
+- `Crewdeck: judge saved roles (request <id>)` → the **judge** section;
 - `Crewdeck: handle tell request <id>` → the request's own section, by its kind;
 - `Crewdeck: connect portal <portal id> (request <id>)` → the **connect** section.
 Do exactly that task first, starting with `crewdeck jobs request show <id>` (the plugin has handed this chat that
@@ -59,8 +60,10 @@ numbers ("Set up: 24 facts in 5 sections; searching 6 sources for 2 kinds of job
 your rules").
 
 ## find: "Find N jobs"
-Payload `{ count }` (1–20; `context.daily_picks` is the user's usual number). Run the **jobs-daily-run** skill for `count`
-picks with this request id for progress lines, then close it `done`: "3 picked: Example Co — Analyst, … (1 has questions
+Payload `{ count, portals?, budget?, prepare? }` (`count` 1–20; `context.daily_picks` is the user's usual number). The
+Find sheet adds `portals` (ids of the signed-in portals to read now), `budget` (postings to judge: 20, 40 or 80) and `prepare`
+(picks to prepare: 3, 5 or 0); a missing one means the default. Run the **jobs-daily-run** skill for `count`
+picks with this request id for progress lines, using those choices, then close it `done`: "3 picked: Example Co — Analyst, … (1 has questions
 for you)", or say how many postings were judged and why fewer passed.
 
 ## link: a job link the user pasted
@@ -273,6 +276,14 @@ offers more than what is left of the Easy Apply forms per day (`daily_quick_appl
 4. A question with no answer or a `copy` plan (today's limit): leave that role, say so in one line, go on. A sign-in
    page, a checkpoint or a CAPTCHA: stop the whole run (apply step 6).
 5. Close it `done` once: "Quick apply: 3 submitted by you, 1 skipped (a question for you), 1 left for tomorrow".
+
+## judge: "Judge these N" on Explore's saved roles
+The first message is `Crewdeck: judge saved roles (request <id>)`. Payload `{ roles }`: the ids the user saved (new or on
+the bench, at most 80); `context.roles` lists them with company, title and status, `context.daily_picks` and
+`context.prepare_ahead` the user's numbers. Run the **Judge saved roles** section of the **jobs-daily-run** skill with this
+request id for progress lines: judge exactly those roles with the light model, store the verdicts, pick, and prepare the
+first `prepare_ahead` of the picks. Roles outside the payload are never judged here. Close it `done` with one line (how many
+fit, how many were picked and prepared).
 
 ## improve: "Ask Claude" on one answer
 Payload `{ role, field_id, question, instruction }`; `context.field` has the label, kind, options and current text.

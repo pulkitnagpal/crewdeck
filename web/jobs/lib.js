@@ -42,8 +42,27 @@ const paths = {
   link: html`<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>`,
   note: html`<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>`,
   copy: html`<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>`,
+  // The two kinds of source: a feed (automatic, free) and an account (a site you sign in to).
+  feed: html`<path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1.5"/>`,
+  person: html`<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>`,
+  bookmark: html`<path d="M6 3h12v18l-6-4-6 4z"/>`,
+  close: html`<path d="M6 6l12 12M18 6L6 18"/>`,
+  dots: html`<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>`,
+  eyeoff: html`<path d="M3 3l18 18M10.6 6.2A9.6 9.6 0 0 1 12 6c5 0 8.5 4.2 9.5 6a12 12 0 0 1-2.6 3.2M6.5 7.6A12 12 0 0 0 2.5 12c1 1.8 4.5 6 9.5 6 1.6 0 3-.4 4.2-1M9.9 9.9a3 3 0 0 0 4.2 4.2"/>`,
 };
-export const Icon = ({ name, size = 16 }) => html`<svg viewBox="0 0 24 24" width=${size} height=${size} aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
+/** `fill` paints the shape in the current colour (a saved bookmark). */
+export const Icon = ({ name, size = 16, fill = false }) => html`<svg viewBox="0 0 24 24" width=${size} height=${size} aria-hidden="true" focusable="false" fill=${fill ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
+/** The mark on every action that spends Claude's tokens (Find, Apply, Prepare, Judge, Quick apply); free actions never carry it. */
+export const Spark = ({ size = 16 }) => html`<span class="spark"><${Icon} name="sparkle" size=${size} /></span>`;
+/** "21 h", "3 d" for how long ago an ISO time was (a posting's age); '' when unknown. */
+export function age(iso, now = Date.now()) {
+  const t = Date.parse(iso ?? '');
+  if (!Number.isFinite(t)) return '';
+  const h = Math.max(0, (now - t) / 3_600_000);
+  return h < 1 ? 'now' : h < 48 ? `${Math.round(h)} h` : h < 24 * 60 ? `${Math.round(h / 24)} d` : `${Math.round(h / (24 * 30))} mo`;
+}
+/** "posted 21 h ago", "posted just now". */
+export const postedText = (iso, now = Date.now()) => { const a = age(iso, now); return !a ? '' : a === 'now' ? 'posted just now' : `posted ${a} ago`; };
 
 /** A Copy button for a value (a folder, a command, an answer). */
 export function CopyButton({ text, label = 'Copy', onCopied = noop }) {

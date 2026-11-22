@@ -1,15 +1,21 @@
-// Today: the roles waiting for the user (the queue), then one role: its head, its apply panel (under the head, or beside
-// the answers in a wide window), and its application (first-time questions on top, every answer with its source).
+// For you (the hash is still #today): Claude's picks. A progress line (picked, ready, applied) and how much Claude read, the
+// picks (the queue) with a Quick apply strip, then one role: why it fits, its apply panel (under the head, or beside the
+// answers in a wide window), and its application (first-time questions on top, every answer with its source).
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { html, noop, cls, safeHref, Icon, More } from '../lib.js';
+import { html, noop, cls, safeHref, postedText, Icon, Spark, More } from '../lib.js';
 import { ApplyPanel } from './apply.js';
 import { SetupCard } from './setup.js';
 import { TellArea } from './tell.js';
+import { AddLink } from './topbar.js';
+
+/** The mock's short words for a pick's state. */
+export const chipText = (c) => ({ 'Ready to apply': 'Ready', 'Not prepared yet': 'Not prepared' }[c.text] ?? c.text);
 
 function QueueItem({ item, active, onSelect }) {
   return html`<button type="button" class="qitem" aria-current=${active ? 'true' : undefined} onClick=${() => onSelect(item.id)}>
-    <span class="co">${item.company}</span><span class="ti">${item.title}</span>
-    <span class="chips"><span class=${cls('chip', item.chip.kind)}>${item.chip.text}</span>${item.apply?.text ? html`<span class="chip kind" title="How it is applied to">${item.apply.text}</span>` : null}</span>
+    <span class="qtop"><span class="co">${item.company}</span><span class=${cls('st', item.chip.kind)}>${chipText(item.chip)}</span></span>
+    <span class="ti">${item.title}</span>
+    <span class="chips">${item.where ? html`<span class="pill">${item.where}</span>` : null}${item.apply?.text ? html`<span class="pill" title="How it is applied to">${item.apply.text}</span>` : null}</span>
   </button>`;
 }
 
@@ -89,25 +95,38 @@ function NotInterested({ d, exclude = [], onSave, onCancel, onDryRun = null }) {
   </div>`;
 }
 
+/** What Claude wrote about why a role fits, as separate points: lines, bullets or sentences. */
+export function whyPoints(text) {
+  const t = String(text ?? '').trim();
+  if (!t) return [];
+  const lines = t.split(/\n+/).map((l) => l.replace(/^\s*[-•*]\s*/, '').trim()).filter(Boolean);
+  const parts = lines.length > 1 ? lines : t.split(/;\s+|(?<=\.)\s+(?=[A-Z])/).map((x) => x.trim().replace(/[.;]$/, '')).filter(Boolean);
+  return parts.slice(0, 5);
+}
+
 function Detail({ d, asking, actions, exclude = [], panel = null }) {
   const [tab, setTab] = useState('form');
   const [skipping, setSkipping] = useState(false);
   const posting = safeHref(d.url);
   const first = d.rows.filter((r) => r.status === 'first_time');
+  const why = whyPoints(d.why);
   return html`<section class="detail" aria-labelledby="role-title">
     <div class="dhead">
-      <div>
-        <h1 id="role-title">${d.company}</h1>
-        <p class="meta">${d.title}${d.meta ? ` · ${d.meta}` : ''}${d.kind?.text ? html` <span class="chip kind" title="How it is applied to">${d.kind.text}</span>` : null}</p>
-        ${d.why ? html`<p class="why">${d.why}</p>` : null}
+      <div class="grow">
+        <p class="meta">${[d.company, d.where || d.meta, postedText(d.posted)].filter(Boolean).join(' · ')}${d.kind?.text ? html` <span class="chip kind" title="How it is applied to">${d.kind.text}</span>` : null}</p>
+        <h1 id="role-title">${d.title}</h1>
       </div>
       <div class="acts">
         ${posting ? html`<a class="btn small" href=${posting} target="_blank" rel="noopener noreferrer">View posting</a>` : null}
         ${d.status !== 'applied' ? html`<button type="button" class="btn small quiet" aria-expanded=${skipping} onClick=${() => setSkipping(!skipping)}>Not interested</button>` : null}
       </div>
     </div>
+    ${why.length ? html`<div class="fits"><h2 class="eyebrow">Why it fits</h2><ul>${why.map((w, i) => html`<li key=${i}>${w}</li>`)}</ul></div>` : null}
     ${skipping ? html`<${NotInterested} d=${d} exclude=${exclude} onDryRun=${actions.onDryRun} onCancel=${() => setSkipping(false)} onSave=${(reason, words) => { actions.onSkip(d.id, reason, words); setSkipping(false); }} />` : null}
     ${panel}
+    <details class="answers" open=${first.length > 0 || asking.length > 0 || undefined}>
+    <summary>Answers and tailored resume</summary>
+    <p class="soft small">Each answer shows where it came from. Edit any, or ask Claude to improve it.</p>
     <div class="tabs" role="tablist">
       ${[['form', 'Application form', d.rows.length], ['resume', 'Resume'], ['outreach', 'Outreach', d.outreach.length || undefined]].map(([k, label, n]) =>
         html`<button type="button" role="tab" aria-selected=${tab === k} onClick=${() => setTab(k)}>${label}${n ? html`<span class="n">${n}</span>` : null}</button>`)}
@@ -122,6 +141,7 @@ function Detail({ d, asking, actions, exclude = [], panel = null }) {
       </section>` : null}
     ${tab === 'resume' ? html`<section class="stack">${d.resume ? html`<p class="soft">${d.resume.note} · ${d.resume.file}</p><iframe class="pdf" src=${d.resume.url} title="Tailored resume"></iframe>` : html`<p class="soft">No tailored resume yet.</p>`}</section>` : null}
     ${tab === 'outreach' ? html`<section class="stack">${d.outreach.length ? d.outreach.map((o, i) => html`<div class="mini" key=${i}><b>${o.channel === 'email' ? 'Email' : 'LinkedIn'}${o.who ? `: ${o.who}` : ''}</b><span class="soft">${o.summary}</span><span class="hint">${o.status === 'sent' ? 'Sent' : 'Draft: you send it'}</span></div>`) : html`<p class="soft">No outreach prepared.</p>`}</section>` : null}
+    </details>
   </section>`;
 }
 
@@ -165,37 +185,69 @@ export function WhySoFew({ find, preview, onFix = noop, onPreview = noop, onSour
   </details>`;
 }
 
-export function Today({ data, state, preview = null, actions = {} }) {
-  const a = { onQuickApply: noop, onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onCancel: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onDryRun: null, ...actions };
+/** The picks column: the first few, "N more picks", and the Quick apply strip. */
+function Picks({ data, a }) {
+  const [all, setAll] = useState(false);
+  const SHOWN = 5;
+  const at = data.queue.findIndex((q) => q.id === data.selected);
+  const open = all || at >= SHOWN || data.queue.length <= SHOWN + 1;
+  const list = open ? data.queue : data.queue.slice(0, SHOWN);
+  const qa = data.quick_apply;
+  return html`<nav class="queue" aria-label="Today's picks">
+    <span class="label">Picks · ${data.queue.length}</span>
+    ${list.map((q) => html`<${QueueItem} key=${q.id} item=${q} active=${q.id === data.selected} onSelect=${a.onSelect} />`)}
+    ${open ? null : html`<button type="button" class="linkbtn morepicks" onClick=${() => setAll(true)}>${data.queue.length - SHOWN} more picks</button>`}
+    ${qa?.n ? html`<div class="quickstrip">
+      <${Spark} size=${16} /><span class="grow">${qa.request ? 'Quick apply is running in your Jobs chat' : `${qa.n} Easy Apply ${qa.n === 1 ? 'pick is' : 'picks are'} ready`}</span>
+      <button type="button" class="btn small outline" disabled=${!!qa.request}
+        title=${`Claude fills each Easy Apply form in one Jobs chat and stops at Submit for your click (${qa.used} of ${qa.cap} today)`}
+        onClick=${() => a.onQuickApply()}>${qa.request ? 'Running' : `Quick apply (${qa.n})`}</button>
+    </div>` : null}
+  </nav>`;
+}
+
+/** "8 picked · 3 ready · 4 applied" (phones) and the three numbers (wide), then how much Claude read of what was found. */
+export function Progress({ progress, onExplore = noop }) {
+  if (!progress) return null;
+  const read = progress.read;
+  return html`<section class="progress" aria-label="Progress">
+    <p class="line">${progress.picked} picked · ${progress.ready} ready · ${progress.applied_week} applied</p>
+    <div class="stats3">
+      <div><b>${progress.picked}</b><span>picked today</span></div>
+      <div><b>${progress.ready}</b><span>ready to apply</span></div>
+      <div><b>${progress.applied_week}</b><span>applied this week</span></div>
+    </div>
+    <span class="grow"></span>
+    ${read ? html`<p class="readline">Claude read ${read.n.toLocaleString('en-US')} of ${read.of.toLocaleString('en-US')} · <a href="#explore" onClick=${(e) => { e.preventDefault(); onExplore(); }}>see all ${read.of.toLocaleString('en-US')}</a></p>` : null}
+  </section>`;
+}
+
+export function Today({ data, state, preview = null, actions = {}, narrow = false }) {
+  const a = { onQuickApply: noop, onSelect: noop, onAnswer: noop, onEdit: noop, onImprove: noop, onSkip: noop, onApply: noop, onMarkApplied: noop, onReveal: noop, onCancel: noop, onToast: noop, onSetup: noop, onNotes: noop, onFix: noop, onPreview: noop, onSources: noop, onExplore: noop, onLink: noop, onDryRun: null, ...actions };
   const setup = state?.setup?.needed;
   if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onOpenSession=${a.onOpenSession} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} onCancel=${a.onCancel} /></div>`;
   const tell = html`<${TellArea} proposals=${data.proposals} actions=${a} />`;
   const why = data.find ? html`<${WhySoFew} find=${data.find} preview=${preview} onFix=${a.onFix} onPreview=${a.onPreview} onSources=${a.onSources} />` : null;
+  const link = narrow ? html`<div class="phonelink"><${AddLink} onAdd=${a.onLink} /></div>` : null;
   if (!data.queue.length) {
-    return html`<div class="page">${tell}${why}<div class="empty">
+    return html`<div class="page">${tell}${why}${link}<${Progress} progress=${data.progress} onExplore=${a.onExplore} /><div class="empty">
       <span class="ico"><${Icon} name="briefcase" size=${22} /></span>
       <h2>Nothing to review</h2>
       ${(() => {
         // Nothing fetched waiting to be judged yet (a new user right after setup): Find would have nothing to read.
         const src = state?.sources;
         const empty = src?.ready && !src.running && (src.waiting ?? 0) === 0;
-        const tail = html`<${More} summary="More ways"><p>Paste a job link at the top, or ask Claude in the chat. Roles you applied to are in Applications.</p></${More}>`;
+        const tail = html`<${More} summary="More ways"><p>Paste a job link at the top, or ask Claude in the chat. Roles you applied to are in Applied; everything found is in Explore.</p></${More}>`;
         return empty && src.listed === 0
           ? html`<p class="soft">No sources yet.</p><a class="btn primary" href="#sources" onClick=${(e) => { e.preventDefault(); a.onSources(); }}>Add sources</a>${tail}`
           : empty
             ? html`<p class="soft">No new roles yet: click <b>Refresh sources</b> at the top.</p>${tail}`
-            : html`<p class="soft">Click <b>Find ${state?.quota ?? 5} jobs</b> at the top, or paste a link.</p>${tail}`;
+            : html`<p class="soft">Click <b>Find jobs</b> at the top, or paste a link.</p>${tail}`;
       })()}
     </div></div>`;
   }
-  return html`<div class="todaycol">${tell}${why}<div class="today">
-    <nav class="queue" aria-label="Today's roles">
-      <span class="label">Today · ${data.queue.length}</span>
-      ${data.quick_apply?.n ? html`<button type="button" class="btn small quickapply" disabled=${!!data.quick_apply.request}
-        title=${`Claude fills each Easy Apply form in one Jobs chat and stops at Submit for your click (${data.quick_apply.used} of ${data.quick_apply.cap} today)`}
-        onClick=${() => a.onQuickApply()}>${data.quick_apply.request ? 'Quick apply running' : `Quick apply (${data.quick_apply.n})`}</button>` : null}
-      ${data.queue.map((q) => html`<${QueueItem} key=${q.id} item=${q} active=${q.id === data.selected} onSelect=${a.onSelect} />`)}
-    </nav>
+  return html`<div class="todaycol">${tell}${why}${link}<${Progress} progress=${data.progress} onExplore=${a.onExplore} /><div class="today">
+    <${Picks} data=${data} a=${a} />
     ${data.detail ? html`<${Detail} d=${data.detail} asking=${data.asking ?? []} exclude=${data.exclude_title_words ?? []} actions=${a}
       panel=${html`<${ApplyPanel} d=${data.detail} panel=${data.panel} reveal=${!!state?.reveal} workspace=${state?.agent?.workspace ?? ''} openSession=${!!state?.agent?.open_session} onOpenSession=${a.onOpenSession}
         prepare=${data.prepare ?? null} onPrepare=${a.onPrepare} onApply=${a.onApply} onCancel=${a.onCancel} onMarkApplied=${a.onMarkApplied} onAnswer=${a.onAnswer} onReveal=${a.onReveal} onToast=${a.onToast} />`} />` : null}

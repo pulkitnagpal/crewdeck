@@ -12,12 +12,18 @@ import type { ResolveResult } from './resolve.ts';
 import { stateFile } from './sources.ts';
 import { listSources } from './sources-note.ts';
 import { suggestSources } from './suggest.ts';
+import { PROVIDERS } from './apis/registry.ts';
 
 /** What the page shows for a kind (the catalog's words are for developers). */
 export const KIND_LABEL: Record<string, string> = {
   board: 'Job board', aggregator: 'Aggregator', ats: 'Careers system', national: 'Public employment service', field: 'Field board',
   employer: 'Employer', feed: 'Feed', linkedin: 'LinkedIn', portal: 'Signed-in portal', custom: 'Web address', 'careers page': 'Careers page', unknown: 'Source',
 };
+
+/** The Sources screen's Feeds groups: a company's own careers page, a job board, and (apart, in `apis`) official job APIs. */
+export type FeedGroup = 'careers' | 'boards';
+/** Which Feeds group a row of the user's list belongs to; signed-in portals are the accounts' business, not a feed. */
+export const feedGroupOf = (kind: string): FeedGroup | 'accounts' => (kind === 'portal' ? 'accounts' : ['employer', 'ats', 'careers page', 'custom'].includes(kind) ? 'careers' : 'boards');
 
 /** A resolve the page started (or its answer), kept in the server's memory for the screen. */
 export type ResolveState = { key: string; started?: string; at?: string; result?: ResolveResult; refused?: string };
@@ -31,6 +37,7 @@ export function sourcesScreen(ctx: Ctx, o: { resolving?: Map<string, ResolveStat
   const rows = listSources(ctx).map((r) => ({
     ...r,
     kind_label: KIND_LABEL[r.kind] ?? r.kind,
+    group: feedGroupOf(r.kind),
     provider_name: r.provider ? (cat.byId.get(r.provider)?.name ?? r.provider) : undefined,
     region_names: r.regions.slice(0, 4).map((x) => (x === 'world' ? 'worldwide' : placeName(x))),
     resolving: o.resolving?.has(r.key) ? o.resolving.get(r.key)!.started : undefined,
@@ -58,6 +65,8 @@ export function sourcesScreen(ctx: Ctx, o: { resolving?: Map<string, ResolveStat
       errors: notes.sources.exists ? notes.sources.issues.filter((i) => i.level === 'error').map((i) => `${i.path}: ${i.message}`) : [] },
     state_file: stateFile(ctx.home),
     rows,
+    // Official job APIs Crewdeck can query (a few need a free key the person gets): static facts, never a key's value.
+    apis: PROVIDERS.map((p) => ({ id: p.id, name: p.name, needs_key: !!p.needsKey, signup_url: p.needsKey?.signupUrl ?? null })),
     linkedin: { in_list: linkedin, risk: RISK.linkedin_search,
       switches: { linkedin_search: ctx.features.linkedin_search, linkedin_links: ctx.features.linkedin_links, easy_apply: ctx.features.easy_apply } },
     coverage: unset

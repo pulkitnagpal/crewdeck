@@ -1,9 +1,11 @@
-// Sources (design §24.3, D23): where Jobs looks, in the order it looks. Yours (move up/down, on/off, remove, the last
-// fetch of each), add a company or a web address (checked at once in the sandbox), the catalog (filter by region, field
-// and kind), LinkedIn's row (its switch is the user's own, through the native confirm), and the coverage line (D42).
-// Every change is the `sources` page action, the same validated writer as `crewdeck jobs sources …`.
+// Sources (design §24.3, D23), in two cards by how a source works. Feeds: automatic and free (career sites, job boards, job
+// APIs), in the order they are fetched (move up/down, on/off, remove, the last fetch of each), add a company or a web
+// address (checked at once in the sandbox), the catalog (filter by region, field and kind), LinkedIn's row (its switch is
+// the user's own, through the native confirm) and the coverage line (D42). Your accounts: the sites the person signs in to,
+// read by Claude only when they Find (portals.js). Every change is the `sources` page action, the same validated writer
+// as `crewdeck jobs sources …`.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { html, noop, cls, ago, clock, plural, More } from '../lib.js';
+import { html, noop, cls, ago, clock, plural, safeHref, Icon, More } from '../lib.js';
 import { TerminalCode } from './settings.js';
 import { Portals } from './portals.js';
 
@@ -93,7 +95,7 @@ function Row({ r, i, count, data, asked, onMove, onToggle, onRemove, onCheck, on
   const page = r.careers_url || r.url;
   const unread = page && r.fetch === 'none' && !r.resolving;
   return html`<li class=${cls('srow', !r.enabled && 'off')} data-key=${r.key}>
-    <span class="pos" aria-hidden="true">${i + 1}</span>
+    <span class="pos" aria-hidden="true">${r.position ?? i + 1}</span>
     <div class="body">
       <div class="head"><h3 id=${`src-${r.key}`}>${r.name}</h3><${Chips} r=${r} /></div>
       <p class=${cls('last small', line.kind)}>${line.kind === 'busy' ? html`<span class="dot busy" aria-hidden="true"></span>` : null}${line.text}</p>
@@ -223,9 +225,48 @@ function Browse({ data, f, list, set, onAdd }) {
     <ul class="clist">${list.map((c) => html`<${CatalogRow} key=${c.id} c=${c} onAdd=${onAdd} />`)}</ul>`;
 }
 
+/** "every 12 h" from jobs.fetch_every ("12h", "30m", "1d"). */
+export function everyText(every = '12h') {
+  const m = /^(\d+)\s*(m|h|d)$/i.exec(String(every).trim());
+  if (!m) return `every ${every}`;
+  return `every ${m[1]} ${m[2].toLowerCase()}`;
+}
+
+/** A group of feeds (the mock's Company career sites, Job boards, Job APIs): its name and count, then what is in it. */
+function FeedGroup({ id, title, count, jobs = null, summary = null, open = false, children }) {
+  const label = summary ?? `${n(count)}${jobs ? ` · ${plural(jobs, 'job')}` : ''}`;
+  return html`<details class="fgroup" id=${`group-${id}`} open=${open}>
+    <summary><span class="gname">${title}</span><span class="gcount">${label}</span></summary>
+    <div class="fbody">${children}</div>
+  </details>`;
+}
+
+/** The sources of one group: a handful of names as chips (the list itself one "Edit" away), or the list when it is short. */
+function GroupList({ id, rows, all, data, asking, ctl }) {
+  const [edit, setEdit] = useState(false);
+  const chips = rows.length > 6;
+  const list = html`<ol class="slist" aria-label=${`Your sources: ${id}, in fetch order`}>${rows.map((r, i) => html`<${Row} key=${r.key} r=${r} i=${i} count=${rows.length} data=${data} asked=${asking[r.key]}
+      onMove=${(x, gi, dir) => ctl.move(x, all.findIndex((y) => y.key === rows[gi].key), dir)} onToggle=${ctl.toggle} onRemove=${ctl.remove} onCheck=${ctl.check} onAsk=${ctl.ask} onFeature=${ctl.feature} />`)}</ol>`;
+  if (!rows.length) return html`<p class="small soft">None yet. Add a company or browse the catalog below.</p>`;
+  if (!chips) return list;
+  return html`<div class="chipsrow">${rows.slice(0, 7).map((r) => html`<span class=${cls('namechip', !r.enabled && 'off')} key=${r.key}>${r.name}</span>`)}
+      ${rows.length > 7 ? html`<button type="button" class="linkbtn" aria-expanded=${edit} onClick=${() => setEdit(!edit)}>+${rows.length - 7}</button>` : null}</div>
+    <button type="button" class="linkbtn" aria-expanded=${edit} onClick=${() => setEdit(!edit)}>${edit ? 'Hide the list' : 'Edit order, switches and removal'}</button>
+    ${edit ? list : null}`;
+}
+
+function ApiList({ apis }) {
+  const keyed = apis.filter((a) => a.needs_key);
+  return html`<ul class="apilist">${apis.map((a) => html`<li key=${a.id}><span>${a.name}</span>
+    ${a.needs_key ? html`<span class="chip warn">needs a free key</span>` : html`<span class="chip ok">no key needed</span>`}
+    ${a.needs_key && safeHref(a.signup_url) ? html`<a class="small" href=${safeHref(a.signup_url)} target="_blank" rel="noopener noreferrer">Get a key</a>` : null}</li>`)}
+    ${keyed.length ? html`<li class="small soft">Keys are kept on your computer: <code>crewdeck jobs keys set &lt;provider&gt;</code>.</li>` : null}</ul>`;
+}
+
 export function Sources({ data, state = null, portals = null, portalsMode = 'profile', onAct = async () => null, onFeature = async () => null, onNotes = noop }) {
   const [say, setSay] = useState('');
   const [focus, setFocus] = useState(null);
+  const [panel, setPanel] = useState(null);
   const companyRef = useRef(null);
   // Requests Claude has for a source (Ask Claude to find the jobs page), by key.
   const asking = {};
@@ -260,55 +301,64 @@ export function Sources({ data, state = null, portals = null, portalsMode = 'pro
   };
   const addCat = async (c) => { const x = await onAct('sources', { op: 'add', provider: c.id }); if (x) setSay(`${c.name} added at position ${rows.length + 1}`); };
   const addLinkedIn = async () => { const x = await onAct('sources', { op: 'add', linkedin: true }); if (x) setSay('LinkedIn placed at the end of your list'); };
+  const ctl = { move, toggle, remove, check, ask, feature: onFeature };
 
+  const feeds = rows.filter((r) => (r.group ?? 'boards') !== 'accounts');
+  const careers = feeds.filter((r) => r.group === 'careers');
+  const boards = feeds.filter((r) => r.group !== 'careers');
+  const jobsOf = (list) => list.reduce((t, r) => t + (r.enabled && r.last?.ok ? Number(r.last.jobs ?? 0) : 0), 0);
+  const apis = data.apis ?? [];
+  const keyed = apis.filter((a) => a.needs_key).length;
   const fetchable = rows.filter((r) => r.enabled && r.fetch === 'auto' && r.kind !== 'linkedin').length;
   const bare = !data.coverage.unset && !data.coverage.fits && !fetchable;
   const cov = splitLine(data.coverage.line);
-  return html`<div class="page srcs">
-    <div class="page-head">
-      <div><h1>Sources</h1>
-        <p class="sub">Where Jobs looks, top first.</p></div>
-      <button type="button" class="btn small" onClick=${() => onNotes(data.note.page)}>Open in Notes</button>
-    </div>
-    <${More} summary="How it works">
-      <span>The first source is fetched first and its roles rank a little higher. The order never changes what your rules drop.</span>
-      <span>Use ↑ and ↓ to change the order. Switching a source off keeps it in the list without fetching it.</span>
-    </${More}>
+  const src = state?.sources;
+  const updated = src?.last?.finished ? `last ${ago(src.last.finished)}` : 'not fetched yet';
+  const countryNames = data.filters.regions.filter((r) => r.mine).map((r) => r.name);
+  return html`<div class="page srcs sourcespage">
     <p class="sr" role="status" aria-live="polite">${say}</p>
     ${data.note.errors.length ? html`<div class="banner bad"><div class="body"><b>jobs/sources.md has errors</b><span class="fix">${data.note.errors.slice(0, 3).join('; ')}. Fix them in Notes first: changes here wait until then.</span></div></div>` : null}
-    <section class=${cls('card section coverage', bare && 'bare')} aria-labelledby="cov-title">
-      <header><h2 id="cov-title">${data.coverage.unset ? 'Where to look starts with setup' : bare ? 'No job board covers you yet' : 'What\'s covered'}</h2></header>
+    ${data.coverage.unset || bare ? html`<section class=${cls('card section coverage', bare && 'bare')} aria-labelledby="cov-title">
+      <header><h2 id="cov-title">${data.coverage.unset ? 'Where to look starts with setup' : 'No job board covers you yet'}</h2></header>
       <p>${cov[0]}</p>
       ${cov[1] ? html`<${More} summary="What else works"><span>${cov[1]}</span></${More}>` : null}
       ${bare ? html`<div class="row-flex">
-        <button type="button" class="btn small primary" onClick=${() => companyRef.current?.querySelector('input')?.focus()}>Add a company</button>
-        ${data.linkedin.in_list ? null : html`<button type="button" class="btn small" onClick=${addLinkedIn}>Place LinkedIn in your list</button>`}
+        <button type="button" class="btn small primary" onClick=${() => { setPanel('company'); setTimeout(() => companyRef.current?.querySelector('input')?.focus(), 50); }}>Add a company</button>
         <button type="button" class="btn small" onClick=${() => document.getElementById('add-link')?.focus()}>Paste a job link</button></div>` : null}
-    </section>
-    <section class="card section" aria-labelledby="yours-title">
-      <header><h2 id="yours-title">Yours <span class="soft">· ${plural(rows.length, 'source')}</span></h2></header>
-      ${rows.length ? html`<ol class="slist" aria-label="Your sources, in priority order">${rows.map((r, i) => html`<${Row} key=${r.key} r=${r} i=${i} count=${rows.length} data=${data} asked=${asking[r.key]}
-          onMove=${move} onToggle=${toggle} onRemove=${remove} onCheck=${check} onAsk=${ask} onFeature=${onFeature} />`)}</ol>`
-        : html`<p>${data.coverage.unset ? 'No sources yet. Set up with Claude, or add one below.'
-          : data.suggested.length ? 'No sources yet. Add the suggested ones below.'
-          : 'No sources yet. Add one below.'}</p>`}
-      ${data.linkedin.in_list ? null : html`<div class="row-flex"><span class="soft small">LinkedIn isn't in your list.</span>
-        <button type="button" class="btn small" onClick=${addLinkedIn}>Place LinkedIn in your list</button></div>`}
-    </section>
-    <${Portals} portals=${portals} mode=${portalsMode} onAct=${onAct} say=${setSay}
-      mine=${{ countries: data.filters.regions.filter((r) => r.mine).map((r) => r.id), within: data.filters.within, fields: data.filters.mine_families }} />
-    <div class="grid2 adds" ref=${companyRef}>
-      <${AddPage} kind="company" data=${data} onAdd=${addPage} onAsk=${ask} asking=${asking} />
-      <${AddPage} kind="address" data=${data} onAdd=${addPage} onAsk=${ask} asking=${asking} />
+    </section>` : null}
+    <div class="cards2">
+      <section class="card feedcard" aria-labelledby="feeds-h">
+        <header class="cardhead">
+          <span class="gicon feed" aria-hidden="true"><${Icon} name="feed" size=${20} /></span>
+          <div class="grow"><h2 id="feeds-h">Feeds</h2><p class="soft">Automatic and free. Updated ${everyText(data.every ?? state?.sources?.every)}, ${updated}.</p></div>
+          <button type="button" class="btn small" disabled=${!!src?.running || src?.ready === false} onClick=${() => onAct('refreshSources', {})}>${src?.running ? 'Fetching…' : 'Refresh'}</button>
+        </header>
+        <${FeedGroup} id="careers" title="Company career sites" count=${careers.length} jobs=${jobsOf(careers)} open=${true}>
+          <${GroupList} id="careers" rows=${careers} all=${rows} data=${data} asking=${asking} ctl=${ctl} />
+        </${FeedGroup}>
+        <${FeedGroup} id="boards" title="Job boards" count=${boards.length} jobs=${jobsOf(boards)}>
+          <${GroupList} id="boards" rows=${boards} all=${rows} data=${data} asking=${asking} ctl=${ctl} />
+          ${data.linkedin.in_list ? null : html`<div class="row-flex"><span class="soft small">LinkedIn isn't in your list.</span>
+            <button type="button" class="btn small" onClick=${addLinkedIn}>Place LinkedIn in your list</button></div>`}
+        </${FeedGroup}>
+        ${apis.length ? html`<${FeedGroup} id="apis" title="Job APIs" count=${apis.length} summary=${`${apis.length - keyed} on · ${keyed} need a free key`}><${ApiList} apis=${apis} /></${FeedGroup}>` : null}
+        <div class="cardfoot">
+          <button type="button" class="btn outline2" aria-expanded=${panel === 'company'} onClick=${() => setPanel(panel === 'company' ? null : 'company')}>Add a company</button>
+          <button type="button" class="btn outline2" aria-expanded=${panel === 'catalog'} onClick=${() => setPanel(panel === 'catalog' ? null : 'catalog')}>Browse catalog</button>
+          <button type="button" class="linkbtn" aria-expanded=${panel === 'address'} onClick=${() => setPanel(panel === 'address' ? null : 'address')}>Add a web address</button>
+          <button type="button" class="linkbtn" onClick=${() => onNotes(data.note.page)}>Open in Notes</button>
+        </div>
+        ${panel === 'company' ? html`<div class="cardpanel" ref=${companyRef}><${AddPage} kind="company" data=${data} onAdd=${addPage} onAsk=${ask} asking=${asking} /></div>` : null}
+        ${panel === 'address' ? html`<div class="cardpanel"><${AddPage} kind="address" data=${data} onAdd=${addPage} onAsk=${ask} asking=${asking} /></div>` : null}
+        ${panel === 'catalog' ? html`<div class="cardpanel"><${Catalog} data=${data} onAdd=${addCat} /></div>` : null}
+        <${More} summary="How feeds work">
+          ${data.coverage.unset ? null : html`<span>What's covered: ${cov[0]}${cov[1] ? ` ${cov[1]}` : ''}</span>`}
+          <span>Crewdeck fetches your feeds by itself, ${everyText(data.every ?? state?.sources?.every)}, and it costs no tokens. The first source is fetched first and its roles rank a little higher; the order never changes what your rules drop.</span>
+          <span>Use ↑ and ↓ to change the order. Switching a source off keeps it in the list without fetching it. Your list is a note you can edit: <code>${data.note.file}</code>${data.note.exists ? '' : ' (made when you add your first source)'}. What each fetch found is in Crewdeck's own state, <code>${data.state_file}</code>; LinkedIn's switch is in Settings, changed only by you.</span>
+        </${More}>
+      </section>
+      <${Portals} portals=${portals} mode=${portalsMode} onAct=${onAct} say=${setSay} countryNames=${countryNames}
+        mine=${{ countries: data.filters.regions.filter((r) => r.mine).map((r) => r.id), within: data.filters.within, fields: data.filters.mine_families }} />
     </div>
-    <${Catalog} data=${data} onAdd=${addCat} />
-    <section class="card section" aria-labelledby="where-title">
-      <header><h2 id="where-title">Where this lives</h2><p class="soft">Your list is a note you can edit.</p></header>
-      <${More} summary="Details"><dl class="kv">
-        <dt>Your list</dt><dd>In your notes, in <code>${data.note.file}</code>${data.note.exists ? '' : ' (made when you add your first source)'}: the order, what's on or off, your companies and web addresses. You can read and edit it in Notes; this screen and Claude change it the same way, with a line under Changes. <button type="button" class="linkbtn" onClick=${() => onNotes(data.note.page)}>Open in Notes</button></dd>
-        <dt>What each fetch found</dt><dd>In Crewdeck's own state, <code>${data.state_file}</code>: counts, errors and when. Nothing to edit there.</dd>
-        <dt>LinkedIn's switch</dt><dd>In Settings, changed only by you. The row above only sets where LinkedIn sits in the order.</dd>
-      </dl></${More}>
-    </section>
   </div>`;
 }

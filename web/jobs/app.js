@@ -1,10 +1,11 @@
-// The Jobs page: one screen at a time (#today, #sources, #applications, #knowledge, #preferences, #settings), live while Claude
-// works (server-sent events), every change through the page's own actions.
+// The Jobs page: one screen at a time, live while Claude works (server-sent events), every change through the page's own
+// actions. The four tabs: #today (For you), #explore, #applications (Applied), #sources; behind More: #knowledge,
+// #preferences, #settings. Find jobs opens a sheet where the person chooses what Claude spends.
 import { render } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { html, notesUrl } from './lib.js';
 import { act, get, live, preview } from './api.js';
-import { TopBar, SCREENS } from './screens/topbar.js';
+import { TopBar, BottomTabs, ALL_SCREENS } from './screens/topbar.js';
 import { Banners } from './screens/banners.js';
 import { Today } from './screens/today.js';
 import { Applications } from './screens/applications.js';
@@ -12,8 +13,27 @@ import { Knowledge } from './screens/knowledge.js';
 import { Preferences } from './screens/preferences.js';
 import { Settings } from './screens/settings.js';
 import { Sources } from './screens/sources.js';
+import { Explore, EMPTY_QUERY } from './screens/explore.js';
+import { FindSheet } from './screens/find.js';
 
-const screenOf = () => { const s = location.hash.slice(1).split('/')[0]; return SCREENS.some(([k]) => k === s) ? s : 'today'; };
+const screenOf = () => { const s = location.hash.slice(1).split('/')[0]; return ALL_SCREENS.some(([k]) => k === s) ? s : 'today'; };
+
+/** A phone: the tabs move to a bottom bar (the CSS does it at the same width) and Paste a link moves into For you. */
+const PHONE = '(max-width: 699px)';
+const isPhone = () => { try { return !!globalThis.matchMedia?.(PHONE).matches; } catch { return false; } };
+
+const exploreQs = (q) => {
+  const p = new URLSearchParams();
+  if (q.q) p.set('q', q.q);
+  if (q.group !== 'all') p.set('group', q.group);
+  if (q.strong) p.set('strong', '1');
+  if (q.days) p.set('days', String(q.days));
+  if (q.saved) p.set('saved', '1');
+  if (q.others) p.set('others', '1');
+  if (q.sort !== 'best') p.set('sort', q.sort);
+  p.set('limit', String(q.limit));
+  return p.toString();
+};
 
 function App() {
   const [screen, setScreen] = useState(screenOf);
@@ -27,6 +47,9 @@ function App() {
   const [pending, setPending] = useState(null);
   // The preview behind Today's "Why so few?" fixes, fetched once per stored funnel.
   const [todayPv, setTodayPv] = useState(null);
+  const [xq, setXq] = useState(EMPTY_QUERY);
+  const [sheet, setSheet] = useState(null);
+  const [narrow, setNarrow] = useState(isPhone);
   const sentLinks = useRef(new Map());
   const toastTimer = useRef(null);
 
@@ -38,12 +61,12 @@ function App() {
 
   const load = useCallback(async () => {
     try {
-      const path = screen === 'today' ? `today${selected ? `?role=${selected}` : ''}` : screen === 'knowledge' ? `knowledge?tab=${tab}` : screen;
+      const path = screen === 'today' ? `today${selected ? `?role=${selected}` : ''}` : screen === 'knowledge' ? `knowledge?tab=${tab}` : screen === 'explore' ? `explore?${exploreQs(xq)}` : screen;
       // Sources also lists the signed-in portals (ADR-0008); a Crewdeck without them answers 404 and the section hides.
       const [s, d, portals] = await Promise.all([get('state'), get(path), screen === 'sources' ? get('portals').catch(() => null) : null]);
       setState(s); setData({ screen, tab, d, portals: portals?.portals ?? null, portalsMode: portals?.mode ?? 'profile' }); setError('');
     } catch (e) { setError(e.message); }
-  }, [screen, selected, tab]);
+  }, [screen, selected, tab, xq]);
 
   const latest = useRef(load);
   latest.current = load;
@@ -53,6 +76,13 @@ function App() {
     let t = null;
     const stop = live(() => { clearTimeout(t); t = setTimeout(() => latest.current(), 120); });
     return () => { stop(); clearTimeout(t); };
+  }, []);
+  useEffect(() => {
+    const m = globalThis.matchMedia?.(PHONE);
+    if (!m) return undefined;
+    const on = () => setNarrow(m.matches);
+    m.addEventListener?.('change', on);
+    return () => m.removeEventListener?.('change', on);
   }, []);
   useEffect(() => {
     const on = () => setScreen(screenOf());
@@ -109,6 +139,12 @@ function App() {
     onFix: (s) => { setPending({ changes: s.change, from: 'find' }); nav('preferences'); },
     onPreview: () => { setPending({ changes: {}, from: 'find' }); nav('preferences'); },
     onSources: () => nav('sources'),
+    onExplore: () => nav('explore'),
+    onLink: async (url) => {
+      const r = await run('addLink', { url }, 'Link sent to Claude');
+      if (r?.request) sentLinks.current.set(r.request, url);
+      return !!r;
+    },
     onDryRun: (changes) => preview({ search: changes }),
     // Tell Crewdeck (P3): queued for a Jobs chat; proposals are approved or rejected item by item.
     onTell: async (text) => !!(await run('tell', { text }, (r) => (r.opened_chat ? 'Sent: a Jobs chat is opening for it' : 'Sent to Claude'))),
@@ -121,6 +157,19 @@ function App() {
     },
     onUndoProposal: (id, item) => run('undoProposal', { id, item }, 'Undone'),
   };
+  // Explore (free): marks only; "Judge these N" is the one Claude action here.
+  const explore = {
+    onQuery: (patch) => setXq((q) => ({ ...q, ...patch, ...('limit' in patch ? {} : { limit: EMPTY_QUERY.limit }) })),
+    onSave: (r) => run(r.saved ? 'unsaveRole' : 'saveRole', { role: r.id }, r.saved ? 'Removed from saved' : 'Saved: ask Claude to judge your saved jobs when you are ready'),
+    onHide: (r) => run('hideRole', { role: r.id }, 'Hidden: it will not show here again'),
+    onJudge: () => run('judgeSaved', {}, (r) => (r.already ? 'Judging is already running in your Jobs chat' : sent(r))),
+  };
+  // The Find sheet: the accounts it can read are fetched when it opens.
+  const openSheet = async () => {
+    setSheet({ portals: null, titles: [] });
+    try { const r = await get('portals'); setSheet((x) => (x ? { portals: r.portals ?? [], titles: r.titles ?? [] } : x)); }
+    catch { setSheet((x) => (x ? { portals: [], titles: [] } : x)); }
+  };
   const onFeature = (name, value) => run('feature', { name, value }, (r) => (r.ok ? `${name.replace(/_/g, ' ')}: ${value === true ? 'on' : value === false ? 'off' : value}` : null));
   const onLink = async (url) => {
     const r = await run('addLink', { url }, 'Link sent to Claude');
@@ -132,7 +181,8 @@ function App() {
   const ready = d && data.screen === screen;
   let body;
   if (!state || !ready) body = html`<p class="loading">${error || 'Loading…'}</p>`;
-  else if (screen === 'today') body = html`<${Today} data=${d} state=${state} preview=${todayPv?.at === d.find?.funnel?.at ? todayPv?.r : null} actions=${actions} />`;
+  else if (screen === 'today') body = html`<${Today} data=${d} state=${state} preview=${todayPv?.at === d.find?.funnel?.at ? todayPv?.r : null} actions=${actions} narrow=${narrow} />`;
+  else if (screen === 'explore') body = html`<${Explore} data=${d} query=${xq} found=${state.counts?.explore ?? null} judging=${!!(state.agent?.waiting ?? []).concat(state.agent?.working ?? []).some((r) => r.kind === 'judge')} ...${explore} />`;
   else if (screen === 'applications') body = html`<${Applications} data=${d} />`;
   else if (screen === 'knowledge') body = html`<${Knowledge} data=${d} onTab=${setTab} onNotes=${openNotes} />`;
   else if (screen === 'preferences') {
@@ -144,15 +194,21 @@ function App() {
 
   // A link Claude couldn't pick (cooldown, already applied): offer the user's override, set by this click only.
   const warned = (state?.agent?.recent ?? []).find((r) => r.kind === 'link' && sentLinks.current.has(r.id) && /warning|cooldown|already|in progress/i.test(r.result ?? ''));
+  // While the Find sheet is open the page behind it is inert (no focus, no clicks, hidden from a screen reader).
   return html`<div class="app">
+    <div class="appchrome" inert=${sheet ? true : undefined}>
     <${TopBar} screen=${screen} onNav=${nav} agent=${state?.agent} quota=${state?.quota ?? 5} setupNeeded=${!!state?.setup?.needed}
-      onFind=${() => run('find', { count: state?.quota ?? 5 }, sent)} onLink=${onLink}
+      onFind=${openSheet} onLink=${onLink} counts=${state?.counts} narrow=${narrow}
       sources=${state?.sources} onRefresh=${() => run('refreshSources', {}, (r) => (r.already ? 'Already fetching' : 'Fetching new roles (no Claude needed)'))} />
     <${Banners} state=${state} onNotes=${openNotes} onToast=${say} onOpenSession=${actions.onOpenSession} />
     ${warned ? html`<div class="banners"><div class="banner warn"><div class="body"><b>That link wasn't added</b><span class="fix">${warned.result}</span></div>
       <div class="row-flex"><button type="button" class="btn small" onClick=${() => { const url = sentLinks.current.get(warned.id); sentLinks.current.delete(warned.id); run('addLink', { url, force: true }, 'Sent to Claude: add it anyway'); }}>Add it anyway</button>
       <button type="button" class="btn quiet small" onClick=${() => { sentLinks.current.delete(warned.id); load(); }}>Dismiss</button></div></div></div>` : null}
     <main class=${`content${screen === 'today' && d?.queue?.length ? ' fixed' : ''}`} id="main">${body}</main>
+    <${BottomTabs} screen=${screen} onNav=${nav} counts=${state?.counts} />
+    </div>
+    ${sheet ? html`<${FindSheet} portals=${sheet.portals} titles=${sheet.titles} found=${state?.counts?.explore ?? 0} quota=${state?.quota ?? 5}
+      onClose=${() => setSheet(null)} onSources=${() => nav('sources')} onFind=${async (payload) => !!(await run('find', payload, sent))} />` : null}
     ${toast ? html`<div class=${`toast${toast.bad ? ' bad' : ''}`} role=${toast.bad ? 'alert' : 'status'}>${toast.text}</div>` : null}
   </div>`;
 }

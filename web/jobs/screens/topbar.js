@@ -1,8 +1,13 @@
 // The top bar: the Jobs screens, what Claude is doing (agent strip), Add link and Find N jobs.
-import { useState } from 'preact/hooks';
-import { html, noop, plural, ago, clock, Icon } from '../lib.js';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { html, noop, plural, ago, clock, Icon, Spark } from '../lib.js';
 
-export const SCREENS = [['today', 'Today'], ['sources', 'Sources'], ['applications', 'Applications'], ['knowledge', 'What Claude knows'], ['preferences', 'Preferences'], ['settings', 'Settings']];
+/** The four tabs (the page's hash names stay: today is For you, applications is Applied), and what lives behind More. */
+export const SCREENS = [['today', 'For you'], ['explore', 'Explore'], ['applications', 'Applied'], ['sources', 'Sources']];
+export const MORE = [['knowledge', 'What Claude knows'], ['preferences', 'Preferences'], ['settings', 'Settings']];
+export const ALL_SCREENS = [...SCREENS, ...MORE];
+const ICON = { today: 'sparkle', explore: 'search', applications: 'check', sources: 'feed' };
+const num = (n) => Number(n ?? 0).toLocaleString('en-US');
 
 /** connected / working / waiting / last lines, in one line. */
 export function agentLine(agent) {
@@ -39,11 +44,11 @@ export function sourcesLine(src, now = Date.now()) {
   if (!src.ready) return { text: 'Job boards not set up', title: 'Run crewdeck jobs providers install (pasted links work without them)', refresh: false };
   // No source switched on yet (a new user before setup): nothing to fetch, so say where they come from instead.
   if (src.listed === 0 && !src.running) return { text: 'No sources yet', title: 'Setup with Claude proposes sources; or add them on the Sources tab', refresh: false, sources: true };
-  const since = src.since ? `since ${new Date(src.since).toDateString() === new Date(now).toDateString() ? clock(src.since) : new Date(src.since).toLocaleDateString([], { day: 'numeric', month: 'short' })}` : 'waiting';
-  const head = src.running ? 'Fetching roles…' : `${plural(src.new_since ?? 0, 'new role')} ${since}`;
-  const last = src.last?.finished ? ` · fetched ${ago(src.last.finished, now)}${src.last.ok ? '' : ' (with errors)'}` : src.running ? '' : ' · not fetched yet';
+  const head = src.running ? 'Fetching roles…' : (src.new_since ?? 0) > 0 ? plural(src.new_since, 'new role') : '';
+  // "Feeds updated 2 h ago": the automatic, free fetch of the job boards and career sites.
+  const last = src.last?.finished ? `Feeds updated ${ago(src.last.finished, now)}${src.last.ok ? '' : ' (with errors)'}` : src.running ? '' : 'Feeds not fetched yet';
   const title = [src.last?.error, src.next_at && !src.running ? `next fetch ${clock(src.next_at)}` : '', `${plural(src.waiting ?? 0, 'role')} waiting to be judged`].filter(Boolean).join(' · ');
-  return { text: `${head}${last}`, title, refresh: !src.running };
+  return { text: [head, last].filter(Boolean).join(' · '), title, refresh: !src.running };
 }
 
 export function SourcesStrip({ sources, onRefresh = noop, onSources = noop }) {
@@ -75,18 +80,64 @@ export function AddLink({ onAdd = noop }) {
   </form>`;
 }
 
-export function TopBar({ screen, onNav = noop, agent, quota = 5, onFind = noop, onLink = noop, setupNeeded = false, sources = null, onRefresh = noop }) {
-  return html`<header class="top">
-    <nav class="tabsnav" aria-label="Jobs">
-      ${SCREENS.map(([k, label]) => html`<button type="button" aria-current=${screen === k ? 'page' : undefined} onClick=${() => onNav(k)}>${label}</button>`)}
-    </nav>
-    <span class="grow"></span>
-    <span class="break"></span>
-    <${AgentStrip} agent=${agent} />
-    <${SourcesStrip} sources=${sources} onRefresh=${onRefresh} onSources=${() => onNav('sources')} />
-    <${AddLink} onAdd=${onLink} />
-    <button type="button" class="btn primary find" onClick=${onFind} disabled=${setupNeeded} title=${setupNeeded ? 'Set up Jobs first' : `Claude judges the best candidates and picks ${quota}`}>
-      Find ${quota} jobs
+/** The tab's number: picks waiting, roles in Explore, roles applied to (none on Sources). */
+export function tabCount(k, counts) {
+  const n = k === 'today' ? counts?.picks : k === 'explore' ? counts?.explore : k === 'applications' ? counts?.applied : undefined;
+  return n === undefined || n === null ? null : num(n);
+}
+
+/** What Claude's own tab and the screens behind More are called on a phone's header. */
+export const titleOf = (screen) => (ALL_SCREENS.find(([k]) => k === screen) ?? ['', 'Jobs'])[1];
+
+/** The overflow menu: What Claude knows, Preferences and Settings stay reachable without being tabs. */
+export function MoreMenu({ screen, onNav = noop }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef(null);
+  const current = MORE.some(([k]) => k === screen);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (wrap.current && !wrap.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') { setOpen(false); wrap.current?.querySelector('button')?.focus(); } };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  return html`<div class="moremenu" ref=${wrap}>
+    <button type="button" class=${`morebtn${current ? ' on' : ''}`} aria-haspopup="true" aria-expanded=${open ? 'true' : 'false'} aria-controls="more-menu" aria-label="More: What Claude knows, Preferences, Settings" onClick=${() => setOpen(!open)}>
+      <${Icon} name="dots" size=${18} /><span class="lbl">More</span>
     </button>
+    ${open ? html`<ul class="menu" id="more-menu">
+      ${MORE.map(([k, label]) => html`<li key=${k}><button type="button" aria-current=${screen === k ? 'page' : undefined} onClick=${() => { setOpen(false); onNav(k); }}>${label}</button></li>`)}
+    </ul>` : null}
+  </div>`;
+}
+
+/** The phone's bottom bar: the four tabs, icon over label (the top tabs hide below 700 px, this shows). */
+export function BottomTabs({ screen, onNav = noop, counts = null }) {
+  return html`<nav class="bottombar" aria-label="Jobs sections">
+    ${SCREENS.map(([k, label]) => html`<button type="button" key=${k} aria-current=${screen === k ? 'page' : undefined} onClick=${() => onNav(k)}>
+      <${Icon} name=${ICON[k]} size=${20} /><span>${label}</span>${tabCount(k, counts) ? html`<span class="sr"> ${tabCount(k, counts)}</span>` : null}</button>`)}
+  </nav>`;
+}
+
+export function TopBar({ screen, onNav = noop, agent, quota = 5, onFind = noop, onLink = noop, setupNeeded = false, sources = null, onRefresh = noop, counts = null, narrow = false }) {
+  return html`<header class="top">
+    <div class="toprow">
+      <span class="brand">Jobs</span>
+      <span class="phonetitle">${titleOf(screen)}</span>
+      <nav class="tabsnav" aria-label="Jobs sections">
+        ${SCREENS.map(([k, label]) => html`<button type="button" aria-current=${screen === k ? 'page' : undefined} onClick=${() => onNav(k)}>${label}${tabCount(k, counts) ? html` <span class="n">${tabCount(k, counts)}</span>` : null}</button>`)}
+      </nav>
+      <span class="grow"></span>
+      <${MoreMenu} screen=${screen} onNav=${onNav} />
+      <button type="button" class="btn primary find" onClick=${onFind} disabled=${setupNeeded} title=${setupNeeded ? 'Set up Jobs first' : `Choose what Claude reads, then it picks up to ${quota}`}>
+        <${Spark} size=${16} />Find jobs
+      </button>
+    </div>
+    <div class="topsub">
+      <${AgentStrip} agent=${agent} />
+      <${SourcesStrip} sources=${sources} onRefresh=${onRefresh} onSources=${() => onNav('sources')} />
+      ${narrow ? null : html`<${AddLink} onAdd=${onLink} />`}
+    </div>
   </header>`;
 }

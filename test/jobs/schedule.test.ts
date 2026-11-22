@@ -113,13 +113,13 @@ test('the sources line on the page', () => {
   const now = Date.parse('2026-11-19T15:00:00Z');
   assert.equal(sourcesLine({ ready: false })!.text, 'Job boards not set up');
   const l = sourcesLine({ ready: true, running: false, new_since: 12, since: '2026-11-18T09:00:00Z', waiting: 30, last: { finished: '2026-11-19T13:00:00Z', ok: true }, next_at: '2026-11-20T01:00:00Z' }, now)!;
-  assert.match(l.text, /^12 new roles since .+ · fetched 2 h ago$/);
+  assert.equal(l.text, '12 new roles · Feeds updated 2 h ago');
   assert.equal(l.refresh, true);
   assert.match(l.title, /30 roles waiting to be judged/);
   assert.equal(sourcesLine({ ready: true, running: true, new_since: 1, waiting: 1 }, now)!.text, 'Fetching roles…');
-  assert.equal(sourcesLine({ ready: true, running: false, new_since: 3, waiting: 3, last: null }, now)!.text, '3 new roles waiting · not fetched yet');
+  assert.equal(sourcesLine({ ready: true, running: false, new_since: 3, waiting: 3, last: null }, now)!.text, '3 new roles · Feeds not fetched yet');
   const out = render(html`<${SourcesStrip} sources=${{ ready: true, running: false, new_since: 1, waiting: 1, last: { finished: '2026-11-19T13:00:00Z', ok: false } }} />`);
-  assert.match(out, /1 new role waiting · fetched .* \(with errors\)/);
+  assert.match(out, /1 new role · Feeds updated .* \(with errors\)/);
   assert.match(out, />Refresh sources</);
   // A new user before setup: no source switched on, so nothing to refresh; the line points at the Sources tab.
   const none = sourcesLine({ ready: true, running: false, listed: 0, new_since: 0, waiting: 0, last: { finished: '2026-11-19T13:00:00Z', ok: true } }, now)!;

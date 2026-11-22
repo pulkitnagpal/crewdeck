@@ -129,6 +129,14 @@ export function applyMode(ctx: Ctx, r: { url: string; apply_url?: string | null;
   return { mode: 'fill', ...(method ? { method, note } : {}) };
 }
 
+/** "Remote · India": the workplace (when the posting says) then where, for a pick's line. */
+export function whereOf(r: { workplace?: string | null; location?: string | null }): string {
+  const w = r.workplace ? r.workplace[0].toUpperCase() + r.workplace.slice(1) : '';
+  const loc = String(r.location ?? '').trim();
+  if (w && loc && !loc.toLowerCase().startsWith(w.toLowerCase())) return `${w} · ${loc}`;
+  return loc || w;
+}
+
 /** Today: what still needs the user, plus what they applied to today (so "I submitted it" shows its result). */
 export function todayView(ctx: Ctx, selected?: string) {
   const notes = notesOf(ctx);
@@ -138,7 +146,7 @@ export function todayView(ctx: Ctx, selected?: string) {
       where r.status in ('picked','prepared','applied') order by (r.status='applied'), r.picked_on desc, r.score desc, r.id`).all() as any[])
     .filter((r) => r.status !== 'applied' || today.has(r.id));
   // `apply`: how it is applied to, as a quiet chip (Easy Apply, Lever, Naukri one-click, Company site).
-  const queue = roles.map((r) => { const k = detectApplyKind(r); return { id: r.id, company: r.company, title: r.title, chip: chipFor(ctx.db, r, tz, locale), apply: { kind: k.kind, text: kindChip(k) } }; });
+  const queue = roles.map((r) => { const k = detectApplyKind(r); return { id: r.id, company: r.company, title: r.title, where: whereOf(r), chip: chipFor(ctx.db, r, tz, locale), apply: { kind: k.kind, text: kindChip(k) } }; });
   const r = roles.find((x) => x.id === selected) ?? roles[0];
   if (!r) return { queue, selected: null, detail: null };
   const memory = notes.memory.data.items;
@@ -154,7 +162,7 @@ export function todayView(ctx: Ctx, selected?: string) {
     queue, selected: r.id,
     detail: {
       id: r.id, company: r.company, title: r.title, url: r.apply_url ?? r.url, status: r.status, kind: queue.find((q) => q.id === r.id)!.apply,
-      meta: [r.location, payLine(r, locale)].filter(Boolean).join(' · '), why,
+      meta: [r.location, payLine(r, locale)].filter(Boolean).join(' · '), where: whereOf(r), posted: r.posted_at ?? r.first_seen ?? null, why,
       apply: applyMode(ctx, r, notes.profile.data), approvable: canApprove(ctx.db, r.id),
       counts: { total: answers.length, known: answers.filter((a) => a.status === 'approved').length, drafted: answers.filter((a) => a.status === 'drafted').length, first: answers.filter((a) => a.status === 'first_time' && a.required).length },
       rows, resume: existsSync(pdf) ? { pdf, note: 'Tailored for this role' } : null, outreach,
@@ -178,7 +186,7 @@ export function applicationsView(ctx: Ctx) {
       status: r.status === 'applied' ? 'Applied' : r.status === 'prepared' ? 'Ready to review' : 'Preparing',
       applied: at ? shortDay(at, tz, locale) : '—',
       outreach: msgs.map((m) => `${m.channel === 'email' ? 'Email' : 'LinkedIn'}: ${m.status}`).join(' · ') || '—',
-      next: r.status === 'applied' ? 'Wait for a reply' : 'Review in Today',
+      next: r.status === 'applied' ? 'Wait for a reply' : 'Review in For you',
     };
   });
   return { rows };

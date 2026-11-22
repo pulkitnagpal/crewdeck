@@ -77,37 +77,37 @@ test('the person\'s portals first (connected ones, then the ones that fit countr
   assert.ok(splitPortals(moved, MINE, NOW).yours.some((p) => p.id === 'naukri'));
 });
 
-test('the section rendered: one row per portal with a switch and one button; the risk only once Connect is pressed', () => {
-  const out = render(html`<${Portals} portals=${fixture()} mine=${MINE} />`);
+test('the section rendered (Your accounts): who it is and how it stands; In Find for a connected one, Sign in, or Connect; the risk only once Connect is pressed', () => {
+  const out = render(html`<${Portals} portals=${fixture()} mine=${MINE} countryNames=${['Germany']} />`);
   const t = text(out);
-  assert.match(t, /Portals · 1 to sign in again/);
-  assert.match(t, /StepStone Connected last scan 2 h ago · 34 found/);
-  assert.match(t, /Example Jobs Sign in again/);
+  assert.match(t, /Your accounts · 1 to sign in again/);
+  assert.match(t, /Sites you sign in to\. Crewdeck reads them, slowly, with your account\./);
+  assert.match(t, /StepStone Signed in · last scan 2 h ago · 34 found/);
+  assert.match(t, /In Find/);
+  assert.match(t, /Example Jobs Signed out: sign in again/);
   assert.match(t, /Sample Board Paused until/);
-  assert.match(t, /Demo Careers Not connected/);
-  assert.match(t, /More portals \(2\)/);
+  assert.match(t, /Demo Careers .*Connect/);
+  assert.match(t, /More sites for Germany \(2\)/);
+  assert.match(t, /Sites may not allow automation\. Crewdeck stops at the first check and asks you\./);
   assert.ok(!out.includes('role="alertdialog"'), 'no confirm (and so no risk note up front) until Connect is pressed');
-  // One button per row and a switch: Connect, Sign in, Test.
   const rows = out.split('<li class="prow').slice(1);
   assert.equal(rows.length, 6);
-  for (const r of rows) {
-    assert.equal((r.match(/role="switch"/g) ?? []).length, 1);
-    assert.equal((r.match(/class="btn small[^"]*"/g) ?? []).length, 1, r.slice(0, 200));
-  }
+  const row = (id: string) => rows.find((r) => r.includes(`data-portal="${id}"`))!;
+  // Connected and paused: the In Find switch (Test and Disconnect wait under Details). Sign in again and Connect: one button.
+  for (const id of ['stepstone', 'sample-board']) assert.equal((row(id).match(/role="switch"/g) ?? []).length, 1, id);
+  for (const id of ['example-jobs', 'demo-careers', 'naukri']) assert.equal((row(id).match(/role="switch"/g) ?? []).length, 0, id);
+  assert.match(out, /aria-label="In Find: StepStone"/);
   assert.match(out, /aria-label="Connect Demo Careers"/);
   assert.match(out, /aria-label="Sign in to Example Jobs again"/);
   assert.match(out, /aria-label="Test StepStone"/);
   assert.match(out, /aria-label="Test Sample Board" disabled/, 'no test while paused');
-  // Not connected: the switch can't be turned on yet.
-  assert.match(rows.find((r) => r.includes('data-portal="demo-careers"'))!, /role="switch"[^>]*disabled/);
-  // Nothing (no section at all) on a Crewdeck without portals.
-  assert.equal(render(html`<${Portals} portals=${null} mine=${MINE} />`), '');
+  assert.equal(render(html`<${Portals} portals=${null} mine=${MINE} />`), '', 'nothing (no section at all) on a Crewdeck without portals');
   assert.equal(render(html`<${Portals} portals=${[]} mine=${MINE} />`), '');
 });
 
 test('pane mode: the section says Claude scans during Find in its browser pane; the stub answers Connect and Test with a queued Jobs chat', () => {
   const t = text(render(html`<${Portals} portals=${fixture()} mode="pane" mine=${MINE} />`));
-  assert.match(t, /Job sites you sign in to once, in Claude's browser pane\. Claude scans them slowly during Find/);
+  assert.match(t, /Sites you sign in to\. Claude reads them, slowly, only when you Find\./);
   assert.match(t, /import that site's cookies from your own browser with the pane's ⋮ menu/);
   assert.match(t, /Sign in with Google may not work inside the pane/);
   assert.doesNotMatch(t, /Crewdeck's own browser/);
@@ -174,7 +174,7 @@ test('first Connect: the risk once, quietly, with a confirm; Sign in or Sign up 
   // The engine finishes the sign-in: on the next refresh the row is connected with Test.
   stub.set('demo-careers', { state: 'connected', enabled: false });
   await page.reload();
-  await page.getByRole('button', { name: 'Test Demo Careers' }).waitFor();
+  await page.getByRole('switch', { name: 'In Find: Demo Careers' }).waitFor();
   await page.close();
 });
 
@@ -187,6 +187,7 @@ test('pane mode in the page: Connect (after the risk) and Test say a Jobs chat o
   await dialog.getByRole('button', { name: 'Sign in' }).click();
   await page.locator('.prow[data-portal="demo-careers"]').getByText('A Jobs chat opened: sign in there').waitFor();
   assert.deepEqual(stub.calls.at(-1), { name: 'connectPortal', body: { id: 'demo-careers' } });
+  await page.locator('.prow[data-portal="stepstone"] summary').click();
   await page.getByRole('button', { name: 'Test StepStone' }).click();
   await page.locator('.prow[data-portal="stepstone"]').getByText('A Jobs chat opened: Claude tests it there').waitFor();
   assert.equal(await page.locator('.psample').count(), 0, 'no result in the row: Claude reports in the chat');
@@ -196,20 +197,21 @@ test('pane mode in the page: Connect (after the risk) and Test say a Jobs chat o
 test('Test shows what it found and how; the switch turns scanning on and off', { skip: noBrowser, timeout: 60_000 }, async () => {
   const stub = createPortalsStub(fixture());
   const page = await open(stub);
+  await page.locator('.prow[data-portal="stepstone"] summary').click();
   await page.getByRole('button', { name: 'Test StepStone' }).click();
   const row = page.locator('.prow[data-portal="stepstone"]');
   await row.getByText('3 jobs found (2 from the page\'s data, 1 from links)').waitFor();
   assert.deepEqual(await row.locator('.psample li').allTextContents(), ['Backend Engineer · Example Labs', 'Data Analyst · Sample Co']);
   assert.equal(await row.locator('.psample a').first().getAttribute('rel'), 'noopener noreferrer');
-  const sw = page.getByRole('switch', { name: 'Scan StepStone' });
+  const sw = page.getByRole('switch', { name: 'In Find: StepStone' });
   assert.equal(await sw.getAttribute('aria-checked'), 'true');
   await sw.click();
-  await page.waitForFunction(() => document.querySelector('[aria-label="Scan StepStone"]')?.getAttribute('aria-checked') === 'false');
+  await page.waitForFunction(() => document.querySelector('[aria-label="In Find: StepStone"]')?.getAttribute('aria-checked') === 'false');
   assert.deepEqual(stub.calls.at(-1), { name: 'togglePortal', body: { id: 'stepstone', on: false } });
-  assert.equal(await page.getByRole('switch', { name: 'Scan Demo Careers' }).isDisabled(), true, 'connect first');
-  // More portals: the rest, one click away.
+  assert.equal(await page.getByRole('switch', { name: 'In Find: Demo Careers' }).count(), 0, 'connect first: no switch for an account that is not connected');
+  // More sites: the rest, one click away.
   assert.equal(await page.locator('.prow[data-portal="naukri"]').isVisible(), false);
-  await page.getByText(/^More portals \(\d+\)$/).click();
+  await page.getByText(/^More sites/).click();
   assert.equal(await page.locator('.prow[data-portal="naukri"]').isVisible(), true);
   await page.close();
 });
@@ -240,10 +242,11 @@ const problems = (page: Page) => page.evaluate(() => {
 for (const [width, height] of [[360, 640], [390, 844], [820, 700]] as const) {
   test(`Portals at ${width}×${height}: nothing overlaps or leaves the window, with a confirm and a test result open`, { skip: noBrowser, timeout: 60_000 }, async () => {
     const page = await open(createPortalsStub(fixture()), { width, height });
+    await page.locator('.prow[data-portal="stepstone"] summary').click();
     await page.getByRole('button', { name: 'Test StepStone' }).click();
     await page.locator('.psample').waitFor();
     await page.getByRole('button', { name: 'Connect Demo Careers' }).click();
-    await page.getByText(/^More portals \(\d+\)$/).click();
+    await page.getByText(/^More sites/).click();
     assert.deepEqual(await problems(page), []);
     if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await page.locator('.portals').screenshot({ path: join(SHOTS, `portals-${width}.png`) }); }
     await page.close();
@@ -253,6 +256,7 @@ for (const [width, height] of [[360, 640], [390, 844], [820, 700]] as const) {
 for (const scheme of ['light', 'dark'] as const) {
   test(`Portals in ${scheme}: no text under 14 px, AA contrast, every control labelled`, { skip: noBrowser, timeout: 60_000 }, async () => {
     const page = await open(createPortalsStub(fixture()), { scheme });
+    await page.locator('.prow[data-portal="stepstone"] summary').click();
     await page.getByRole('button', { name: 'Test StepStone' }).click();
     await page.locator('.psample').waitFor();
     await page.getByRole('button', { name: 'Connect Demo Careers' }).click();

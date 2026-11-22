@@ -11,6 +11,8 @@ type Palette = {
   ground: string; panel: string; card: string; line: string; ink: string; muted: string; soft: string;
   accent: string; accentBg: string; accentInk: string; chip: string; link: string; linkMissing: string; subtleBg: string;
   ok: string; bad: string; okBg: string; badBg: string; warn: string; warnBg: string; warnLine: string; warnSoft: string;
+  /** Jobs' two kinds of source: feeds (automatic, free) and your accounts (sites you sign in to). */
+  feed: string; feedBg: string; acct: string; acctBg: string;
 };
 
 export const PALETTE: Record<'light' | 'dark', Palette> = {
@@ -19,12 +21,14 @@ export const PALETTE: Record<'light' | 'dark', Palette> = {
     accent: '#3550D6', accentBg: '#E8ECFB', accentInk: '#FFFFFF', chip: '#EFEDE8', link: '#3550D6', linkMissing: '#B5651D',
     subtleBg: 'rgba(28, 27, 25, 0.06)', ok: '#1F7A4F', bad: '#B42318',
     okBg: '#E3F3EA', badBg: '#FDECEA', warn: '#8A5A00', warnBg: '#FBF0D6', warnLine: '#F1DCA0', warnSoft: '#FFFBEF',
+    feed: '#2F6B5D', feedBg: '#E3F1EC', acct: '#8A4A12', acctBg: '#FBEEDD',
   },
   dark: {
     ground: '#171716', panel: '#1F1E1C', card: '#23221F', line: '#2E2C29', ink: '#ECE9E3', muted: '#9A958C', soft: '#BDB7AC',
     accent: '#8EA2FF', accentBg: '#252B48', accentInk: '#10131F', chip: '#2A2926', link: '#9AAEFF', linkMissing: '#E0A066',
     subtleBg: 'rgba(236, 233, 227, 0.08)', ok: '#5CC48D', bad: '#F97066',
     okBg: '#14321F', badBg: '#3A1714', warn: '#F4CF73', warnBg: '#3A2A08', warnLine: '#6B4E12', warnSoft: '#2A2008',
+    feed: '#6FCFB0', feedBg: '#14302A', acct: '#F0B27A', acctBg: '#3A2410',
   },
 };
 
@@ -45,7 +49,8 @@ const shellVars = (p: Palette) =>
   `--font: ${FONT}; --ground: ${p.ground}; --rail: ${p.panel}; --card: ${p.card}; --line: ${p.line}; --ink: ${p.ink}; ` +
   `--muted: ${p.muted}; --soft: ${p.soft}; --accent: ${p.accent}; --accent-bg: ${p.accentBg}; --accent-ink: ${p.accentInk}; ` +
   `--chip: ${p.chip}; --ok: ${p.ok}; --bad: ${p.bad}; --ok-bg: ${p.okBg}; --bad-bg: ${p.badBg}; --warn: ${p.warn}; --warn-bg: ${p.warnBg}; ` +
-  `--warn-line: ${p.warnLine}; --warn-soft: ${p.warnSoft}; --panel: ${p.panel}; --link: ${p.link};`;
+  `--warn-line: ${p.warnLine}; --warn-soft: ${p.warnSoft}; --panel: ${p.panel}; --link: ${p.link}; ` +
+  `--feed: ${p.feed}; --feed-bg: ${p.feedBg}; --acct: ${p.acct}; --acct-bg: ${p.acctBg};`;
 
 /** /tokens.css for the shell and Jobs. */
 export function tokensCss(a: Appearance): string {

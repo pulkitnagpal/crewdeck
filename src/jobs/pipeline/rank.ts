@@ -92,6 +92,20 @@ export function rankRoles(ctx: Ctx): Ranked[] {
     .sort((a, b) => other(a) - other(b) || b.rank - a.rank || String(b.posted_at ?? b.first_seen).localeCompare(String(a.posted_at ?? a.first_seen)) || a.id.localeCompare(b.id));
 }
 
+/**
+ * The roles the person chose to judge (Explore's saved ones), as candidates in the order given: only roles Claude can still
+ * judge (status new or on the bench), at most 80. The same shape as `candidates`, so the same judging steps apply.
+ */
+export function candidatesFor(ctx: Ctx, ids: string[]): Candidate[] {
+  const out: Candidate[] = [];
+  for (const id of [...new Set(ids)].slice(0, 80)) {
+    const r = ctx.db.prepare(`select r.id, c.name company, r.title, r.url, r.location, coalesce(r.pay_text, r.pay_status, '') pay, r.source, r.description
+        from roles r join companies c on c.id=r.company_id where r.id=? and r.status in ('new','bench')`).get(id) as any;
+    if (r) out.push({ id: r.id, company: r.company, title: r.title, url: r.url, location: r.location, pay: r.pay, source: r.source, rank: 0, description: clip(plainText(r.description ?? '')) });
+  }
+  return out;
+}
+
 export const toCandidate = (r: Ranked): Candidate => ({ id: r.id, company: r.company, title: r.title, url: r.url, location: r.location, pay: r.pay, source: r.source, rank: r.rank, description: clip(plainText(r.description ?? '')) });
 
 // ---- descriptions (the scheduled run; netguard, no Claude): every rule-passing role, see details.ts ----
@@ -158,7 +172,7 @@ export type Budgeted = {
  * nothing once `need` companies have an eligible role. `start` begins a new Find (else one older than 6 h starts fresh).
  */
 export function budgetedCandidates(ctx: Ctx, o: { budget: number; batch: number; need: number; start?: boolean }): Budgeted {
-  if (!Number.isInteger(o.budget) || o.budget < 1 || o.budget > 40) throw new Error('--budget must be from 1 to 40 (at most 40 postings are judged per Find)');
+  if (!Number.isInteger(o.budget) || o.budget < 1 || o.budget > 80) throw new Error('--budget must be from 1 to 80 (at most 80 postings are judged per Find)');
   if (!Number.isInteger(o.batch) || o.batch < 1 || o.batch > 20) throw new Error('--batch must be from 1 to 20');
   if (!Number.isInteger(o.need) || o.need < 1 || o.need > 50) throw new Error('--need must be from 1 to 50');
   const now = ctx.clock();

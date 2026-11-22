@@ -26,6 +26,7 @@ import { LEVELS_WANTED, MATCH_MODES, targetsOf } from './titles.ts';
 import { runPreview } from './preview.ts';
 import { findFunnel, funnelSummary } from './funnel.ts';
 import { readFindRun } from './pipeline/rank.ts';
+import { type ExploreQuery, TOKENS_PER_JUDGED, exploreCount, exploreRoles, judgeableSaved, markRole } from './search/explore.ts';
 import { checkRoleUrl, isLinkedinHost, isXHost } from './fields.ts';
 import { applyContext } from './apply-kind.ts';
 import { quickApplyView } from './quick-apply.ts';
@@ -46,7 +47,7 @@ import { type ResolveState, sourcesScreen } from './sources-view.ts';
 import type { ResolveResult } from './resolve.ts';
 import { effectivePortals } from './portals/readers.ts';
 import { disconnectPortal } from './portals/connect.ts';
-import { type PortalTestView, portalsNeedingSignIn, portalsView, togglePortal } from './portals/view.ts';
+import { type PortalTestView, portalsNeedingSignIn, portalsView, searchTitles, togglePortal } from './portals/view.ts';
 import { type ApplyEnv, ProposalError, addProposal, applyDue, approve as approveProposal, checkProposal, listProposals, pendingCount, proposalView, reject as rejectProposal, undo as undoProposal } from './proposals.ts';
 
 export type JobsApi = {
@@ -126,7 +127,7 @@ export type JobsApiOptions = {
 const LANE = 'jobs';
 /** Careers pages checked at once from the Sources screen (each is a sandboxed child of ≤ 35 s). */
 const MAX_RESOLVING = 2;
-const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page', tell: 'Tell Crewdeck', prepare: 'Prepare a role', connect: 'Connect a portal', quick_apply: 'Quick apply' };
+const LABEL: Record<JobKind, string> = { setup: 'Set up Jobs', find: 'Find jobs', link: 'Add a job link', apply: 'Apply to a role', improve: 'Improve an answer', source: 'Find a jobs page', tell: 'Tell Crewdeck', prepare: 'Prepare a role', connect: 'Connect a portal', quick_apply: 'Quick apply', judge: 'Judge saved roles' };
 /** A request kept for the Jobs chat opened for it; after this, any Jobs chat may take it (the person closed the dialog). */
 const CHAT_HOLD_MS = 10 * 60_000;
 const MAX_CLIENTS = 20;
@@ -250,6 +251,27 @@ function prefChanges(changes: unknown) {
 }
 /** A validation error from the notes, as one issue per field (the form shows each next to its field). */
 const fieldIssues = (e: any) => String(e.message).split('\n').map((l) => { const m = /^([\w.\[\]]+): (.*)$/.exec(l); return m ? { path: m[1].replace(/\[(\d+)\]/g, '.$1'), message: m[2] } : { path: '', message: l }; });
+
+/** GET /api/jobs/explore's query string, checked: q, group, strong, days, saved, others, sort, offset, limit (and include). */
+export function exploreParams(sp: URLSearchParams): ExploreQuery {
+  const num = (k: string, lo: number, hi: number) => {
+    const v = sp.get(k);
+    if (v === null || v === '') return undefined;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < lo || n > hi) throw new HttpError(400, `${k} must be a whole number from ${lo} to ${hi}`);
+    return n;
+  };
+  const flag = (k: string) => sp.get(k) === '1';
+  const group = sp.get('group') ?? 'all';
+  if (!['all', 'feeds', 'accounts'].includes(group)) throw new HttpError(400, 'group is all, feeds or accounts');
+  const sort = sp.get('sort') ?? 'best';
+  if (!['best', 'newest'].includes(sort)) throw new HttpError(400, 'sort is best or newest');
+  const q = sp.get('q') ?? '';
+  if (q.length > 200) throw new HttpError(400, 'q is longer than 200 characters');
+  const include = (sp.get('include') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  return { q, group: group as ExploreQuery['group'], strong: flag('strong'), days: num('days', 1, 365), saved: flag('saved'), others: flag('others'),
+    sort: sort as ExploreQuery['sort'], offset: num('offset', 0, 100_000), limit: num('limit', 1, 200), ...(include.length ? { include } : {}) };
+}
 
 const getIn = (o: any, path: string) => path.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
 
@@ -488,8 +510,15 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       notesPort: c.silverbullet.port, vault: c.vault, home: c.jobs.home, agent: agentView(), setup: setupView(notes), banners: banners(notes),
       quota: notes.search.data.schedule.daily_picks || 5, reveal: platform === 'darwin', features: ctx.features,
-      browser: browser ? browser.name : null, sources: sourcesView(),
+      browser: browser ? browser.name : null, sources: sourcesView(), counts: tabCounts(),
     };
+  }
+
+  /** The numbers on the page's tabs: picks waiting, roles in Explore, roles applied to. */
+  function tabCounts() {
+    const picks = Number((db.prepare(`select count(*) n from roles where status in ('picked','prepared')`).get() as any).n);
+    const applied = Number((db.prepare(`select count(*) n from roles where status='applied'`).get() as any).n);
+    return { picks, explore: exploreCount(db), applied };
   }
 
   /** The preview of the saved notes or of the Preferences form's unsaved changes (≤ 5,000 roles, ≤ 1 s of suggestions). */
@@ -529,6 +558,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       return chip ? { ...q, chip } : q;
     });
     const find = findCard();
+    const progress = progressView(queue);
     const proposals = proposalsView();
     // The Not interested dialog previews what skipping more title words drops (§24.6): it adds to these.
     const exclude_title_words = notesOf(ctx).search.data.roles.exclude_title_words;
@@ -537,7 +567,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const qa = quickView(), running = openQuickApply();
     const quick_apply = running ? { n: Array.isArray(running.payload?.roles) ? running.payload!.roles.length : 0, cap: qa.cap, used: qa.used, request: running.id }
       : qa.on && qa.roles.length ? { n: qa.roles.length, cap: qa.cap, used: qa.used, request: null } : null;
-    if (!v.detail) return { ...v, queue, panel: null, asking: [], find, exclude_title_words, proposals, quick_apply };
+    if (!v.detail) return { ...v, queue, panel: null, asking: [], find, exclude_title_words, proposals, quick_apply, progress };
     const d = v.detail;
     const notes = notesOf(ctx);
     const pdf = d.resume ? resumePath(ctx, d.id, notes) : null;
@@ -549,8 +579,17 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {
       ...v, queue,
       detail: { ...d, resume: pdf ? { file: basename(pdf), url: `/api/jobs/resume/${d.id}`, note: d.resume!.note } : null, copy: d.apply.mode !== 'fill' ? copyModel(db, d.id).answers : null },
-      panel, asking, find, exclude_title_words, proposals, prepare, quick_apply,
+      panel, asking, find, exclude_title_words, proposals, prepare, quick_apply, progress,
     };
+  }
+
+  /** For you's progress line: picks, those ready to apply, applied this week, and how many roles Claude read of all found. */
+  function progressView(queue: { chip: { kind: string } }[]) {
+    const open = queue.filter((q) => q.chip.kind !== 'applied');
+    const since = new Date(ctx.clock().getTime() - 7 * 86_400_000).toISOString();
+    const week = Number((db.prepare(`select count(distinct e.role_id) n from events e join roles r on r.id=e.role_id where e.kind='status' and e.detail like 'applied%' and e.at >= ? and r.status='applied'`).get(since) as any).n);
+    const run = readFindRun(c.jobs.home);
+    return { picked: open.length, ready: open.filter((q) => q.chip.kind === 'ready').length, applied_week: week, read: run?.judged.length ? { n: run.judged.length, of: exploreCount(db) } : null };
   }
 
   function preferences() {
@@ -631,7 +670,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
   /** The task prompt for an open jobs request (the page's Open in Claude on a waiting request reopens its chat). */
   const taskOf = (r: Request): JobsTask | null =>
     r.kind === 'connect' && r.ref && PORTAL_TASK_ID.test(r.ref) ? { kind: 'connect', portal: r.ref, request: r.id }
-    : r.kind === 'find' || r.kind === 'tell' || r.kind === 'quick_apply' ? { kind: r.kind, request: r.id }
+    : r.kind === 'find' || r.kind === 'tell' || r.kind === 'quick_apply' || r.kind === 'judge' ? { kind: r.kind, request: r.id }
       : (r.kind === 'apply' || r.kind === 'prepare') && r.ref && ROLE_ID.test(r.ref) ? { kind: r.kind, role: r.ref, request: r.id }
         : null;
   /** Picked, never prepared (Find prepares only the top few): nothing has read its form yet. */
@@ -746,6 +785,22 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     return {};
   };
 
+  /**
+   * What a Find asks for, checked: { count } as before, and from the Find sheet { portals: [ids to read now], budget: postings
+   * to judge, prepare: how many picks to prepare }. Left out, the skill keeps its defaults (the notes' own numbers).
+   */
+  function findPayload(b: any): Record<string, unknown> {
+    const out: Record<string, unknown> = { count: intIn(b.count ?? (notesOf(ctx).search.data.schedule.daily_picks || 5), 1, 20, 'count') };
+    if (b.portals !== undefined) {
+      if (!Array.isArray(b.portals) || b.portals.length > 20) throw new HttpError(400, 'portals: give a list of at most 20');
+      out.portals = [...new Set(b.portals.map((id: unknown) => portalArg(id).id))];
+    }
+    if (b.budget !== undefined) out.budget = intIn(b.budget, 5, 80, 'budget');
+    if (b.prepare !== undefined) out.prepare = intIn(b.prepare, 0, 10, 'prepare');
+    return out;
+  }
+  const openJudge = () => requests.ofLane(LANE, 'judge').find((r) => isOpen(r));
+
   const actions: Record<string, (b: any) => unknown> = {
     setup: () => queue('setup', undefined, {}),
     refreshSources: () => {
@@ -754,7 +809,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       return { ok: true, ...r };
     },
     find: (b) => {
-      const out = queue('find', undefined, { count: intIn(b.count ?? (notesOf(ctx).search.data.schedule.daily_picks || 5), 1, 20, 'count') }, { task: (id) => ({ kind: 'find', request: id }), fresh: false });
+      const out = queue('find', undefined, findPayload(b), { task: (id) => ({ kind: 'find', request: id }), fresh: false });
       // Find fetches first when a source you switched on was never fetched or is older than 6 h: the request waits for
       // the fetch (Claude judges fresh postings, LinkedIn's included), at most 15 minutes.
       if (o.fetchBeforeFind && sourcesStale()) {
@@ -768,6 +823,21 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
         }
       }
       return out;
+    },
+    // Explore's marks (free): save a role to judge later, hide it for good, or clear either mark.
+    saveRole: (b) => ({ ok: true, ...markRole(ctx, roleArg(b.role).id, 'saved') }),
+    hideRole: (b) => ({ ok: true, ...markRole(ctx, roleArg(b.role).id, 'hidden') }),
+    unsaveRole: (b) => ({ ok: true, ...markRole(ctx, roleArg(b.role).id, null) }),
+    /**
+     * "Judge these N": a judge request for exactly the saved roles Claude can still judge (new or on the bench), in a Jobs chat
+     * in front. About TOKENS_PER_JUDGED tokens each; the light model judges, then Claude picks and prepares per prepare_ahead.
+     */
+    judgeSaved: () => {
+      const open = openJudge();
+      if (open) return { ok: true, request: open.id, status: open.status, already: true };
+      const roles = judgeableSaved(ctx);
+      if (!roles.length) throw new HttpError(400, 'Save some roles first: only saved roles that were not judged yet can be judged');
+      return { ...queue('judge', undefined, { roles }, { task: (id) => ({ kind: 'judge', request: id }), fresh: false }), roles: roles.length, tokens: roles.length * TOKENS_PER_JUDGED };
     },
     addLink: (b) => queue('link', undefined, { url: checkLink(b.url, ctx.features), ...(b.force === true ? { force: true } : {}) }),
     tell: (b) => tell(b.text),
@@ -1082,6 +1152,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       }
       if (path === '/api/jobs/state') return json(res, 200, stateView());
       if (path === '/api/jobs/today') { const r = url.searchParams.get('role'); return json(res, 200, today(r && ROLE_ID.test(r) ? r : undefined)); }
+      if (path === '/api/jobs/explore') return json(res, 200, await exploreRoles(ctx, exploreParams(url.searchParams)));
       if (path === '/api/jobs/applications') return json(res, 200, applicationsView(ctx));
       if (path === '/api/jobs/knowledge') {
         const tab = (url.searchParams.get('tab') ?? 'profile') as KnowledgeTab;
@@ -1092,7 +1163,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       if (path === '/api/jobs/proposals') return json(res, 200, proposalsView());
       if (path === '/api/jobs/preferences') return json(res, 200, preferences());
       if (path === '/api/jobs/settings') return json(res, 200, settings());
-      if (path === '/api/jobs/portals') { refreshFeatures(); return json(res, 200, portalsView(ctx, undefined, portalsMode())); }
+      if (path === '/api/jobs/portals') { refreshFeatures(); return json(res, 200, { ...portalsView(ctx, undefined, portalsMode()), titles: searchTitles(ctx) }); }
       if (path === '/api/jobs/sources') return json(res, 200, sourcesScreen(ctx, { resolving, results: recentResolves(), notesPage: (f) => notesPage(f)! }));
       throw new HttpError(404, 'not found');
     } catch (e: any) {
@@ -1117,6 +1188,13 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     if (r.lane !== LANE || !r.kind) return undefined;
     refreshFeatures();
     if (r.kind === 'find') return { daily_picks: notesOf(ctx).search.data.schedule.daily_picks, prepare_ahead: notesOf(ctx).search.data.schedule.prepare_ahead };
+    if (r.kind === 'judge') {
+      // The saved roles to judge, as they stand now (some may have been picked or applied to since).
+      const ids = (Array.isArray(r.payload?.roles) ? r.payload!.roles : []).map(String).filter((id) => ROLE_ID.test(id));
+      const roles = ids.flatMap((id) => { try { const x = getRole(db, id); return [{ id: x.id, company: x.company, title: x.title, status: x.status, url: x.url }]; } catch { return []; } });
+      const s = notesOf(ctx).search.data.schedule;
+      return { roles, daily_picks: s.daily_picks, prepare_ahead: s.prepare_ahead };
+    }
     if (r.kind === 'source') return { source: listSources(ctx).find((x) => x.key === r.payload?.key) ?? null };
     if (r.kind === 'connect') {
       const p = r.ref ? effectivePortals(c.jobs.home).byId.get(r.ref) : undefined;

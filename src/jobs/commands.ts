@@ -122,6 +122,13 @@ const cmds: Record<string, (args: string[]) => unknown> = {
   }),
 
   candidates: (args) => withCtx(async (ctx) => {
+    // The saved roles a `judge` request names (a JSON list of ids in a file): only those, in that order, still judgeable.
+    if (flag(args, 'roles-file') !== undefined) {
+      const ids = jsonFile(flag(args, 'roles-file'), 'usage: crewdeck jobs candidates --roles-file <f> (a JSON list of role ids)');
+      if (!Array.isArray(ids) || ids.length > 80 || ids.some((x) => typeof x !== 'string' || !ROLE_ID.test(x))) throw new Error('--roles-file must be a JSON list of at most 80 role ids');
+      const { candidatesFor } = await import('./pipeline/rank.ts');
+      return json(candidatesFor(ctx, ids));
+    }
     if (flag(args, 'budget') === undefined) return json(candidates(ctx, intArg(flag(args, 'limit'), 'limit', 40)));
     // A Find within a budget: the next batch in rank order, and where the run stands (design §2.4 step 3).
     const { budgetedCandidates } = await import('./pipeline/rank.ts');
@@ -480,7 +487,8 @@ tracker and pipeline (text from postings and the user's words only through files
   preview [--search-file f] [--days N] [--source key] [--json]   what your rules (or a change to them) catch, read-only
   providers install | status | verify     the pinned job-board providers (download, check, re-hash)
   candidates [--limit N]                  unjudged roles, best first (JSON)
-  candidates --budget N [--batch 10] [--need N] [--start]   the next batch for a Find within a budget (≤ 40)
+  candidates --budget N [--batch 10] [--need N] [--start]   the next batch for a Find within a budget (≤ 80)
+  candidates --roles-file f               the roles in a JSON list of ids (a judge request's saved roles), still judgeable (JSON)
   judge --results-file f                  store verdicts [{ role, eligible: yes|no|unclear, score, evidence, reason? }]
   pick [--n N] [--day D] | pick --role <id> [--request <link request id>]   ("Add it anyway" only from the request)
   add-role --role-file f | status <role> <status> [--reason-file f]

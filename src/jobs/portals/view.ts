@@ -5,6 +5,8 @@ import { changeSources } from '../sources-note.ts';
 import { type Portal, canScan } from './catalog.ts';
 import { effectivePortals } from './readers.ts';
 import { portalItems } from './scan.ts';
+import { portalProfile, portalQueries, queryTitles } from './queries.ts';
+import { placeName } from '../places.ts';
 import { type PortalStatus, portalStatus, readPortalsState } from './state.ts';
 
 export type PortalView = {
@@ -13,6 +15,10 @@ export type PortalView = {
   paused_until?: string; last_scan?: string; last_found?: number; risk: string; signup_url: string; login_url: string; verified: boolean;
   /** No reader yet (a `teach: true` entry): Claude sets one up on first connect. */ needs_reader: boolean;
   kind?: string; access?: string; importance?: number; reader?: boolean; added?: boolean;
+  /** One quiet line for a site not connected yet: the fields and places it is good for. */
+  blurb: string;
+  /** What one read of it covers now (connected ones): searches (≤ its searches_per_run) and the pages they open. */
+  searches?: number; pages?: number;
 };
 export type PortalTestView = { found: number; by: { json: number; jsonld: number; links: number }; sample: { title: string; company: string; url: string }[]; stopped?: string };
 
@@ -22,6 +28,20 @@ export function portalsView(ctx: Ctx, cat: Portal[] = effectivePortals(ctx.home)
   let items: ReturnType<typeof portalItems> = [];
   try { items = portalItems(ctx); } catch { /* broken notes: nothing switched on */ }
   const now = ctx.clock();
+  let profile: ReturnType<typeof portalProfile> | null = null;
+  try { profile = portalProfile(ctx); } catch { /* broken notes: no search counts */ }
+  const blurb = (p: Portal) => {
+    const fields = p.fields.some((f) => ['any', 'world', '*'].includes(f)) || !p.fields.length ? 'every field' : p.fields.slice(0, 3).map((f) => f.replace(/-/g, ' ')).join(', ');
+    const where = p.countries.some((c) => ['world', 'any', '*'].includes(c)) ? 'worldwide' : p.countries.slice(0, 2).map((c) => placeName(c)).join(', ');
+    return `${fields} · ${where}`;
+  };
+  const reads = (p: Portal) => {
+    if (!profile || !canScan(p)) return {};
+    try {
+      const searches = Math.min(portalQueries(profile, p).length, p.limits.searches_per_run);
+      return { searches, pages: searches * p.limits.pages_per_search };
+    } catch { return {}; }
+  };
   // The person's portals first, in their order, then the rest of the catalog.
   const order = new Map(items.map((it, i) => [it.id, i]));
   const sorted = [...cat].sort((a, b) => (order.get(a.id) ?? 1e6) - (order.get(b.id) ?? 1e6));
@@ -35,7 +55,8 @@ export function portalsView(ctx: Ctx, cat: Portal[] = effectivePortals(ctx.home)
         id: p.id, name: p.name, countries: p.countries, fields: p.fields, state, enabled: on && state !== 'not_connected',
         ...(state === 'paused' && s?.pause ? { paused_until: s.pause.until } : {}),
         ...(s?.last_scan ? { last_scan: s.last_scan } : {}), ...(typeof s?.last_found === 'number' ? { last_found: s.last_found } : {}),
-        risk: p.risk, signup_url: p.signup_url, login_url: p.login_url, verified: p.verified, needs_reader: !canScan(p),
+        risk: p.risk, signup_url: p.signup_url, login_url: p.login_url, verified: p.verified, needs_reader: !canScan(p), blurb: blurb(p),
+        ...(state !== 'not_connected' ? reads(p) : {}),
         ...(p.kind ? { kind: p.kind } : {}), ...(p.access ? { access: p.access } : {}), ...(p.importance !== undefined ? { importance: p.importance } : {}),
         ...(p.reader ? { reader: true } : {}), ...(p.added ? { added: true } : {}),
       };
@@ -68,4 +89,9 @@ export function togglePortal(ctx: Ctx, portal: Portal, on: boolean): { changed: 
 /** A scan run as the page's Test answer. */
 export function testView(r: { found: number; by: PortalTestView['by']; sample?: { title: string; company: string; url: string }[]; stopped?: string; why?: string; ran: boolean }): PortalTestView {
   return { found: r.found, by: r.by, sample: (r.sample ?? []).map(({ title, company, url }) => ({ title, company, url })), ...(r.stopped || (!r.ran && r.why) ? { stopped: r.stopped ?? r.why } : {}) };
+}
+
+/** The titles a portal search covers (the Find sheet lists them): the first title of each kind of job and its variants. */
+export function searchTitles(ctx: Ctx): string[] {
+  try { return queryTitles(portalProfile(ctx)); } catch { return []; }
 }

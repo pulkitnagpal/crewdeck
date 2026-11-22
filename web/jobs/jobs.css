@@ -17,23 +17,6 @@ code { font: 0.875rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; backgr
 
 /* ---- frame ---- */
 .app { display: flex; flex-direction: column; height: 100%; overflow-wrap: break-word; }
-.top { flex: none; display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--ground); flex-wrap: wrap; min-height: 52px; }
-.tabsnav { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
-/* A tab row that scrolls sideways shows it: soft shadows at the edge with more tabs behind it (they scroll with the
-   row, so they go once its end is reached). */
-.tabsnav, .tabs {
-  background:
-    linear-gradient(to right, var(--ground) 40%, transparent) left center / 28px 100% no-repeat local,
-    linear-gradient(to left, var(--ground) 40%, transparent) right center / 28px 100% no-repeat local,
-    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--ink) 22%, transparent), transparent) left center / 12px 100% no-repeat scroll,
-    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--ink) 22%, transparent), transparent) right center / 12px 100% no-repeat scroll;
-}
-.tabsnav button { border: 0; background: transparent; color: var(--soft); padding: 6px 10px; border-radius: 8px; font-weight: 500; font-size: 0.875rem; white-space: nowrap; }
-.tabsnav button:hover { color: var(--ink); background: var(--chip); }
-.tabsnav button[aria-current="page"] { color: var(--accent); background: var(--accent-bg); }
-.top .grow { flex: 1; }
-.top .break { display: none; }
-/* The status strips shrink (to an ellipsis) before the row wraps: long ones never push Find onto a row of its own. */
 .agent { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 1 1 140px; min-width: 0; max-width: 360px; font-size: 0.875rem; color: var(--soft); }
 .agent .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent b { color: var(--ink); font-weight: 600; }
@@ -247,23 +230,7 @@ tr:first-child td { border-top: 0; }
 .files li { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; padding: 8px 10px; border-radius: 8px; background: var(--rail); }
 .files li code { background: transparent; padding: 0; flex: 1; }
 
-/* ---- narrower: the browser pane beside the chat ---- */
-@media (max-width: 1440px) {
-  /* Two rows up to 1440 px (D41 type needs the room); tighter tabs so Find still fits on their row in the pane beside
-     the chat (about 720 px inside the rail). */
-  .top { row-gap: 6px; column-gap: 8px; padding-left: 12px; padding-right: 12px; }
-  .tabsnav button { padding: 6px 8px; }
-  .tabsnav { flex: 1 1 0; }
-  .top .grow { display: none; }
-  .top .find { order: 1; flex: none; }
-  .top .break { display: block; order: 2; flex-basis: 100%; height: 0; }
-  .agent { order: 3; flex: 1 1 0; max-width: none; justify-content: flex-start; }
-  .sources { order: 3; flex: 0 1 auto; }
-  .sources::before { content: ''; width: 1px; height: 16px; background: var(--line); flex: none; }
-  .addlink { order: 4; flex: none; }
-}
 @media (max-width: 1000px) {
-  .queue { width: 216px; padding: 12px 8px; }
   .detail { padding: 20px 20px 40px; }
 }
 /* A narrow frame: the page scrolls as one, the queue a row of cards above the role. */
@@ -272,15 +239,11 @@ tr:first-child td { border-top: 0; }
   .todaycol, .today, .todaycol > .today { height: auto; flex: none; }
   .today { flex-direction: column; }
   .detail { overflow: visible; flex: none; padding: 16px; }
-  .queue { width: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; gap: 8px; scroll-padding: 0 12px; flex: none; }
-  .queue .label { display: none; }
-  .qitem { flex: 0 0 min(220px, 72vw); background: var(--card); border-color: var(--line); }
 }
 @media (max-width: 820px) {
   .dhead { flex-wrap: wrap; }
   .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); }
   .page { padding: 16px; }
-  .addlink input { width: 150px; }
   .qa { padding: 10px; } .qa .ref { width: 22px; }
 }
 .self-start { align-self: flex-start; }
@@ -400,18 +363,6 @@ details.why .whybody { padding: 0 16px 12px; display: flex; flex-direction: colu
 @media (max-width: 600px) {
   /* Tall but narrow: the top bar stays in reach while the page scrolls. */
   .top { position: sticky; top: 0; z-index: 5; }
-  /* The top bar in three rows: the tabs (scrolling in their own row), Paste a link + Find, then Claude's status. */
-  .top { padding: 8px 12px 10px; gap: 8px; min-height: 0; }
-  .tabsnav { order: 0; flex: 1 1 100%; margin: 0 -12px; padding: 0 12px; scroll-padding: 0 12px; }
-  .tabsnav button { min-height: 36px; padding: 6px 10px; }
-  .top .grow, .top .break { display: none; }
-  .addlink { order: 1; flex: 1 1 180px; min-width: 0; }
-  .addlink input { flex: 1; width: auto; }
-  .top .find { order: 2; flex: none; min-height: 38px; }
-  .agent { order: 3; flex: 1 1 auto; max-width: none; justify-content: flex-start; }
-  .sources { order: 4; flex: 0 1 auto; max-width: 60%; }
-  .sources::before { display: none; }
-  .sources .linkbtn { min-height: 32px; }
   /* Touch-sized controls, 8 px apart. */
   .btn { min-height: 36px; }
   .btn.small, .addlink .btn.small { min-height: 32px; }
@@ -477,7 +428,4 @@ details.why .whybody { padding: 0 16px 12px; display: flex; flex-direction: colu
 .banner .more, .banner .more > summary { min-height: 24px; color: var(--ink); }
 .setup .more-body p, .why .more-body p, .side .more-body p, .banner .more-body p, .empty .more-body p { margin: 0; }
 
-/* Today below 640 px: the queue is a row of cards that scrolls sideways on its own (after the small-window rules). */
-@media (max-width: 640px) {
-  .queue { overflow-x: auto; overflow-y: hidden; }
-}
+

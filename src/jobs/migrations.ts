@@ -125,7 +125,13 @@ create table if not exists learned (
   kind text not null check (kind in ('company','word','source')), key text not null, label text not null,
   delta integer not null, counts_json text not null default '{}', updated text not null, primary key (kind, key));
 `;
-export const ADDITIVE: { name: string; sql: string }[] = [{ name: 'proposals', sql: PROPOSALS }, { name: 'learned', sql: LEARNED }];
+// saved_roles (Explore): a role the person saved (to judge later, or to keep) or hid (never shown in Explore again).
+const SAVED_ROLES = `
+create table if not exists saved_roles (
+  role_id text primary key, state text not null check (state in ('saved','hidden')), at text not null);
+create index if not exists saved_roles_state on saved_roles(state);
+`;
+export const ADDITIVE: { name: string; sql: string }[] = [{ name: 'proposals', sql: PROPOSALS }, { name: 'learned', sql: LEARNED }, { name: 'saved_roles', sql: SAVED_ROLES }];
 
 // Additive columns (no user_version step, like ADDITIVE): nullable, no default, added when missing on every open, so a
 // parallel phase's numbered step never collides with them. Each is checked inside BEGIN IMMEDIATE before the ALTER.
