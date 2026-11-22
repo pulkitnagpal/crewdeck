@@ -95,7 +95,7 @@ test('queries: covered places and remote, along the diagonal, capped at searches
     'https://www.portal.test/jobs/data-analyst-jobs?days=7&wfh=yes',
     'https://www.portal.test/jobs/bi-analyst-jobs-in-bangalore?days=7',
   ]);
-  assert.deepEqual(q[1], { keywords: 'Data Analyst', workplace: 'remote', country: 'in', url: q[1].url });
+  assert.deepEqual(q[1], { keywords: 'Data Analyst', titles: ['Data Analyst'], workplace: 'remote', country: 'in', url: q[1].url });
   // Deterministic.
   assert.deepEqual(portalQueries(INDIA_PROFILE, p), q);
   // A later page, and a portal that can't page.
@@ -116,7 +116,7 @@ test('queries: a portal covering none of the person\'s places gets no searches; 
 test('queries on the shipped catalog: LinkedIn names the country for remote; Indeed picks its country host; Hirist has no place filter', () => {
   const cat = loadPortals();
   const li = portalQueries(INDIA_PROFILE, cat.byId.get('linkedin')!);
-  assert.ok(li.some((q) => q.url === 'https://www.linkedin.com/jobs/search/?keywords=Data%20Analyst&location=India&f_TPR=r604800&f_WT=2'), li.map((q) => q.url).join('\n'));
+  assert.ok(li.some((q) => q.url === 'https://www.linkedin.com/jobs/search/?keywords=%22Data%20Analyst%22%20OR%20%22BI%20Analyst%22%20OR%20%22Analytics%20Engineer%22&location=India&f_TPR=r604800&f_WT=2'), li.map((q) => q.url).join('\n'));
   const indeed = portalQueries({ ...INDIA_PROFILE, countries: ['gb'], places: ['London'] }, cat.byId.get('indeed')!);
   assert.ok(indeed.length && indeed.every((q) => q.url.startsWith('https://uk.indeed.com/jobs?q=')), indeed.map((q) => q.url).join('\n'));
   assert.ok(portalQueries(INDIA_PROFILE, cat.byId.get('hirist')!).every((q) => /^https:\/\/www\.hirist\.tech\/k\/[a-z-]+-jobs$/.test(q.url)));

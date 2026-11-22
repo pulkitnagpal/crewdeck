@@ -161,3 +161,37 @@ portal (Claude helping, the human typing passwords and codes), and rejected emai
 - Good: a new site costs a catalog line, not code; a broken site is re-taught by the person's Claude without a release.
 - Bad: lightweight entries are unchecked knowledge; a wrong home address only means connect opens the wrong page, and
   nothing scans a site until a reader has found 5 jobs on a real page.
+
+## Amendment: Search coverage (2026-11-22)
+
+### Decision
+
+17. **Every title of the person, not the first.** A portal's searches (`portalQueries`) cover all the person's kinds of
+    job. Titles per run, most specific first: every target's main title, then up to two variants of each, drawn from a
+    pool: the person's own other titles, then Senior / Staff / Founding wordings (not put on an already levelled title),
+    then skill flavours (LLM, Platform, Cloud… when the skill is in the targets' or `career.md`'s skills, and only on a
+    plain role such as "Software Engineer"). Titles are de-duplicated, quotes removed.
+18. **`search.multi` in the catalog**: `or` (LinkedIn: `keywords="a" OR "b" OR "c"`, quoted phrases, URL-encoded, ≤ 200
+    characters), `comma` (Naukri: `k=a, b, c`, ≤ 150; the `{q_slug}` path takes the first title of the group, the
+    list lives in `k`), or absent (one title per search). `multi_max_chars` caps the keywords string before encoding (a
+    lone title longer than the cap is cut at a word). The Naukri `k` list and its slug are not live-verified; if Naukri
+    stops taking a list, remove `multi` from its entry and it searches one title at a time.
+19. **Packing.** Titles go, in order, into the first group whose keywords stay within the cap: the fewest searches, within
+    `searches_per_run` (with places and remote, groups × wheres ≤ the budget, the same diagonal order as before). Packing
+    never adds a page: limits, pauses, delays, `pages_per_day` and `min_hours` are unchanged; a search just covers more titles.
+20. **Rotation.** Per portal, `~/.crewdeck/jobs/state/portals.json` keeps `rotation` (finished scans) and `last_titles` (the
+    groups the last scan searched). Each scan moves every kind's variant window on by two; when not every main title fits
+    one run, the mains start further on by the number that fit, so each kind of job gets its turn. Deterministic: same
+    notes and rotation, same URLs. The count moves when a scan's first page is ingested (not for `--test`, not for another
+    page of the same scan, not when that page stops the portal) and after a profile-mode scan.
+21. **Plan.** `crewdeck jobs portals plan --json --portals <id,id>` limits the plan to those ids (the Find sheet passes the
+    person's choice); an unknown id is an error, a listed id that is switched off appears in `skipped`; `--portal <id>`
+    (one test page) is unchanged and can't be combined with `--portals`. Each page gains `titles: string[]`, what that
+    search covers, so the chat can say "LinkedIn: software, platform, AI engineer".
+
+### Consequences
+
+- Good: a Find covers all of the person's kinds of job with the same page budget; consecutive Finds see other wordings.
+- Bad: an OR search returns one ranked list of ≤ 25 cards, so a portal's best matches for the first titles can crowd out
+  later ones; rotation and the variant order (mains first) are the mitigation. A phrase search is stricter than the old
+  unquoted one on LinkedIn.

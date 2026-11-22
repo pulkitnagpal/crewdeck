@@ -159,7 +159,7 @@ test('plan: the switched-on, connected portals\' pages within every limit, with 
   assert.equal(plan.mode, 'pane');
   // 3 searches × 2 pages, the first at once and every later one after delay_ms (10 s here, jittered ±40%).
   assert.equal(plan.pages.length, 6);
-  assert.deepEqual(plan.pages[0], { portal: 'fixture', url: 'https://www.portal.test/jobs/data-analyst-jobs-in-bangalore?days=7', query: 'Data Analyst', delay_ms: 0 });
+  assert.deepEqual(plan.pages[0], { portal: 'fixture', url: 'https://www.portal.test/jobs/data-analyst-jobs-in-bangalore?days=7', query: 'Data Analyst', titles: ['Data Analyst'], delay_ms: 0 });
   assert.equal(plan.pages[1]!.url, 'https://www.portal.test/jobs/data-analyst-jobs-in-bangalore?days=7&page=2');
   assert.deepEqual(plan.pages.slice(1).map((x) => x.delay_ms), [10000, 10000, 10000, 10000, 10000]);
   const spread = planPortals(w.ctx, { ...o, rnd: () => 0 }).pages[1]!.delay_ms;

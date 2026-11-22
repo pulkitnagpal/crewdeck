@@ -127,7 +127,7 @@ const SRC_JOBS = read('src', 'jobs', 'cli.ts') + read('src', 'jobs', 'commands.t
  * `plan [--json] [--portal <id>]|script <id>|ingest <id> --file <f> [--page-url <u>] [--test]|mark <id> connected|signed-out`,
  * as agreed with the engine: the skills are checked against this until the command exists, then against its source.
  */
-const PORTALS_CONTRACT = { verbs: ['list', 'connect', 'disconnect', 'test', 'on', 'off', 'plan', 'script', 'ingest', 'mark'], flags: ['signup', 'json', 'portal', 'file', 'page-url', 'test'] };
+const PORTALS_CONTRACT = { verbs: ['list', 'connect', 'disconnect', 'test', 'on', 'off', 'plan', 'script', 'ingest', 'mark'], flags: ['signup', 'json', 'portal', 'portals', 'file', 'page-url', 'test'] };
 const portalsPending = () => !JOBS_COMMANDS.includes('portals');
 const TOP = ['setup', 'init', 'up', 'open', 'service', 'address', 'add-project', 'doctor', 'requests', 'request', 'progress', 'jobs'];
 /** Commands whose next word is a verb. */

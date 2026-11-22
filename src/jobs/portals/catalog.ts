@@ -21,6 +21,8 @@ export type Portal = {
     url: string; url_place?: string; url_remote?: string; remote?: string; hybrid?: string;
     recency?: Record<string, string>; page?: { start: number; step: number; omit_first?: boolean };
     place_aliases?: Record<string, string>; country_hosts?: Record<string, string>;
+    /** How several titles share one search: `or` ("a" OR "b"), `comma` (a, b); absent = one title per search. */ multi?: 'or' | 'comma';
+    /** The longest keywords string (characters, before URL-encoding) the portal takes when `multi` is set. */ multi_max_chars?: number;
   };
   job_url: { pattern: string; keep_params?: string[]; canonical?: string };
   json: JsonAdapter[];
@@ -70,6 +72,9 @@ export function hostsFromUrl(url: string): string[] {
   return [...new Set([h, bare, `www.${bare}`])];
 }
 
+/** The keywords length a `multi` portal takes when its entry names none. */
+export const DEFAULT_MULTI_MAX = 150;
+
 export function normalise(e: any, d: any): Portal {
   const lim = { ...(d?.limits ?? {}), ...(e?.limits ?? {}) };
   const s = e?.search ?? {};
@@ -90,6 +95,7 @@ export function normalise(e: any, d: any): Portal {
       ...(s.recency ? { recency: rec(s.recency) } : {}),
       ...(s.page ? { page: { start: Number(s.page.start ?? 0), step: Number(s.page.step ?? 1), omit_first: s.page.omit_first === true } } : {}),
       ...(s.place_aliases ? { place_aliases: rec(s.place_aliases) } : {}), ...(s.country_hosts ? { country_hosts: rec(s.country_hosts) } : {}),
+      ...(s.multi !== undefined ? { multi: s.multi } : {}), ...(s.multi !== undefined ? { multi_max_chars: s.multi_max_chars === undefined ? DEFAULT_MULTI_MAX : Number(s.multi_max_chars) } : {}),
     },
     job_url: { pattern: String(e?.job_url?.pattern ?? ''), ...(e?.job_url?.keep_params ? { keep_params: strs(e.job_url.keep_params) } : {}), ...(e?.job_url?.canonical ? { canonical: String(e.job_url.canonical) } : {}) },
     ...(e?.cards ? { cards: [].concat(e.cards).filter((c: any) => c && typeof c === 'object').map((c: any) => ({
@@ -155,6 +161,8 @@ export function portalIssues(p: Portal): string[] {
     if (!hostIn(h, p.hosts)) out.push(`${at}: country_hosts ${c} → ${h} is not on the portal's hosts`);
   }
   for (const d of Object.keys(p.search.recency ?? {})) if (!/^\d{1,3}$/.test(d)) out.push(`${at}: recency key ${d} is not a number of days`);
+  if (p.search.multi !== undefined && p.search.multi !== 'or' && p.search.multi !== 'comma') out.push(`${at}: search.multi is or or comma`);
+  if (p.search.multi_max_chars !== undefined && !(Number.isInteger(p.search.multi_max_chars) && p.search.multi_max_chars >= 40 && p.search.multi_max_chars <= 500)) out.push(`${at}: search.multi_max_chars is 40 to 500`);
   if (p.search.page && !(p.search.page.step > 0 && p.search.page.start >= 0)) out.push(`${at}: search.page needs start ≥ 0 and step > 0`);
   if (!p.job_url.pattern || !regexOk(p.job_url.pattern)) out.push(`${at}: job_url.pattern is missing or not a regex`);
   for (const c of p.cards ?? []) {

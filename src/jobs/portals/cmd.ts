@@ -24,7 +24,8 @@ export const PORTALS_USAGE = `usage: crewdeck jobs portals <verb>
   test <id> [--json]                one search, one page: what was found, and how (json, jsonld, links)
   on <id> | off <id>                scan it in every sources run, or stop (jobs/sources.md, with a Changes line)
 pane mode (jobs.portals_mode: pane, the default; Claude scans in Claude desktop's browser pane during Find):
-  plan [--json] [--portal <id>]     the pages to open now, each { portal, url, query, delay_ms }; --portal: one page of one portal, a test
+  plan [--json] [--portal <id>] [--portals <id,id>]   the pages to open now, each { portal, url, query, titles, delay_ms };
+                                    --portal: one page of one portal, a test; --portals: only those portals (the person's choice)
   script <id>                       the JavaScript Claude runs in the portal's page (javascript_tool); it returns { url, signals, jobs }
   ingest <id> --file <f.json> [--page-url <u>] [--test]   store one page's answer (the only write); prints { stored, new, stopped? }
   mark <id> connected|signed-out    record that the person is signed in to it in the pane (or signed out)
@@ -78,12 +79,16 @@ export async function portalsCmd(args: string[]) {
   if (verb === 'plan') {
     const only = flag(args, 'portal');
     if (only !== undefined) portalArg(only);
+    const list = flag(args, 'portals');
+    const ids = list === undefined ? undefined : list.split(',').map((x) => x.trim()).filter(Boolean);
+    if (list !== undefined && !ids!.length) throw new Error(`--portals needs portal ids, comma separated (crewdeck jobs portals list shows them)`);
+    for (const x of ids ?? []) portalArg(x);
     const ctx = openCtx(c);
     try {
-      const r = planPortals(ctx, { mode: c.jobs.portals_mode, ...(only ? { only } : {}) });
+      const r = planPortals(ctx, { mode: c.jobs.portals_mode, ...(only ? { only } : {}), ...(ids ? { ids } : {}) });
       if (args.includes('--json')) return json(r);
       if (!r.pages.length) say('no portal pages to open now');
-      for (const pg of r.pages) say(`${pg.portal.padEnd(10)} after ${Math.round(pg.delay_ms / 1000)} s  ${pg.query}  ${pg.url}`);
+      for (const pg of r.pages) say(`${pg.portal.padEnd(10)} after ${Math.round(pg.delay_ms / 1000)} s  ${pg.titles.join(' | ')}  ${pg.url}`);
       for (const k of r.skipped) say(`  · ${k.name}: ${k.why}`);
       return;
     } finally { ctx.db.close(); }

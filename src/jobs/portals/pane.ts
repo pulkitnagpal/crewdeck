@@ -20,7 +20,8 @@ import { EMPTY_ANOMALY, type StopKind, portalItems, storePostings } from './scan
 import { type PortalState, nextPause, readPortalsState, updatePortal } from './state.ts';
 
 export type PortalsMode = 'pane' | 'profile';
-export type PlanPage = { portal: string; url: string; query: string; delay_ms: number };
+/** `titles`: what that page's search covers (`query` is them joined as the portal reads them). */
+export type PlanPage = { portal: string; url: string; query: string; titles: string[]; delay_ms: number };
 export type PortalPlan = { mode: PortalsMode; pages: PlanPage[]; skipped: { portal: string; name: string; why: string }[] };
 
 /** Pages ingested within this long of the last one belong to the same scan (their counts add up). */
@@ -30,16 +31,20 @@ export const INGEST_MAX_BYTES = 128 * 1024;
 
 /**
  * The pages to open this run, in the person's portal order. `only`: one portal, as a test (one search, one page; its
- * switch and min_hours don't matter; pauses, sign-in and the daily cap still do).
+ * switch and min_hours don't matter; pauses, sign-in and the daily cap still do). `ids`: only these portals (the
+ * person's choice in the Find sheet); a listed id that is switched off is reported as skipped, an unknown one is an error.
  */
-export function planPortals(ctx: Ctx, o: { mode?: PortalsMode; only?: string; portals?: Portal[]; profile?: PortalProfile; rnd?: () => number } = {}): PortalPlan {
+export function planPortals(ctx: Ctx, o: { mode?: PortalsMode; only?: string; ids?: string[]; portals?: Portal[]; profile?: PortalProfile; rnd?: () => number } = {}): PortalPlan {
   const mode = o.mode ?? 'pane';
   const out: PortalPlan = { mode, pages: [], skipped: [] };
   if (mode !== 'pane') return { ...out, skipped: [{ portal: '*', name: 'Portals', why: 'profile mode: Crewdeck scans portals itself in every sources run' }] };
   const cat = o.portals ?? effectivePortals(ctx.home).portals;
   const byId = new Map(cat.map((p) => [p.id, p]));
   const state = readPortalsState(ctx.home).portals;
-  const ids = o.only ? [o.only] : portalItems(ctx).filter((it) => it.enabled).map((it) => it.id);
+  const on = portalItems(ctx).filter((it) => it.enabled).map((it) => it.id);
+  if (o.only && o.ids) throw new Error('give --portal (one test page) or --portals (a choice), not both');
+  for (const id of o.ids ?? []) if (!byId.has(id)) throw new Error(`no portal "${id}" (crewdeck jobs portals list shows them)`);
+  const ids = o.only ? [o.only] : o.ids ? [...new Set(o.ids)] : on;
   const prefs = notesOf(ctx).search.data.companies?.countries;
   const profile = o.profile ?? portalProfile(ctx);
   const now = ctx.clock();
@@ -49,6 +54,7 @@ export function planPortals(ctx: Ctx, o: { mode?: PortalsMode; only?: string; po
     if (!p) { if (o.only) throw new Error(`no portal "${id}" (crewdeck jobs portals list shows them)`); continue; }
     const st: PortalState = state[id] ?? {};
     const skip = (why: string) => out.skipped.push({ portal: id, name: p.name, why });
+    if (o.ids && !on.includes(id)) { skip('switched off (Jobs page → Sources → Portals)'); continue; }
     if (!canScan(p)) { skip(`needs a reader: Claude sets it up on first connect (crewdeck jobs portals teach ${id})`); continue; }
     if (!st.connected) { skip(`not connected (sign in: Jobs page → Sources → Portals → Connect)`); continue; }
     if (st.needs_sign_in) { skip(`${p.name} needs you to sign in again: Jobs page → Sources → Portals → Sign in`); continue; }
@@ -58,7 +64,7 @@ export function planPortals(ctx: Ctx, o: { mode?: PortalsMode; only?: string; po
     if (left <= 0) { skip(`${p.limits.pages_per_day} pages read today already (the daily limit)`); continue; }
     const verdict = portalVerdict(p.countries, prefs, profile.countries);
     if (!verdict.allowed) { skip(`skipped: ${verdict.why}`); continue; }
-    const queries = portalQueries(profile, p, { max: o.only ? 1 : undefined });
+    const queries = portalQueries(profile, p, { max: o.only ? 1 : undefined, rotation: st.rotation ?? 0 });
     if (!queries.length) { skip(`${p.name} covers none of the places in your search, or your search has no titles`); continue; }
     let n = 0;
     outer: for (const q of queries) {
@@ -67,7 +73,7 @@ export function planPortals(ctx: Ctx, o: { mode?: PortalsMode; only?: string; po
         const url = page === 0 ? q.url : searchUrl(p, q, page);
         if (!url) break;
         // The first page of a portal opens at once; every later one after the portal's jittered delay.
-        out.pages.push({ portal: id, url, query: q.keywords, delay_ms: n === 0 ? 0 : delayMs(p.limits, o.rnd) });
+        out.pages.push({ portal: id, url, query: q.keywords, titles: q.titles, delay_ms: n === 0 ? 0 : delayMs(p.limits, o.rnd) });
         n++;
       }
     }
@@ -176,8 +182,12 @@ export function ingestPage(ctx: Ctx, portal: Portal, raw: unknown, o: { pageUrl?
   const postings = stop ? [] : out.jobs.map((j) => toPosting(j, at));
   if (!stop && !o.test) Object.assign(res, storePostings(ctx, portal, postings, at));
   if (o.test) res.sample = out.jobs.slice(0, 5).map((j) => ({ title: j.title, company: j.company, url: j.url }));
+  // A new scan (not another page of this one, not a test, not a stop) moves the title rotation on: the groups this scan's
+  // plan held are remembered, and the next scan starts from the next variants.
+  const searched = !o.test && !stop && !continuing && canScan(portal) ? safeQueries(ctx, portal, st.rotation ?? 0) : null;
   const after = updatePortal(ctx.home, portal.id, (p) => {
     p.day = { date: today, pages: used + 1 };
+    if (searched) { p.rotation = (p.rotation ?? 0) + 1; p.last_titles = searched.map((q) => q.titles); }
     if (!o.test) {
       p.last_found = (continuing ? p.last_found ?? 0 : 0) + res.found;
       p.last_new = (continuing ? p.last_new ?? 0 : 0) + res.new;
@@ -195,6 +205,11 @@ export function ingestPage(ctx: Ctx, portal: Portal, raw: unknown, o: { pageUrl?
     if (after.needs_sign_in) res.needs_sign_in = true;
   }
   return res;
+}
+
+/** The queries of a scan at `rotation` (what its plan held), or none when the notes can't make any now. */
+function safeQueries(ctx: Ctx, portal: Portal, rotation: number) {
+  try { return portalQueries(portalProfile(ctx), portal, { rotation }); } catch { return null; }
 }
 
 /** Claude's record of the person's sign-in in the pane: connected (the pause and the sign-in flag go) or signed out. */

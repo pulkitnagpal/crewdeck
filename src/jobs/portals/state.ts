@@ -11,6 +11,8 @@ export type PortalState = {
   /** A scan met a sign-in wall: the person signs in again (connect). */ needs_sign_in?: boolean;
   last_scan?: string; last_found?: number; last_new?: number; last_error?: string;
   pause?: Pause;
+  /** Finished scans (counted per scan, not per page): moves which title variants the next search uses (ADR-0008, Search coverage). */ rotation?: number;
+  /** The title groups the last scan searched, one list per search. */ last_titles?: string[][];
   /** Pages loaded on `date` (the person's day), for pages_per_day. */ day?: { date: string; pages: number };
 };
 export type PortalsState = { portals: Record<string, PortalState> };

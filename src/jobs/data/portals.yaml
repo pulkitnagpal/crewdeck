@@ -53,6 +53,9 @@ portals:
       hybrid: '3'
       recency: { 1: r86400, 7: r604800, 30: r2592000 }
       page: { start: 0, step: 25, omit_first: true }
+      # Several titles in one search: keywords="a" OR "b" (quoted phrases), at most ~200 characters.
+      multi: or
+      multi_max_chars: 200
     job_url: { pattern: '^/jobs/view/(?:[^/]*-)?(\d{6,})/?$', canonical: 'https://www.linkedin.com/jobs/view/{id}' }
     # No json adapter: re-requesting voyager needs LinkedIn's CSRF token and is the riskiest thing to send it. The signed-in
     # list (2026-11-21, /jobs/search-results/) carries each job's id on its card and its parts as paragraphs in order.
@@ -88,6 +91,10 @@ portals:
       hybrid: '3'
       recency: { 1: '1', 3: '3', 7: '7', 15: '15', 30: '30' }
       place_aliases: { bengaluru: bangalore }
+      # Several titles in one search: k=a, b, c with the path slug from the first title (not live-checked: the path slug is
+      # a landing-page hint and k is what filters; one title per search is the fallback if k stops taking a list).
+      multi: comma
+      multi_max_chars: 150
     job_url: { pattern: '^/job-listings-[a-z0-9-]+-\d{6,}$' }
     # No json adapter: the search API asks for a reCAPTCHA token on any repeat request (checked 2026-11-21), and Crewdeck
     # never gets past a challenge. The page's own cards carry everything a role needs.

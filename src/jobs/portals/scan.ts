@@ -98,7 +98,7 @@ export async function scanPortal(ctx: Ctx, portal: Portal, o: ScanOptions & { te
   const usedToday = st.day?.date === today ? st.day.pages : 0;
   const left = portal.limits.pages_per_day - usedToday;
   if (left <= 0) return { ...run, why: `${portal.limits.pages_per_day} pages read today already (the daily limit)` };
-  const queries = portalQueries(o.profile ?? portalProfile(ctx), portal, { max: o.test ? 1 : undefined });
+  const queries = portalQueries(o.profile ?? portalProfile(ctx), portal, { max: o.test ? 1 : undefined, rotation: st.rotation ?? 0 });
   run.queries = queries.map(({ url: _u, ...q }) => q);
   if (!queries.length) return { ...run, why: `${portal.name} covers none of the places in your search, or your search has no titles` };
   if (!o.launch) return { ...run, why: 'no browser to scan with' };
@@ -150,6 +150,7 @@ export async function scanPortal(ctx: Ctx, portal: Portal, o: ScanOptions & { te
   updatePortal(ctx.home, portal.id, (p) => {
     p.day = { date: today, pages: usedToday + run.pages };
     if (!o.test) { p.last_scan = at.toISOString(); p.last_found = run.found; p.last_new = run.new; }
+    if (!o.test && !stop) { p.rotation = (p.rotation ?? 0) + 1; p.last_titles = queries.map((q) => q.titles); }
     if (stop) {
       p.last_error = stop.reason;
       if (pausing) p.pause = nextPause(p.pause, stop.reason, at);
