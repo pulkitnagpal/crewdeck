@@ -6,7 +6,9 @@ export function Banners({ state, onNotes = noop, onToast = noop, onOpenSession =
   const a = state.agent ?? {};
   const waiting = a.waiting?.length ?? 0;
   const list = [];
-  if (!a.connected && !state.setup?.needed) {
+  // Jobs chats open per request (P4), so no session is the normal idle state: say so only when work waits with no chat.
+  const stuck = waiting && !(a.waiting ?? []).some((r) => r.hold === 'chat' || r.hold === 'fetching');
+  if (!a.connected && !state.setup?.needed && stuck) {
     list.push(html`<div class=${`banner ${waiting ? 'warn' : ''}`} key="session">
       <div class="body">
         <span><b>No Claude session is working Jobs.</b>${waiting ? html` <span class="chip warn">${plural(waiting, 'request')} waiting</span>` : ''}</span>

@@ -58,6 +58,9 @@ function sourceNames(ctx: Ctx): Map<string, string> {
 const labelOf = (names: Map<string, string>, r: Pick<Raw, 'source' | 'source_key'>) => {
   if (r.source_key && names.has(r.source_key)) return names.get(r.source_key)!;
   if (r.source_key?.startsWith('portal:')) return titleCase(r.source_key.slice(7));
+  // Planned sources: "api:himalayas" → Himalayas; "ats:greenhouse:atlan" → Atlan careers.
+  if (r.source_key?.startsWith('api:')) return titleCase(r.source_key.slice(4));
+  if (r.source_key?.startsWith('ats:')) return `${titleCase(r.source_key.split(':').slice(2).join(' ') || r.source_key.split(':')[1])} careers`;
   if (r.source === 'pasted') return 'Pasted link';
   return titleCase(r.source_key ?? r.source ?? 'Feed') || 'Feed';
 };
@@ -136,6 +139,14 @@ export async function exploreRoles(ctx: Ctx, query: ExploreQuery = {}, o: { scor
 }
 
 /** The Explore tab's number: everything the default view lists (no words, no filters). */
+/** Explore's tab number: what its default view lists (other occupations are behind a chip, so not counted). */
+export function exploreDefaultCount(ctx: Ctx): number {
+  const rows = ctx.db.prepare(`select r.id, r.title, r.description, r.source_key from roles r left join saved_roles s on s.role_id=r.id
+    where r.status in (select value from json_each(?)) and coalesce(s.state, '') <> 'hidden'`).all(JSON.stringify(POOL_STATUSES)) as any[];
+  const compiled = compileRules(notesOf(ctx));
+  return rows.filter((r) => titleFitOf(compiled, r).fit >= OTHER_OCCUPATION_FIT).length;
+}
+
 export function exploreCount(db: Db): number {
   return Number((db.prepare(`select count(*) n from roles r left join saved_roles s on s.role_id=r.id
     where r.status in (select value from json_each(?)) and coalesce(s.state, '') <> 'hidden'`).get(JSON.stringify(POOL_STATUSES)) as any).n);

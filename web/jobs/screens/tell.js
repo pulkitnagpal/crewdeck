@@ -4,10 +4,12 @@
 import { useState } from 'preact/hooks';
 import { html, noop, plural, More } from '../lib.js';
 
-export const TELL_PLACEHOLDER = 'Tell Crewdeck anything: a link, a LinkedIn post, \'now PM roles\'…';
+export const TELL_PLACEHOLDER = 'Paste a job link, or tell Crewdeck anything: a LinkedIn post, \'now PM roles\'…';
+/** One job posting's address goes straight to Add link; a post (LinkedIn, X) or anything else is a tell for Claude. */
+export const isJobLink = (t) => /^https?:\/\/\S+$/i.test(t) && !/^https?:\/\/([^/]*\.)?(x\.com|twitter\.com|t\.co|lnkd\.in)\//i.test(t) && !/linkedin\.com\/(posts|feed|pulse|in)\//i.test(t);
 export const MAX_TELL = 3000;
 
-export function TellBox({ onTell = noop }) {
+export function TellBox({ onTell = noop, onLink = null }) {
   const [v, setV] = useState('');
   const [busy, setBusy] = useState(false);
   const go = async (e) => {
@@ -15,7 +17,7 @@ export function TellBox({ onTell = noop }) {
     const text = v.trim();
     if (!text || busy) return;
     setBusy(true);
-    try { if (await onTell(text)) setV(''); } finally { setBusy(false); }
+    try { if (await (onLink && isJobLink(text) ? onLink(text) : onTell(text))) setV(''); } finally { setBusy(false); }
   };
   return html`<form class="tell" aria-label="Tell Crewdeck" onSubmit=${go}>
     <input class="field" aria-label="Tell Crewdeck" type="text" maxlength=${MAX_TELL} autocomplete="off" placeholder=${TELL_PLACEHOLDER} value=${v} onInput=${(e) => setV(e.currentTarget.value)} />
@@ -70,7 +72,7 @@ export function Proposals({ data, onApprove = noop, onReject = noop, onApproveAl
 export function TellArea({ proposals, actions = {} }) {
   const a = { onTell: noop, onApproveProposal: noop, onRejectProposal: noop, onApproveAllProposals: noop, onUndoProposal: noop, ...actions };
   return html`<div class="tellarea">
-    <${TellBox} onTell=${a.onTell} />
+    <${TellBox} onTell=${a.onTell} onLink=${a.onLink} />
     <${Proposals} data=${proposals} onApprove=${a.onApproveProposal} onReject=${a.onRejectProposal} onApproveAll=${a.onApproveAllProposals} onUndo=${a.onUndoProposal} />
   </div>`;
 }

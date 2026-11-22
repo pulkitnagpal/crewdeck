@@ -6,7 +6,6 @@ import { html, noop, cls, safeHref, postedText, Icon, Spark, More } from '../lib
 import { ApplyPanel } from './apply.js';
 import { SetupCard } from './setup.js';
 import { TellArea } from './tell.js';
-import { AddLink } from './topbar.js';
 
 /** The mock's short words for a pick's state. */
 export const chipText = (c) => ({ 'Ready to apply': 'Ready', 'Not prepared yet': 'Not prepared' }[c.text] ?? c.text);
@@ -228,7 +227,8 @@ export function Today({ data, state, preview = null, actions = {}, narrow = fals
   if (setup && !data.queue.length) return html`<div class="page"><${SetupCard} state=${state} onOpenSession=${a.onOpenSession} onSetup=${a.onSetup} onNotes=${a.onNotes} onToast=${a.onToast} onCancel=${a.onCancel} /></div>`;
   const tell = html`<${TellArea} proposals=${data.proposals} actions=${a} />`;
   const why = data.find ? html`<${WhySoFew} find=${data.find} preview=${preview} onFix=${a.onFix} onPreview=${a.onPreview} onSources=${a.onSources} />` : null;
-  const link = narrow ? html`<div class="phonelink"><${AddLink} onAdd=${a.onLink} /></div>` : null;
+  // One input (the Tell box) takes job links and anything else, on every width.
+  const link = null;
   if (!data.queue.length) {
     return html`<div class="page">${tell}${why}${link}<${Progress} progress=${data.progress} onExplore=${a.onExplore} /><div class="empty">
       <span class="ico"><${Icon} name="briefcase" size=${22} /></span>

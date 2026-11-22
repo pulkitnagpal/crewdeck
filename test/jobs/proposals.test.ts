@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { request } from 'node:http';
 import { render } from 'preact-render-to-string';
 import { html } from '../../web/jobs/lib.js';
-import { Proposals, TellArea, TELL_PLACEHOLDER } from '../../web/jobs/screens/tell.js';
+import { Proposals, TellArea, TELL_PLACEHOLDER, isJobLink } from '../../web/jobs/screens/tell.js';
 import { Today } from '../../web/jobs/screens/today.js';
 import { type ApplyEnv, ProposalError, addProposal, approve, checkProposal, getProposal, proposalView, reject, undo } from '../../src/jobs/proposals.ts';
 import { notesOf } from '../../src/jobs/ctx.ts';
@@ -258,14 +258,20 @@ test('server: proposals through the agent endpoint and the page; auto-apply chec
 
 const text = (markup: string) => markup.replace(/<[^>]+>/g, ' ').replace(/&#39;|&apos;/g, '\'').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
+test('UI: the one input routes a single job URL to Add link, and posts or other text to Tell', () => {
+  for (const u of ['https://jobs.example.com/5', 'http://careers.example.org/roles/senior-analyst?id=7', 'https://boards.greenhouse.io/atlan/jobs/123', 'https://www.linkedin.com/jobs/view/3912345678']) assert.equal(isJobLink(u), true, u);
+  for (const u of ['https://www.linkedin.com/posts/someone_hiring-activity-123', 'https://linkedin.com/feed/update/urn:li:activity:1', 'https://x.com/someone/status/123', 'https://twitter.com/someone/status/123', 'https://lnkd.in/abc123', 'now PM roles', 'a link https://jobs.example.com/5', 'https://jobs.example.com/5 and this one', 'jobs.example.com/5', '']) assert.equal(isJobLink(u), false, u);
+});
+
 test('UI: the Tell box sits at the top of Today; the Proposals card lists pending items with Approve / Reject / Approve all', async () => {
   const state = (await s.get('state')).json;
   const d = (await s.get('today')).json;
   const out = render(html`<${Today} data=${d} state=${state} />`);
-  assert.ok(out.indexOf('Tell Crewdeck anything') >= 0 && out.indexOf('Tell Crewdeck anything') < out.indexOf('Nothing to review'), 'the box is first');
+  assert.ok(out.indexOf('tell Crewdeck anything') >= 0 && out.indexOf('tell Crewdeck anything') < out.indexOf('Nothing to review'), 'the box is first');
   assert.match(out, /<input[^>]*aria-label="Tell Crewdeck"/);
   assert.match(out, /<button type="submit"[^>]*disabled[^>]*>Send<\/button>/, 'Send waits for text');
-  assert.equal(TELL_PLACEHOLDER, 'Tell Crewdeck anything: a link, a LinkedIn post, \'now PM roles\'…');
+  assert.equal(TELL_PLACEHOLDER, 'Paste a job link, or tell Crewdeck anything: a LinkedIn post, \'now PM roles\'…');
+  assert.equal((out.match(/<input/g) ?? []).length, 1, 'the one input on For you takes links too');
   // A card with two pending items and one applied at once.
   const w = world('example');
   const { e } = env(w);

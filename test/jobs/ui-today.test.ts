@@ -38,6 +38,8 @@ before(async () => {
   s.q.finish(r.request, '1 picked');
   preparedRole(s.w, 'Example Studio', { firstTime: true });
   preparedRole(s.w, 'Example Analytics With A Long Company Name');
+  // A request waits for Claude: the header's second row (the status) only shows then, and it has to fit like the rest.
+  assert.equal((await s.action('addLink', { url: 'https://jobs.example.com/roles/42' })).status, 200);
   const { chromium } = await import('playwright-core');
   browser = await chromium.launch({ executablePath: found.path, headless: true, args: ['--no-proxy-server', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost'] });
 });
@@ -103,10 +105,11 @@ for (const [width, height] of [[870, 800], [760, 700], [1000, 900], [1280, 800]]
     await checkToday(page, `${width}x${height}`, page);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), true, 'no sideways overflow');
     if (width >= 760 && width <= 1000) {
-      // Two rows: the tabs and Find, then status · sources · Paste a link.
-      const [tabs, find, agent, add] = await Promise.all(['.tabsnav', '.top .find', '.agent', '.addlink'].map((x) => page.locator(x).first().boundingBox().then((b) => b!)));
+      // Two rows while a request waits: the tabs and Find, then Claude's status alone (no sources line, no Paste a link).
+      const [tabs, find, agent] = await Promise.all(['.tabsnav', '.top .find', '.agent'].map((x) => page.locator(x).first().boundingBox().then((b) => b!)));
       assert.ok(Math.abs(find.y + find.height / 2 - (tabs.y + tabs.height / 2)) < 12, 'Find on the tabs row');
-      assert.ok(Math.abs(agent.y + agent.height / 2 - (add.y + add.height / 2)) < 12 && agent.y > tabs.y + 20, 'status and link on the second row');
+      assert.ok(agent.y > tabs.y + 20, 'the status on the second row');
+      assert.equal(await page.locator('.top .addlink, .top .sources, .top .sources').count(), 0, 'nothing but the status on the second row');
       const top = (await page.locator('.top').boundingBox())!;
       assert.ok(top.height <= 124, `the top bar is two rows (${top.height} px)`);
     }

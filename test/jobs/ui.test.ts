@@ -183,15 +183,27 @@ test('first run, banners and the top bar', async () => {
     assert.match(today, /Set up with Claude/, 'Today shows the setup card to a new user');
   } finally { await fresh.close(); }
   const st = (await s.get('state')).json;
-  const b = text(render(html`<${Banners} state=${{ ...st, banners: [{ kind: 'note', text: 'jobs/search.md: pay.floor must be a number', fix: 'Until then Jobs uses the last valid version.', page: 'jobs/search' }] }} />`));
-  // One sentence and the action up front; the how and why behind a More (a native <details>).
-  assert.match(b, /No Claude session is working Jobs\.\s*Why\?\s*Open one in Claude desktop: Open in Claude starts a Code session in your jobs folder/);
+  const note = [{ kind: 'note', text: 'jobs/search.md: pay.floor must be a number', fix: 'Until then Jobs uses the last valid version.', page: 'jobs/search' }];
+  // Idle with no session is the normal state (chats open per request): no "No Claude session" banner, only the note.
+  const b = text(render(html`<${Banners} state=${{ ...st, banners: note }} />`));
+  assert.doesNotMatch(b, /No Claude session/);
   assert.match(b, /pay\.floor must be a number\s*How to fix\s*Until then Jobs uses the last valid version\..*Open in Notes/);
-  assert.equal(render(html`<${Banners} state=${{ ...st, agent: { ...st.agent, connected: true }, banners: [] }} />`), '');
+  assert.equal(render(html`<${Banners} state=${{ ...st, banners: [] }} />`), '', 'idle, no session: no banner');
+  // Requests wait and nothing holds them for a chat or a fetch: one sentence and the action up front; the how and why behind a More (a native <details>).
+  const stuck = text(render(html`<${Banners} state=${{ ...st, agent: { ...st.agent, connected: false, waiting: [{ label: 'Find jobs', role: null }] }, banners: [] }} />`));
+  assert.match(stuck, /No Claude session is working Jobs\.\s*1 request waiting\s*Why\?\s*Open one in Claude desktop: Open in Claude starts a Code session in your jobs folder/);
+  // Held for an opening chat or a fetch: the work is on its way, so no banner.
+  for (const hold of ['chat', 'fetching']) assert.equal(render(html`<${Banners} state=${{ ...st, agent: { ...st.agent, connected: false, waiting: [{ label: 'Find jobs', role: null, hold }] }, banners: [] }} />`), '', `held for ${hold}`);
+  assert.equal(render(html`<${Banners} state=${{ ...st, agent: { ...st.agent, connected: true, waiting: [{ label: 'Find jobs', role: null }] }, banners: [] }} />`), '', 'a connected session needs no banner');
   const bar = text(render(html`<${TopBar} screen="today" agent=${st.agent} quota=${3} />`));
   assert.match(bar, /For you.*Explore.*Applied.*Sources.*More.*Find jobs/);
   assert.doesNotMatch(bar, /What Claude knows|Preferences|Settings/, 'those wait behind More');
-  assert.match(bar, /No Claude session/);
+  assert.doesNotMatch(bar, /No Claude session|Claude connected|Feeds updated|Refresh sources|Paste a job link/, 'idle: nothing but the tabs, More and Find jobs');
+  assert.equal(agentLine({ connected: false, working: [], waiting: [] }), null, 'idle with no session: no status line');
+  assert.equal(agentLine({ connected: true, working: [], waiting: [], recent: [{ result: 'Added Example Labs' }] }), null, 'idle and connected: no status line either');
+  const waitBar = render(html`<${TopBar} screen="today" agent=${{ ...st.agent, waiting: [{ label: 'Find jobs', role: null }] }} quota=${3} />`);
+  assert.match(waitBar, /class="topsub"/);
+  assert.match(text(waitBar), /1 request waiting/);
   assert.equal(agentLine({ connected: true, working: [{ label: 'Apply to a role', role: { company: 'Example Labs' }, last: { text: 'Step 1 of 3' } }], waiting: [] }).head, 'Claude is working:');
   assert.equal(agentLine({ connected: false, working: [], waiting: [{ label: 'Find jobs' }] }).text, '1 request waiting');
   // P8 (visual check): a link pasted while Claude applies was queued but the strip showed only the work in hand.

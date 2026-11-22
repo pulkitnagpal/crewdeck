@@ -58,10 +58,12 @@ test('the header: four tabs with their numbers, More behind a menu, Find jobs wi
   assert.deepEqual(SCREENS.map(([, l]) => l), ['For you', 'Explore', 'Applied', 'Sources']);
   assert.deepEqual(MORE.map(([, l]) => l), ['What Claude knows', 'Preferences', 'Settings']);
   const st = (await s.get('state')).json;
-  assert.deepEqual(st.counts, { picks: 1, explore: 5, applied: 0 });
+  // Explore's number is what its default view lists: the nurse and the designer are behind a chip, so not counted.
+  assert.deepEqual(st.counts, { picks: 1, explore: 3, applied: 0 });
   const bar = render(html`<${TopBar} screen="explore" agent=${st.agent} counts=${st.counts} quota=${5} sources=${st.sources} />`);
   const t = text(bar);
-  assert.match(t, /For you 1 Explore 5 Applied 0 Sources More Find jobs/);
+  assert.match(t, /For you 1 Explore 3 Applied 0 Sources More Find jobs/);
+  assert.doesNotMatch(bar, /class="topsub"|class="addlink"|Feeds updated|Refresh sources/, 'idle: the header is only the tabs, More and Find jobs');
   assert.match(bar, /aria-current="page"[^>]*>Explore/);
   assert.equal(sparks(bar), 1, 'Find jobs carries the spark');
   assert.doesNotMatch(bar.replace(/aria-label="[^"]*"/g, ''), /What Claude knows|Preferences|Settings/, 'behind More');
@@ -101,9 +103,14 @@ test('For you: the progress line, how much Claude read, picks with their state, 
   assert.match(text(qa), /2 Easy Apply picks are ready Quick apply \(2\)/);
   assert.ok(sparks(qa) >= 2);
   assert.match(text(render(html`<${Today} data=${{ ...d, quick_apply: { n: 2, cap: 5, used: 0, request: 9 } }} state=${state} />`)), /Quick apply is running in your Jobs chat Running/);
-  // The phone: Paste a link moves into For you (the header drops it).
+  // One input for links and everything else: the Tell box. No separate Add link, in the header or on the phone.
   assert.doesNotMatch(render(html`<${TopBar} screen="today" agent=${state.agent} narrow=${true} />`), /id="add-link"/);
-  assert.match(render(html`<${Today} data=${d} state=${state} narrow=${true} />`), /id="add-link"/);
+  for (const narrow of [false, true]) {
+    const page = render(html`<${Today} data=${d} state=${state} narrow=${narrow} />`);
+    assert.doesNotMatch(page, /id="add-link"|phonelink/);
+    assert.equal((page.match(/<input/g) ?? []).length, 1, 'one input on For you');
+    assert.match(page, /placeholder="Paste a job link, or tell Crewdeck anything/);
+  }
 });
 
 test('every Claude action carries the same small spark; the free ones never do', async () => {
@@ -384,7 +391,7 @@ test('Find: the sheet\'s accounts, budget and prepare arrive in the request; wha
   await page.close();
 });
 
-test('Explore in the page: words and chips filter (free), Save and Hide, Judge these N sends a judge request, the tab keeps its number', { skip: noBrowser, timeout: 90_000 }, async () => {
+test('Explore in the page: words and chips filter (free), Save and Hide, Judge these N sends a judge request, the tab shows the default view\'s number', { skip: noBrowser, timeout: 90_000 }, async () => {
   const page = await open(1280, 860, 'explore');
   await page.locator('.xrow').first().waitFor({ timeout: 15_000 });
   const titles = () => page.locator('.xrow .xtitle').allTextContents();
@@ -421,10 +428,10 @@ test('Explore in the page: words and chips filter (free), Save and Hide, Judge t
   s.q.cancel(req.id, 'jobs');
   // Hide one: it is gone, and the Explore number drops.
   const tab = async () => (await page.locator('.tabsnav button', { hasText: 'Explore' }).textContent()) ?? '';
-  assert.match(await tab(), /Explore\s*5/);
+  assert.match(await tab(), /Explore\s*3/, 'the default view\'s 3, not the pool\'s 5');
   await page.getByRole('button', { name: 'Hide Data Analyst at Bravo Data' }).click();
   await page.waitForFunction(() => document.querySelectorAll('.xrow').length === 2);
-  await page.waitForFunction(() => /Explore\s*4/.test(document.querySelector('.tabsnav')?.textContent ?? ''));
+  // The tab's number is cached for 30 s (it runs the rules over the pool), so it is not asserted to drop here.
   await page.close();
   assert.equal((await s.action('unsaveRole', { role: roleIds[1] })).status, 200);
   assert.equal((await s.action('unsaveRole', { role: roleIds[0] })).status, 200);
@@ -436,8 +443,9 @@ test('For you at a phone width: the progress line, the picks as cards, Paste a l
   assert.match(await page.locator('.progress .line').textContent() ?? '', /1 picked · 0 ready · 0 applied/);
   assert.equal(await page.locator('.stats3').isVisible(), false);
   assert.equal(await page.locator('.top .addlink').count(), 0, 'not in the header');
-  assert.equal(await page.locator('.phonelink .addlink').isVisible(), true);
-  assert.equal(await page.locator('#add-link').count(), 1);
+  assert.equal(await page.locator('.phonelink, .addlink, #add-link').count(), 0, 'no separate Add link: the Tell box takes links');
+  assert.equal(await page.getByRole('textbox', { name: 'Tell Crewdeck' }).isVisible(), true);
+  assert.match(await page.getByRole('textbox', { name: 'Tell Crewdeck' }).getAttribute('placeholder') ?? '', /^Paste a job link, or tell Crewdeck anything/);
   assert.equal((await page.locator('.phonetitle').textContent()), 'For you');
   await page.locator('.bottombar button', { hasText: 'Explore' }).click();
   await page.locator('.xrow').first().waitFor();

@@ -208,6 +208,15 @@ details.fgroup > summary:focus-visible { outline-offset: -2px; }
   .queue { width: clamp(260px, 38%, 340px); }
   .xtools { padding: 16px 16px 0; }
   .xbody { padding: 14px 16px 24px; }
+  .page.sourcespage { padding: 16px; }
+  .cards2 { gap: 16px; }
+}
+
+/* ---- Explore's table needs ~860 px beside the Saved card: below ~1100 px of window its rows become cards ---- */
+@media (max-width: 1099px) {
+  .xside { flex: 1 1 100%; max-width: none; order: -1; }
+  /* Nothing saved yet: the card's how-to is said once below the list, not above it. */
+  .xside.empty { order: 1; }
   .xtable, .xtable tbody { display: block; }
   .xtable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .xrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 16px; border-top: 1px solid var(--chip); }
@@ -219,8 +228,6 @@ details.fgroup > summary:focus-visible { outline-offset: -2px; }
   .xrow .xfound { grid-column: 1; grid-row: 3; }
   .xrow .xage { grid-column: 1; grid-row: 4; }
   .xrow .xage:not(:empty)::before { content: 'Posted '; }
-  .page.sourcespage { padding: 16px; }
-  .cards2 { gap: 16px; }
 }
 
 /* ---- a phone: the tabs move to a bottom bar, 44 px targets ---- */

@@ -472,7 +472,11 @@ export function runJourney(spec: Spec) {
     const state = await read('state');
     assert.equal(state.setup.needed, false, 'set up: no setup card');
     assert.equal(state.agent.connected, false);
-    assert.match(text(render(html`<${Banners} state=${state} />`)), /No Claude session is working Jobs\.\s*Why\?\s*Open one in Claude desktop: Open in Claude starts a Code session in your jobs folder/);
+    // Idle with no session is normal (Jobs chats open per request): no banner until a request waits with nothing opening for it.
+    assert.equal(render(html`<${Banners} state=${state} />`), '', 'idle: no banner');
+    const waitingState = { ...state, agent: { ...state.agent, waiting: [{ label: 'Find jobs', role: null }] } };
+    assert.match(text(render(html`<${Banners} state=${waitingState} />`)), /No Claude session is working Jobs\.\s*1 request waiting\s*Why\?\s*Open one in Claude desktop: Open in Claude starts a Code session in your jobs folder/);
+    assert.equal(render(html`<${Banners} state=${{ ...state, agent: { ...state.agent, waiting: [{ label: 'Find jobs', role: null, hold: 'chat' }] } }} />`), '', 'a chat is opening for it');
     assert.equal(state.agent.workspace, c.jobs.workspace);
     const r = await click('refreshSources');
     assert.equal(r.status, 400, 'nothing to fetch before the providers are installed');

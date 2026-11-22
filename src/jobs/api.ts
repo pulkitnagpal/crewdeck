@@ -26,7 +26,7 @@ import { LEVELS_WANTED, MATCH_MODES, targetsOf } from './titles.ts';
 import { runPreview } from './preview.ts';
 import { findFunnel, funnelSummary } from './funnel.ts';
 import { readFindRun } from './pipeline/rank.ts';
-import { type ExploreQuery, TOKENS_PER_JUDGED, exploreCount, exploreRoles, judgeableSaved, markRole } from './search/explore.ts';
+import { type ExploreQuery, TOKENS_PER_JUDGED, exploreCount, exploreDefaultCount, exploreRoles, judgeableSaved, markRole } from './search/explore.ts';
 import { checkRoleUrl, isLinkedinHost, isXHost } from './fields.ts';
 import { applyContext } from './apply-kind.ts';
 import { quickApplyView } from './quick-apply.ts';
@@ -514,11 +514,14 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     };
   }
 
+  let exploreCache: { at: number; n: number } | null = null;
   /** The numbers on the page's tabs: picks waiting, roles in Explore, roles applied to. */
   function tabCounts() {
     const picks = Number((db.prepare(`select count(*) n from roles where status in ('picked','prepared')`).get() as any).n);
     const applied = Number((db.prepare(`select count(*) n from roles where status='applied'`).get() as any).n);
-    return { picks, explore: exploreCount(db), applied };
+    // The rules run over the pool for this number: computed at most every 30 s (state is polled).
+    if (!exploreCache || Date.now() - exploreCache.at > 30_000) { try { exploreCache = { at: Date.now(), n: exploreDefaultCount(ctx) }; } catch { exploreCache = { at: Date.now(), n: exploreCount(db) }; } }
+    return { picks, explore: exploreCache.n, applied };
   }
 
   /** The preview of the saved notes or of the Preferences form's unsaved changes (≤ 5,000 roles, ≤ 1 s of suggestions). */
@@ -589,7 +592,7 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
     const since = new Date(ctx.clock().getTime() - 7 * 86_400_000).toISOString();
     const week = Number((db.prepare(`select count(distinct e.role_id) n from events e join roles r on r.id=e.role_id where e.kind='status' and e.detail like 'applied%' and e.at >= ? and r.status='applied'`).get(since) as any).n);
     const run = readFindRun(c.jobs.home);
-    return { picked: open.length, ready: open.filter((q) => q.chip.kind === 'ready').length, applied_week: week, read: run?.judged.length ? { n: run.judged.length, of: exploreCount(db) } : null };
+    return { picked: open.length, ready: open.filter((q) => q.chip.kind === 'ready').length, applied_week: week, read: run?.judged.length ? { n: run.judged.length, of: tabCounts().explore } : null };
   }
 
   function preferences() {
@@ -825,9 +828,10 @@ export function createJobsApi(c: Config, requests: Requests, o: JobsApiOptions =
       return out;
     },
     // Explore's marks (free): save a role to judge later, hide it for good, or clear either mark.
-    saveRole: (b) => ({ ok: true, ...markRole(ctx, roleArg(b.role).id, 'saved') }),
-    hideRole: (b) => ({ ok: true, ...markRole(ctx, roleArg(b.role).id, 'hidden') }),
-    unsaveRole: (b) => ({ ok: true, ...markRole(ctx, roleArg(b.role).id, null) }),
+    // A mark changes Explore's tab number at once (it is cached for 30 s otherwise).
+    saveRole: (b) => { exploreCache = null; return { ok: true, ...markRole(ctx, roleArg(b.role).id, 'saved') }; },
+    hideRole: (b) => { exploreCache = null; return { ok: true, ...markRole(ctx, roleArg(b.role).id, 'hidden') }; },
+    unsaveRole: (b) => { exploreCache = null; return { ok: true, ...markRole(ctx, roleArg(b.role).id, null) }; },
     /**
      * "Judge these N": a judge request for exactly the saved roles Claude can still judge (new or on the bench), in a Jobs chat
      * in front. About TOKENS_PER_JUDGED tokens each; the light model judges, then Claude picks and prepares per prepare_ahead.

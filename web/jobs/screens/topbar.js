@@ -25,13 +25,13 @@ export function agentLine(agent) {
   // Find waits for a fresh fetch (hold: 'fetching') before Claude reads anything: say so rather than "waiting".
   if (waiting.length && waiting[0].hold === 'fetching') return { dot: 'busy', head: 'Fetching new postings first…', text: `${what(waiting[0])}${waiting.length > 1 ? ` (+${waiting.length - 1})` : ''}` };
   if (waiting.length) return { dot: 'wait', head: 'Waiting for Claude:', text: `${what(waiting[0])}${waiting.length > 1 ? ` (+${waiting.length - 1})` : ''}` };
-  if (!agent.connected) return { dot: 'off', head: 'No Claude session', text: '' };
-  const last = agent.recent?.[0];
-  return { dot: 'ok', head: 'Claude connected', text: last?.result ? `· Last: ${last.result}` : '' };
+  // Idle (no work in hand or waiting): nothing to say; Jobs chats open when you ask for something.
+  return null;
 }
 
 export function AgentStrip({ agent }) {
   const l = agentLine(agent);
+  if (!l) return null;
   return html`<div class="agent" role="status" aria-live="polite">
     <span class=${`dot ${l.dot}`} aria-hidden="true"></span>
     <span class="txt" title=${`${l.head} ${l.text}`}><b>${l.head}</b> ${l.text}</span>
@@ -134,10 +134,6 @@ export function TopBar({ screen, onNav = noop, agent, quota = 5, onFind = noop, 
         <${Spark} size=${16} />Find jobs
       </button>
     </div>
-    <div class="topsub">
-      <${AgentStrip} agent=${agent} />
-      <${SourcesStrip} sources=${sources} onRefresh=${onRefresh} onSources=${() => onNav('sources')} />
-      ${narrow ? null : html`<${AddLink} onAdd=${onLink} />`}
-    </div>
+    ${agentLine(agent) ? html`<div class="topsub"><${AgentStrip} agent=${agent} /></div>` : null}
   </header>`;
 }

@@ -95,12 +95,12 @@ for (const scheme of ['light', 'dark'] as const) {
   });
 }
 
-test('the keyboard reaches every screen\'s controls: the top bar\'s tabs, Find, Add link; a role\'s Apply box and its first-time answer', { skip: noBrowser, timeout: 120_000 }, async () => {
+test('the keyboard reaches every screen\'s controls: the top bar\'s tabs, Find, the Tell box that takes links; a role\'s Apply box and its first-time answer', { skip: noBrowser, timeout: 120_000 }, async () => {
   const page = await open('today', 'light', '.qitem');
   await page.locator('.qitem', { hasText: 'Example Studio' }).click();
   await page.locator('.side').waitFor();
   const walk = await tabWalk(page);
-  for (const name of ['For you', 'Explore', 'Applied', 'Sources', 'More', 'Paste a job link', 'Find jobs']) assert.ok(walk.some((w) => w.startsWith(name)), `Tab reaches ${name}: ${walk.join(' | ')}`);
+  for (const name of ['For you', 'Explore', 'Applied', 'Sources', 'More', 'Find jobs', 'Tell Crewdeck']) assert.ok(walk.some((w) => w.startsWith(name)), `Tab reaches ${name}: ${walk.join(' | ')}`);
   assert.ok(walk.some((w) => /Example Studio/.test(w)), 'the queue');
   assert.ok(walk.some((w) => /^Yes$/.test(w)), 'the first-time question\'s options');
   // Enter on More opens its menu (What Claude knows, Preferences, Settings stay reachable); Enter on Settings switches screens.
@@ -127,8 +127,13 @@ test('the setup card and the top bar for a new user (no sources yet), light and 
   try {
     for (const scheme of ['light', 'dark'] as const) {
       const page = await open('today', scheme, '.setup', fresh.port);
-      // Before setup the line says what's missing (here the providers, which crewdeck setup installs; then "No sources yet").
-      assert.match(await page.locator('.top').textContent() ?? '', /No sources yet|Job boards not set up/);
+      // The header is only the tabs, More and Find jobs: the "No sources yet / Open Sources" strip moved out. The Sources tab
+      // is still one click away and the setup card on For you is what tells a new user what to do.
+      const top = await page.locator('.top').textContent() ?? '';
+      assert.match(top, /Sources/, 'the Sources tab');
+      assert.doesNotMatch(top, /No sources yet|Job boards not set up|Open Sources|Refresh sources|Paste a job link/);
+      assert.equal(await page.locator('.top .sources, .top .addlink, .top .topsub').count(), 0, 'no second row for an idle new user');
+      assert.match(await page.locator('.setup').textContent() ?? '', /Set up with Claude/);
       await d41(page, `setup-${scheme}`);
       // Sent with no Claude session connected: the card says what to do, and the request can be cancelled.
       await page.getByRole('button', { name: 'Set up with Claude' }).click();

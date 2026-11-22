@@ -89,7 +89,7 @@ export function Explore({ data, query = EMPTY_QUERY, found = null, onQuery = noo
           : html`<p class="xempty">${q.q || q.strong || q.days || q.saved || q.group !== 'all' ? 'Nothing matches these filters.' : 'Nothing found yet: feeds update by themselves, or Find jobs reads your accounts.'}</p>`}
         <div class="xfoot" role="status">Showing ${n(data.rows.length)} of ${n(data.total)}${canMore ? html` · <button type="button" class="linkbtn" onClick=${() => onQuery({ limit: Math.min(200, q.limit + 50) })}>show more</button>` : more ? ' · narrow the search to see the rest' : ''}</div>
       </div>
-      <aside class="xside" aria-label="Saved">
+      <aside class=${`xside${c.saved ? '' : ' empty'}`} aria-label="Saved">
         <div class="card xsaved">
           <b>${plural(c.saved, 'saved', 'saved')}</b>
           ${c.saved ? html`

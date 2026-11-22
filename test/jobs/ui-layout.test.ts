@@ -37,14 +37,16 @@ async function open(width: number) {
   return page;
 }
 
-test('wide window: tabs and Find on the first row, Claude\'s status and Paste a link on the second, the long status ellipsized', { skip: noBrowser, timeout: 60_000 }, async () => {
+test('wide window: tabs and Find on the first row, Claude\'s status alone on the second (only while it works or requests wait), the long status ellipsized', { skip: noBrowser, timeout: 60_000 }, async () => {
   const page = await open(1600);
-  const [find, add, agent, tabs] = await Promise.all(['.top .find', '.addlink', '.agent', '.tabsnav'].map((x) => box(page, x)));
+  const [find, agent, tabs] = await Promise.all(['.top .find', '.agent', '.tabsnav'].map((x) => box(page, x)));
   assert.ok(Math.abs(find.y + find.height / 2 - (tabs.y + tabs.height / 2)) < 12, `Find on the tabs row: ${JSON.stringify({ find, tabs })}`);
-  assert.ok(Math.abs(agent.y + agent.height / 2 - (add.y + add.height / 2)) < 12 && agent.y > tabs.y + 20, `the status and Paste a link share the second row: ${JSON.stringify({ agent, add })}`);
-  assert.ok(add.x > find.x - 400, 'Paste a link sits at the right, under Find');
+  assert.ok(agent.y > tabs.y + 20, `the status is on the second row: ${JSON.stringify({ agent, tabs })}`);
+  assert.equal(await page.locator('.top .addlink, .top .sources').count(), 0, 'no Paste a link or feeds line in the header');
   assert.match(await page.locator('.agent .txt').getAttribute('title') ?? '', /Claude is working \(1 waiting\).*Step 2 of 4/, 'its full text is in the title');
-  assert.ok(agent.width <= 1600 - 56 - 260 - 40, 'the status shrinks for Paste a link rather than wrapping the row');
+  assert.ok(agent.width <= 1600 - 56, 'the status stays inside the page rather than wrapping the row');
+  // Ellipsized: the text is clipped, not wrapped to a second line.
+  assert.ok(await page.locator('.agent .txt').evaluate((e) => getComputedStyle(e).textOverflow === 'ellipsis' || e.scrollWidth <= e.clientWidth), 'the long status is ellipsized or fits');
   await page.close();
 });
 
