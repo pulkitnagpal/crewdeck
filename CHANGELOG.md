@@ -11,6 +11,11 @@ apply to and skip, takes anything you tell it (a sentence, a LinkedIn post, a tw
 fills applications per site (LinkedIn Easy Apply, Lever, Greenhouse, Ashby, Workday, Naukri) up to the Submit button
 you click. Find and Apply each open their own Jobs chat in front. Details below.
 
+- **Better order for what Claude reads** (local, no tokens): Find's candidates are now ranked by title fit, keyword match
+  (SQLite full-text search over your profile's titles, their synonyms and skills) and, if you install the small local
+  model, meaning (`crewdeck jobs search model install`, asks first; nothing downloads by itself). `crewdeck jobs search
+  "<query>"` shows each signal's rank; `crewdeck jobs search hybrid off` returns to the old order. Rules never change.
+
 - **Fixes found by testing on a real profile:** a fetch run no longer fails on a posting with no location; roles the old
   title gate dropped are checked again under the new rules; Today shows how many roles wait to be judged; the panel's
   buttons open Crewdeck in your browser at once (no chat turn).
