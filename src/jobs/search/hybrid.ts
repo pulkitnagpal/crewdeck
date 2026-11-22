@@ -23,6 +23,8 @@ export const RRF_K = 60;
 /** The title signal (title fit, seniority, skills, freshness, source, pay: the person's own words) counts double: equal
  * weights let a keyword-rich "Senior Backend Developer" push the exact "Senior Backend Engineer" from 1st to ~25th. */
 export const WEIGHTS: Record<string, number> = { title: 2, bm25: 1, embed: 1 };
+/** With a typed search (Explore's box, `jobs search "<q>"`) the words they typed lead instead. */
+export const QUERY_WEIGHTS: Record<string, number> = { title: 1, bm25: 2, embed: 1 };
 /** An exact title match (fit 1: one of the person's own titles) stays near the top whatever the other signals say. */
 export const EXACT_TITLE_BONUS = 12;
 /** Embeddings count only when at least this share of the roles being ranked has a vector. */
@@ -104,7 +106,8 @@ export function fuse(ctx: Pick<Ctx, 'db'>, rows: RoleRow[], o: { notes: Pick<Job
     raw.embed = sims; ranks.embed = ranksOf(sims); info.signals.push('embed'); info.embed_model = e.model; info.embed_coverage = e.coverage;
   }
 
-  const best = info.signals.reduce((a, sg) => a + (WEIGHTS[sg] ?? 1), 0) / (RRF_K + 1);
+  const W = o.q ? QUERY_WEIGHTS : WEIGHTS;
+  const best = info.signals.reduce((a, sg) => a + (W[sg] ?? 1), 0) / (RRF_K + 1);
   const learned = o.learned ?? { companies: new Map(), words: new Map(), sources: new Map(), rows: [] };
   const by = new Map<string, Fused>();
   for (const r of rows) {
@@ -114,9 +117,9 @@ export function fuse(ctx: Pick<Ctx, 'db'>, rows: RoleRow[], o: { notes: Pick<Job
       const rank = ranks[s]!.get(r.id);
       if (rank === undefined) continue;
       rk[s] = rank; rw[s] = raw[s]!.get(r.id);
-      sum += (WEIGHTS[s] ?? 1) / (RRF_K + rank);
+      sum += (W[s] ?? 1) / (RRF_K + rank);
     }
-    const exact = (o.fit.get(r.id) ?? 0) >= 1 ? EXACT_TITLE_BONUS : 0;
+    const exact = !o.q && (o.fit.get(r.id) ?? 0) >= 1 ? EXACT_TITLE_BONUS : 0;
     const fused = (100 * sum) / best + exact, d = learnedDelta(r, learned);
     by.set(r.id, { score: fused + d, fused, learned: d, fit: o.fit.get(r.id) ?? 1, ranks: rk, raw: rw });
   }
