@@ -55,8 +55,6 @@ import { type Ctx, makeCtx } from '../../src/jobs/ctx.ts';
 // No live fetch of the planned sources in tests (src/jobs/sources.ts); spawned CLIs and servers inherit it.
 process.env.CREWDECK_PLANNED ??= 'off';
 process.env.CREWDECK_PORTALS ??= 'off';
-// The existing suites pin the cheap score's order (priority, learned, budgets); hybrid ranking has its own tests (search-*.test.ts), which switch it on.
-process.env.CREWDECK_HYBRID_RANK ??= 'off';
 
 export type World = ReturnType<typeof tempSetup> & { ctx: Ctx; at: (iso: string) => void };
 

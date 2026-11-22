@@ -6,7 +6,7 @@ import { notesOf } from '../../src/jobs/ctx.ts';
 import { rankRoles } from '../../src/jobs/pipeline/rank.ts';
 import { candidates } from '../../src/jobs/pipeline/pick.ts';
 import { embedMissing, ensureProfileVector } from '../../src/jobs/search/embed.ts';
-import { EMBED_COVERAGE, RRF_K, explainRoles, fuse, hybridEnabled, ranksOf, scoreRoles } from '../../src/jobs/search/hybrid.ts';
+import { EMBED_COVERAGE, EXACT_TITLE_BONUS, RRF_K, WEIGHTS, explainRoles, fuse, hybridEnabled, ranksOf, scoreRoles } from '../../src/jobs/search/hybrid.ts';
 import { jobs } from './helpers.ts';
 import { engineerWorld, fakeEmbedder, role } from './search-helpers.ts';
 
@@ -49,17 +49,19 @@ test('rules and eligibility never change: scoring and ranking write no status, a
   assert.deepEqual(w.ctx.db.prepare('select id, status, eligibility, evidence, score from roles order by id').all(), before);
 });
 
-test('fusion is RRF (k=60) over the signals a role has, scaled to 0..100, plus the learned nudge', () => {
+test('fusion is weighted RRF (k=60; the title signal counts double) over the signals a role has, scaled to 0..100, an exact own title kept near the top, plus the learned nudge', () => {
   const w = engineerWorld();
   const a = role(w.ctx, { company: 'A Co', title: 'Backend Engineer', description: KUBE });
   const b = role(w.ctx, { company: 'B Co', title: 'Backend Engineer', description: 'Nothing relevant here at all.' });
   const { by, info } = explainRoles(w.ctx, [a, b]);
   assert.deepEqual(info.signals, ['title', 'bm25']);
   const fa = by.get(a)!, fb = by.get(b)!;
-  const best = 2 / (RRF_K + 1);
-  assert.ok(Math.abs(fa.fused - (100 * (1 / (RRF_K + fa.ranks.title!) + 1 / (RRF_K + fa.ranks.bm25!))) / best) < 1e-9);
+  const best = (WEIGHTS.title + WEIGHTS.bm25) / (RRF_K + 1);
+  const bonus = fa.fit >= 1 ? EXACT_TITLE_BONUS : 0;
+  assert.ok(Math.abs(fa.fused - ((100 * (WEIGHTS.title / (RRF_K + fa.ranks.title!) + WEIGHTS.bm25 / (RRF_K + fa.ranks.bm25!))) / best + bonus)) < 1e-9);
+  assert.equal(WEIGHTS.title, 2);
   assert.equal(RRF_K, 60);
-  assert.ok(fa.fused <= 100 && fb.fused > 0 && fa.fused > fb.fused);
+  assert.ok(fa.fused <= 100 + EXACT_TITLE_BONUS && fb.fused > 0 && fa.fused > fb.fused);
   assert.equal(fb.ranks.bm25 !== undefined, true, 'its title matches the profile terms');
   // the learned adjustment is added on top (capped by learn.ts: ±15 in all), not fused
   const rows = [{ id: a, company_id: 1, company: 'A Co', title: 'x' }, { id: b, company_id: 2, company: 'B Co', title: 'x' }] as any;
