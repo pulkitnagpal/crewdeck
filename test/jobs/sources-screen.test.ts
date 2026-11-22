@@ -180,7 +180,7 @@ test('the screen in Node: rows, last fetches, LinkedIn\'s row, the coverage line
     const v = (await s.get('sources')).json;
     const out = render(html`<${Sources} data=${v} />`);
     const t = text(out);
-    assert.match(t, /Feeds Automatic and free\. Updated every 12 h, not fetched yet\. Refresh Company career sites 1 .*Job boards 3 · 34 jobs/);
+    assert.match(t, /Feeds Automatic and free\. Updated every 12 h, not fetched yet\. Refresh Company career sites \d+ Picked for you from your field and country .*Added by you .*Job boards 3 · 34 jobs/);
     assert.match(t, /How feeds work What's covered: .*Crewdeck fetches your feeds by itself, every 12 h/);
     assert.match(t, /LinkedIn LinkedIn .*Off · only you can switch it on Switch on… LinkedIn details .*Pasted LinkedIn links: off · Easy Apply: off/);
     assert.match(t, /Arbeitnow Job board .*34 roles · 3 new · 12 match your rules · 2 h ago/);

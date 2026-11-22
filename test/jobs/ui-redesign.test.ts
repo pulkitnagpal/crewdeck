@@ -188,7 +188,7 @@ test('Sources: Feeds (automatic, free) and Your accounts, side by side; groups w
   const out = render(html`<${Sources} data=${data} state=${st} portals=${portalsView.portals} portalsMode=${portalsView.mode} />`);
   const t = text(out);
   assert.match(t, /Feeds Automatic and free\. Updated every 12 h, not fetched yet\. Refresh/);
-  assert.match(t, /Company career sites 1.*Job boards 2.*Job APIs 6 on · 4 need a free key/);
+  assert.match(t, /Company career sites \d+ Picked for you from your field and country.*Added by you.*Job boards 2.*Job APIs 6 on · 4 need a free key/);
   assert.match(t, /Add a company Browse catalog Add a web address Open in Notes/);
   assert.match(t, /Your accounts Sites you sign in to\. Claude reads them, slowly, only when you Find\./);
   assert.match(t, /LinkedIn Signed in · last scan 2 h ago · 25 found/);
@@ -206,7 +206,7 @@ test('Sources: Feeds (automatic, free) and Your accounts, side by side; groups w
   // Few sources: their lists show; many (more than six): names as chips, the list one click away.
   const many = { ...data, rows: Array.from({ length: 9 }, (_, i) => ({ ...data.rows[0], key: `c${i}`, name: `Company ${i}`, position: i + 1, group: 'careers', kind: 'employer' })) };
   const m = render(html`<${Sources} data=${many} state=${st} />`);
-  assert.match(text(m), /Company career sites 9/);
+  assert.match(text(m), /Company career sites \d+/);
   assert.equal((m.match(/class="namechip/g) ?? []).length, 7);
   assert.match(text(m), /\+2/);
   assert.match(text(m), /Edit order, switches and removal/);

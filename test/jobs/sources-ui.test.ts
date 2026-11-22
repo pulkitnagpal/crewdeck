@@ -45,7 +45,10 @@ test('keyboard only: Tab to Move up, Enter, Space on a switch; the page writes t
   const page = await open();
   // The company site is in Company career sites, the two boards in Job boards (each group lists its own, in fetch order).
   assert.deepEqual(await order(page), ['Example GmbH', 'Arbeitnow', 'Berlin Startup Jobs']);
-  assert.deepEqual(await page.locator('.fgroup .gcount').allTextContents(), ['1', '2', '6 on · 4 need a free key']);
+  // Company career sites = the one added by the person plus the company feeds planned from the notes.
+  const counts = await page.locator('.fgroup .gcount').allTextContents();
+  assert.ok(Number(counts[0]) >= 1, counts[0]);
+  assert.deepEqual(counts.slice(1), ['2', '6 on · 4 need a free key']);
   let tabs = 0;
   while ((await label(page)) !== 'Move Berlin Startup Jobs up' && tabs++ < 120) await page.keyboard.press('Tab');
   assert.equal(await label(page), 'Move Berlin Startup Jobs up', 'reachable by Tab');

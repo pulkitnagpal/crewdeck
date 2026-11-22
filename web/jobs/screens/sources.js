@@ -333,7 +333,10 @@ export function Sources({ data, state = null, portals = null, portalsMode = 'pro
           <div class="grow"><h2 id="feeds-h">Feeds</h2><p class="soft">Automatic and free. Updated ${everyText(data.every ?? state?.sources?.every)}, ${updated}.</p></div>
           <button type="button" class="btn small" disabled=${!!src?.running || src?.ready === false} onClick=${() => onAct('refreshSources', {})}>${src?.running ? 'Fetching…' : 'Refresh'}</button>
         </header>
-        <${FeedGroup} id="careers" title="Company career sites" count=${careers.length} jobs=${jobsOf(careers)} open=${true}>
+        <${FeedGroup} id="careers" title="Company career sites" count=${careers.length + (data.planned?.count ?? 0)} jobs=${jobsOf(careers) + (data.planned?.jobs ?? 0)} open=${true}>
+          ${data.planned?.count ? html`<div class="plannedco"><span class="soft small">Picked for you from your field and country</span>
+            <ul class="chips">${data.planned.names.slice(0, 12).map((nm) => html`<li key=${nm} class="chip">${nm}</li>`)}${data.planned.count > 12 ? html`<li class="chip more">+${data.planned.count - 12}</li>` : null}</ul></div>` : null}
+          ${careers.length ? html`<span class="soft small">Added by you</span>` : null}
           <${GroupList} id="careers" rows=${careers} all=${rows} data=${data} asking=${asking} ctl=${ctl} />
         </${FeedGroup}>
         <${FeedGroup} id="boards" title="Job boards" count=${boards.length} jobs=${jobsOf(boards)}>

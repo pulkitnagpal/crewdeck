@@ -291,3 +291,9 @@ details.fgroup > summary:focus-visible { outline-offset: -2px; }
 @media (max-width: 600px) {
   .savebar { position: static; box-shadow: none; }
 }
+
+/* Sources: the company feeds Crewdeck picked from the notes, as quiet name chips above the ones the person added. */
+.plannedco { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.plannedco .chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.plannedco .chip { padding: 4px 10px; border-radius: 999px; background: var(--chip); color: var(--ink); }
+.plannedco .chip.more { color: var(--soft); }

@@ -13,6 +13,18 @@ import { stateFile } from './sources.ts';
 import { listSources } from './sources-note.ts';
 import { suggestSources } from './suggest.ts';
 import { PROVIDERS } from './apis/registry.ts';
+import { planProfile } from './planned-run.ts';
+import { planSources } from './directory/plan.ts';
+
+/** The company feeds Crewdeck planned from the notes (not in sources.md): their names and how many roles they gave. */
+function plannedCompanies(ctx: Ctx): { count: number; names: string[]; jobs: number } {
+  try {
+    const plan = planSources(planProfile(ctx));
+    const names = [...new Set(plan.sources.filter((s) => s.kind === 'company-feeds').flatMap((s) => ((s.params.companies as any[]) ?? []).map((c) => String(c.name))))];
+    const jobs = Number((ctx.db.prepare(`select count(*) n from roles where source_key like 'ats:%'`).get() as any).n);
+    return { count: names.length, names, jobs };
+  } catch { return { count: 0, names: [], jobs: 0 }; }
+}
 
 /** What the page shows for a kind (the catalog's words are for developers). */
 export const KIND_LABEL: Record<string, string> = {
@@ -66,6 +78,7 @@ export function sourcesScreen(ctx: Ctx, o: { resolving?: Map<string, ResolveStat
     state_file: stateFile(ctx.home),
     rows,
     // Official job APIs Crewdeck can query (a few need a free key the person gets): static facts, never a key's value.
+    planned: plannedCompanies(ctx),
     apis: PROVIDERS.map((p) => ({ id: p.id, name: p.name, needs_key: !!p.needsKey, signup_url: p.needsKey?.signupUrl ?? null })),
     linkedin: { in_list: linkedin, risk: RISK.linkedin_search,
       switches: { linkedin_search: ctx.features.linkedin_search, linkedin_links: ctx.features.linkedin_links, easy_apply: ctx.features.easy_apply } },

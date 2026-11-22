@@ -72,18 +72,29 @@ export function scoreCompany(c: Company, q: SelectQuery, places = seekerPlaces(q
   return { score, reasons };
 }
 
+const LISTING_NAME = /\b(jobs?|roles?|positions?|openings?|vacanc(y|ies)|referrals?|board|opportunit(y|ies)|hiring)\b/i;
+
 /** The best `limit` boards for this person, with reasons; remote-friendly first for remote seekers. */
 export function selectCompanies(q: SelectQuery, dir: Directory = loadDirectory()): Selection {
   const places = seekerPlaces(q.countries);
   const remoteSeeker = q.workModes.includes('remote');
   const scored: (Pick & { curated: boolean })[] = [];
+  const seen = new Set<string>();
   for (const c of dir.companies) {
+    // A board named like a job listing ("Remote Jobs At …", "… Therapist Roles", "Referral Board") isn't an employer.
+    if (LISTING_NAME.test(c.name)) continue;
+    // An unchecked name with "remote" in it is nearly always a remote-job board, not an employer (curated ones stay).
+    if (!c.curated && /\bremote\b/i.test(c.name)) continue;
+    const key = c.name.trim().toLowerCase();
+    if (seen.has(key)) continue;
     const s = scoreCompany(c, q, places);
     if (!s) continue;
+    seen.add(key);
     scored.push({ id: c.id, name: c.name, ats: c.ats, board: c.board, url: c.url, score: s.score, remote: c.remote, reasons: s.reasons, curated: c.curated });
   }
   scored.sort((a, b) =>
-    (remoteSeeker ? Number(b.remote === true) - Number(a.remote === true) : 0)
+    // Remote-first only where the directory knows it (curated); a name with "remote" in it is a guess, ranked by score.
+    (remoteSeeker ? Number(b.remote === true && b.curated) - Number(a.remote === true && a.curated) : 0)
     || b.score - a.score || Number(b.curated) - Number(a.curated) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const picks = scored.slice(0, Math.max(0, q.limit)).map(({ curated: _c, ...p }) => p);
   const strong = scored.filter((p) => p.score >= 4).length;
